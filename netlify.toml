@@ -1,0 +1,29 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+
+[[redirects]]
+  from = "/api/notion"
+  to = "/.netlify/functions/notion-proxy"
+  status = 200
+
+[[redirects]]
+  from = "/api/youtube"
+  to = "/.netlify/functions/youtube-proxy"
+  status = 200
+
+[[redirects]]
+  from = "/api/anthropic"
+  to = "/.netlify/functions/anthropic-proxy"
+  status = 200
+
+[[redirects]]
+  from = "/api/tts"
+  to = "/.netlify/functions/tts-proxy"
+  status = 200

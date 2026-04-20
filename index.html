@@ -1,0 +1,3191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nomad Dimension — Pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0d0f0e;
+  --surface: #141716;
+  --surface2: #1c1f1d;
+  --surface3: #232724;
+  --border: #2a2e2c;
+  --border2: #333836;
+  --accent: #a8c5a0;
+  --accent2: #7aad70;
+  --accent3: #4d8c42;
+  --text: #e8ede9;
+  --text2: #9baa9d;
+  --text3: #6a7a6c;
+  --red: #e05555;
+  --amber: #d4943a;
+  --blue: #5b8fd4;
+  --purple: #9b7dd4;
+  --radius: 8px;
+  --radius-lg: 14px;
+  --shadow: 0 2px 12px rgba(0,0,0,.4);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,.5);
+  --font-display: 'DM Serif Display', Georgia, serif;
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'DM Mono', 'Courier New', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ─── LAYOUT ─── */
+.app-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+}
+
+/* ─── TOPBAR ─── */
+.topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  height: 56px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar-logo {
+  font-family: var(--font-display);
+  font-size: 17px;
+  color: var(--text);
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.topbar-logo span { color: var(--accent); }
+.topbar-sep { flex: 1; }
+.episode-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--text2);
+  font-family: var(--font-mono);
+}
+.episode-pill .dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--text3);
+}
+.episode-pill.active .dot { background: var(--accent2); box-shadow: 0 0 6px var(--accent3); }
+.episode-pill.active { color: var(--text); }
+
+/* ─── SIDEBAR ─── */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 16px 0;
+  position: sticky;
+  top: 56px;
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.sidebar::-webkit-scrollbar { display: none; }
+
+.sidebar-section {
+  padding: 8px 12px 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: var(--text2);
+  transition: all .15s;
+  font-size: 13px;
+  border-left: 2px solid transparent;
+  user-select: none;
+}
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active {
+  background: var(--surface2);
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+.nav-item .stage-num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text3);
+  min-width: 16px;
+}
+.nav-item.active .stage-num { color: var(--accent3); }
+.nav-status {
+  margin-left: auto;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--border2);
+}
+.nav-status.ok { background: var(--accent3); }
+.nav-status.warn { background: var(--amber); }
+.nav-status.err { background: var(--red); }
+
+/* ─── MAIN ─── */
+.main {
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.stage-panel {
+  display: none;
+  padding: 32px 36px;
+  max-width: 1000px;
+}
+.stage-panel.active { display: block; }
+
+.stage-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.stage-header h1 {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: normal;
+  color: var(--text);
+}
+.stage-header .subtitle {
+  font-size: 13px;
+  color: var(--text3);
+  font-family: var(--font-mono);
+}
+
+/* ─── CARDS ─── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.card-title {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-title .icon { font-size: 14px; }
+
+/* ─── FORM ELEMENTS ─── */
+input, textarea, select {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  padding: 9px 12px;
+  outline: none;
+  width: 100%;
+  transition: border-color .15s;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent3);
+}
+input::placeholder, textarea::placeholder { color: var(--text3); }
+select option { background: var(--surface2); }
+
+label {
+  display: block;
+  font-size: 11px;
+  color: var(--text2);
+  margin-bottom: 5px;
+  font-family: var(--font-mono);
+}
+
+.field { margin-bottom: 14px; }
+
+/* ─── BUTTONS ─── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.btn:hover { background: var(--surface3); border-color: var(--accent3); }
+.btn:active { transform: scale(.98); }
+.btn-primary {
+  background: var(--accent3);
+  border-color: var(--accent3);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--accent2); border-color: var(--accent2); }
+.btn-sm { padding: 6px 11px; font-size: 12px; }
+.btn-danger { border-color: var(--red); color: var(--red); }
+.btn-danger:hover { background: rgba(224,85,85,.1); }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--text2); }
+.btn-ghost:hover { background: var(--surface2); color: var(--text); border-color: var(--border2); }
+.btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+.btn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+
+/* ─── TABS ─── */
+.tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px;
+  margin-bottom: 20px;
+  width: fit-content;
+}
+.tab {
+  padding: 6px 14px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text2);
+  transition: all .15s;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.tab:hover { color: var(--text); }
+.tab.active { background: var(--surface2); color: var(--text); }
+
+/* ─── STATUS BADGES ─── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  background: var(--surface2);
+  color: var(--text2);
+  border: 1px solid var(--border2);
+}
+.badge-green { background: rgba(168,197,160,.1); color: var(--accent); border-color: rgba(168,197,160,.2); }
+.badge-amber { background: rgba(212,148,58,.1); color: var(--amber); border-color: rgba(212,148,58,.2); }
+.badge-red { background: rgba(224,85,85,.1); color: var(--red); border-color: rgba(224,85,85,.2); }
+.badge-blue { background: rgba(91,143,212,.1); color: var(--blue); border-color: rgba(91,143,212,.2); }
+.badge-purple { background: rgba(155,125,212,.1); color: var(--purple); border-color: rgba(155,125,212,.2); }
+
+/* ─── TABLES ─── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  text-align: left;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  vertical-align: middle;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: var(--surface2); }
+
+/* ─── KEY VALUE GRID ─── */
+.kv-grid { display: grid; grid-template-columns: 180px 1fr; gap: 10px 20px; align-items: center; }
+.kv-label { font-size: 12px; color: var(--text2); font-family: var(--font-mono); }
+
+/* ─── STATUS BOXES ─── */
+.info-box {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text2);
+  margin-bottom: 12px;
+}
+.info-box.success { border-color: rgba(168,197,160,.3); color: var(--accent); background: rgba(168,197,160,.06); }
+.info-box.error { border-color: rgba(224,85,85,.3); color: var(--red); background: rgba(224,85,85,.06); }
+.info-box.warn { border-color: rgba(212,148,58,.3); color: var(--amber); background: rgba(212,148,58,.06); }
+
+/* ─── LOADING ─── */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-row { display: flex; align-items: center; gap: 10px; color: var(--text2); font-size: 13px; padding: 12px; }
+
+/* ─── VIDEO CARDS ─── */
+.video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.video-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color .15s, transform .15s;
+}
+.video-card:hover { border-color: var(--border2); transform: translateY(-1px); }
+.video-card.selected { border-color: var(--accent3); background: rgba(168,197,160,.05); }
+.video-thumb {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  background: var(--surface2);
+  display: block;
+}
+.video-thumb-placeholder {
+  width: 100%;
+  height: 140px;
+  background: var(--surface2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+}
+.video-info { padding: 12px; }
+.video-title { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 6px; line-height: 1.4; }
+.video-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+.video-stat { font-size: 11px; color: var(--text3); font-family: var(--font-mono); }
+
+/* ─── CHANNEL CHIPS ─── */
+.channel-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--text2);
+  transition: all .15s;
+  user-select: none;
+}
+.chip:hover { border-color: var(--accent3); color: var(--text); }
+.chip.active { background: rgba(168,197,160,.12); border-color: var(--accent3); color: var(--accent); }
+.chip-rm {
+  font-size: 14px;
+  color: var(--text3);
+  cursor: pointer;
+  line-height: 1;
+}
+.chip-rm:hover { color: var(--red); }
+
+/* ─── EPISODE ROW ─── */
+.ep-row {
+  display: grid;
+  grid-template-columns: 2fr 120px 120px 100px;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.ep-row:hover { border-color: var(--border2); }
+.ep-row.active-ep { border-color: var(--accent3); background: rgba(168,197,160,.04); }
+.ep-title { font-weight: 500; font-size: 13px; }
+.ep-series { font-size: 11px; color: var(--text3); font-family: var(--font-mono); margin-top: 2px; }
+
+/* ─── SCRIPT DIALOGUE ─── */
+.dialogue-block { margin-bottom: 8px; }
+.dialogue-line {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  margin-bottom: 4px;
+  align-items: start;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.dialogue-line:hover { border-color: var(--border2); }
+.speaker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding-top: 2px;
+}
+.speaker.kai { color: var(--blue); }
+.speaker.mia { color: var(--purple); }
+.timestamp { font-size: 10px; color: var(--text3); font-family: var(--font-mono); }
+
+/* ─── SECTION CARD ─── */
+.section-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.section-header:hover { background: var(--surface3); }
+.section-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text3);
+  min-width: 24px;
+}
+.section-name { font-weight: 500; flex: 1; }
+.section-body { padding: 16px; }
+.section-locked { color: var(--accent); font-size: 12px; font-family: var(--font-mono); }
+
+/* ─── PLACE ROW ─── */
+.place-row {
+  display: grid;
+  grid-template-columns: 1fr 100px 80px 80px auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.place-row.new-place { border-color: rgba(91,143,212,.3); background: rgba(91,143,212,.04); }
+.place-row.existing { border-color: rgba(168,197,160,.3); }
+.place-name { font-weight: 500; }
+.place-type { font-size: 11px; color: var(--text3); font-family: var(--font-mono); }
+
+/* ─── AUDIO PLAYER ─── */
+.audio-segment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+  background: var(--surface);
+}
+.audio-segment.playing { border-color: var(--accent3); }
+.play-btn {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 14px;
+  transition: all .15s;
+}
+.play-btn:hover { background: var(--accent3); border-color: var(--accent3); }
+.audio-waveform {
+  flex: 1;
+  height: 28px;
+  background: var(--surface2);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.audio-progress {
+  position: absolute;
+  left: 0; top: 0; height: 100%;
+  background: rgba(168,197,160,.2);
+  transition: width .1s;
+}
+
+/* ─── CODE BLOCK ─── */
+.code-block {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text2);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  line-height: 1.7;
+}
+.code-block .key { color: var(--accent); }
+.code-block .val { color: var(--amber); }
+
+/* ─── GRID HELPERS ─── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; align-items: center; gap: 10px; }
+
+/* ─── EMPTY STATE ─── */
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--text3);
+}
+.empty-state .icon { font-size: 36px; margin-bottom: 12px; }
+.empty-state p { font-size: 13px; line-height: 1.6; max-width: 320px; margin: 0 auto; }
+
+/* ─── TOAST ─── */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text);
+  max-width: 320px;
+  box-shadow: var(--shadow-lg);
+  animation: toastIn .2s ease;
+  pointer-events: auto;
+}
+.toast.success { border-color: rgba(168,197,160,.4); color: var(--accent); }
+.toast.error { border-color: rgba(224,85,85,.4); color: var(--red); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } }
+
+/* ─── MODAL ─── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.7);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  max-width: 560px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+}
+.modal-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  margin-bottom: 16px;
+}
+
+/* ─── PROGRESS BAR ─── */
+.progress-bar {
+  height: 4px;
+  background: var(--surface2);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent3);
+  transition: width .3s;
+  border-radius: 2px;
+}
+
+/* ─── PIPELINE PROGRESS ─── */
+.pipeline-steps {
+  display: flex;
+  gap: 0;
+  margin-bottom: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.pipeline-step {
+  flex: 1;
+  padding: 10px 8px;
+  text-align: center;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  transition: background .15s;
+}
+.pipeline-step:last-child { border-right: none; }
+.pipeline-step:hover { background: var(--surface2); }
+.pipeline-step.active { background: rgba(168,197,160,.08); }
+.pipeline-step.done { opacity: .7; }
+.pipeline-step .ps-num { font-size: 10px; font-family: var(--font-mono); color: var(--text3); }
+.pipeline-step .ps-label { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.pipeline-step.active .ps-label { color: var(--accent); }
+.pipeline-step.active .ps-num { color: var(--accent3); }
+
+/* ─── DIVIDER ─── */
+hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+/* ─── HANDOFF DOC ─── */
+.handoff-section { margin-bottom: 20px; }
+.handoff-section h3 {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ─── SCROLLBAR ─── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 768px) {
+  .app-shell { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .stage-panel { padding: 20px 16px; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .place-row { grid-template-columns: 1fr auto; }
+  .ep-row { grid-template-columns: 1fr auto; }
+}
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="topbar-logo">Nomad <span>Dimension</span></div>
+  <div style="font-size:11px;color:var(--text3);font-family:var(--font-mono)">Odyssey of Discovery</div>
+  <div class="topbar-sep"></div>
+  <div class="episode-pill" id="topbar-ep">
+    <div class="dot"></div>
+    <span id="topbar-ep-text">No active episode</span>
+  </div>
+  <button class="btn btn-sm" onclick="showStage(0)">⚙ Settings</button>
+</header>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-section">Pipeline</div>
+  <div class="nav-item active" onclick="showStage(0)">
+    <span class="stage-num">0</span> Settings
+    <div class="nav-status" id="nav-0"></div>
+  </div>
+  <div class="nav-item" onclick="showStage(1)">
+    <span class="stage-num">1</span> YouTube Browser
+    <div class="nav-status" id="nav-1"></div>
+  </div>
+  <div class="nav-item" onclick="showStage(2)">
+    <span class="stage-num">2</span> Episode Builder
+    <div class="nav-status" id="nav-2"></div>
+  </div>
+  <div class="sidebar-section" style="margin-top:8px">Per Episode</div>
+  <div class="nav-item" onclick="showStage(3)">
+    <span class="stage-num">3A</span> Transcript
+    <div class="nav-status" id="nav-3"></div>
+  </div>
+  <div class="nav-item" onclick="showStage(3.5)">
+    <span class="stage-num">3B</span> Places Review
+    <div class="nav-status" id="nav-35"></div>
+  </div>
+  <div class="nav-item" onclick="showStage(4)">
+    <span class="stage-num">4</span> Script Builder
+    <div class="nav-status" id="nav-4"></div>
+  </div>
+  <div class="nav-item" onclick="showStage(5)">
+    <span class="stage-num">5</span> Audio TTS
+    <div class="nav-status" id="nav-5"></div>
+  </div>
+  <div class="nav-item" onclick="showStage(6)">
+    <span class="stage-num">6</span> Handoff
+    <div class="nav-status" id="nav-6"></div>
+  </div>
+</nav>
+
+<!-- MAIN CONTENT -->
+<main class="main">
+
+<!-- ═══════════════════════════════════════════
+     STAGE 0 — SETTINGS
+     ═══════════════════════════════════════════ -->
+<div class="stage-panel active" id="stage-0">
+  <div class="stage-header">
+    <h1>Settings</h1>
+    <span class="subtitle">stage 0 · cross-device state</span>
+  </div>
+
+  <!-- NOTION CONNECTION -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🔗</span> Notion Connection</div>
+    <div class="field">
+      <label>Notion Integration Token</label>
+      <div style="display:flex;gap:8px">
+        <input type="password" id="notion-token" placeholder="ntn_…" style="font-family:var(--font-mono)">
+        <button class="btn btn-primary" onclick="connectNotion()">Connect & Load →</button>
+      </div>
+    </div>
+    <div id="notion-status" class="info-box" style="display:none"></div>
+    <div style="font-size:11px;color:var(--text3);margin-top:8px">
+      Once connected, all keys and settings are loaded from Notion App Settings (ID: <code style="font-family:var(--font-mono);color:var(--text2)">33c9ba2b-3900-8132-b172-f136389ac2e2</code>).
+    </div>
+  </div>
+
+  <!-- KEY STATUS -->
+  <div class="card" id="keys-card" style="display:none">
+    <div class="card-title"><span class="icon">🔐</span> API Key Status</div>
+    <table class="data-table">
+      <thead><tr><th>Service</th><th>Key Preview</th><th>Status</th></tr></thead>
+      <tbody id="keys-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- MODEL CONFIG -->
+  <div class="card" id="models-card" style="display:none">
+    <div class="card-title"><span class="icon">🤖</span> Model Configuration</div>
+    <div id="models-table"></div>
+    <div class="btn-row">
+      <button class="btn" onclick="saveModels()">Save Model Changes to Notion →</button>
+    </div>
+  </div>
+
+  <!-- CHANNEL DNA -->
+  <div class="card" id="dna-card" style="display:none">
+    <div class="card-title"><span class="icon">📺</span> Channel DNA / Style Guide</div>
+    <div class="grid-2">
+      <div class="field">
+        <label>Channel Name</label>
+        <input type="text" id="dna-name">
+      </div>
+      <div class="field">
+        <label>Tagline</label>
+        <input type="text" id="dna-tagline">
+      </div>
+    </div>
+    <div class="field">
+      <label>Target Audience</label>
+      <textarea id="dna-audience" rows="2"></textarea>
+    </div>
+    <div class="field">
+      <label>Tone</label>
+      <textarea id="dna-tone" rows="2"></textarea>
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label>Host Ratio (e.g. Kai 55% / Mia 45%)</label>
+        <input type="text" id="dna-ratio">
+      </div>
+      <div class="field">
+        <label>Recurring Sign-off</label>
+        <input type="text" id="dna-signoff">
+      </div>
+    </div>
+    <div class="field">
+      <label>Intro Style</label>
+      <textarea id="dna-intro" rows="2"></textarea>
+    </div>
+    <div class="field">
+      <label>Always Include</label>
+      <textarea id="dna-include" rows="2"></textarea>
+    </div>
+    <div class="field">
+      <label>Always Avoid</label>
+      <textarea id="dna-avoid" rows="2"></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="saveDNA()">Save Channel DNA to Notion →</button>
+    </div>
+  </div>
+
+  <!-- LOOKUP TABLES -->
+  <div class="card" id="lookup-card" style="display:none">
+    <div class="card-title"><span class="icon">📋</span> Lookup Tables</div>
+    <div class="grid-3">
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-family:var(--font-mono)">Section Types</div>
+        <div id="lt-sections" class="stack"></div>
+        <button class="btn btn-sm btn-ghost" onclick="addLookupItem('sections')" style="margin-top:6px">+ Add</button>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-family:var(--font-mono)">Tone Styles</div>
+        <div id="lt-tones" class="stack"></div>
+        <button class="btn btn-sm btn-ghost" onclick="addLookupItem('tones')" style="margin-top:6px">+ Add</button>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-family:var(--font-mono)">Voice Configs</div>
+        <div id="lt-voices" class="stack"></div>
+        <button class="btn btn-sm btn-ghost" onclick="addLookupItem('voices')" style="margin-top:6px">+ Add</button>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="saveLookups()">Save Lookup Tables to Notion →</button>
+    </div>
+  </div>
+
+  <!-- APP STATE -->
+  <div class="card" id="state-card" style="display:none">
+    <div class="card-title"><span class="icon">🔄</span> App State</div>
+    <div class="kv-grid">
+      <div class="kv-label">Active Episode</div>
+      <div id="state-episode" style="font-family:var(--font-mono);font-size:12px;color:var(--text2)">—</div>
+      <div class="kv-label">Current Stage</div>
+      <div id="state-stage" style="font-family:var(--font-mono);font-size:12px;color:var(--text2)">—</div>
+      <div class="kv-label">Last Updated</div>
+      <div id="state-updated" style="font-family:var(--font-mono);font-size:12px;color:var(--text2)">—</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="resumeSession()">Resume Session →</button>
+      <button class="btn btn-danger btn-sm" onclick="clearState()">Clear State</button>
+    </div>
+  </div>
+
+  <!-- HEALTH -->
+  <div class="card" id="health-card" style="display:none">
+    <div class="card-title"><span class="icon">🚀</span> System Health</div>
+    <div id="health-results"></div>
+    <button class="btn btn-sm" onclick="runHealthCheck()">Run Health Check →</button>
+  </div>
+
+  <!-- BEGIN -->
+  <div class="card" id="begin-card" style="display:none">
+    <div class="card-title"><span class="icon">✅</span> Ready to Create</div>
+    <p style="color:var(--text2);margin-bottom:14px">Settings loaded. Choose your next step.</p>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="showStage(1)">Stage 1 — Browse YouTube →</button>
+      <button class="btn" onclick="showStage(2)">Stage 2 — Episode Builder →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 1 — YOUTUBE BROWSER
+     ═══════════════════════════════════════════ -->
+<div class="stage-panel" id="stage-1">
+  <div class="stage-header">
+    <h1>YouTube Browser</h1>
+    <span class="subtitle">stage 1 · find inspiration videos</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">📺</span> Source Channels</div>
+    <div id="channel-chips-area" class="channel-chips"></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input type="text" id="new-channel-input" placeholder="Add channel name or ID…" style="max-width:260px">
+      <button class="btn btn-sm" onclick="addChannel()">+ Add</button>
+    </div>
+    <div class="row">
+      <input type="text" id="yt-keyword" placeholder="Filter keyword (optional)…" style="max-width:240px">
+      <select id="yt-max-results" style="width:120px">
+        <option value="10">10 videos</option>
+        <option value="20" selected>20 videos</option>
+        <option value="50">50 videos</option>
+      </select>
+      <button class="btn btn-primary" onclick="fetchYouTube()" id="yt-fetch-btn">Fetch All →</button>
+    </div>
+  </div>
+
+  <div id="yt-results-area" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-size:12px;color:var(--text2)" id="yt-selection-count">0 videos selected</div>
+      <div class="row">
+        <button class="btn btn-sm btn-ghost" onclick="clearYTSelection()">Clear</button>
+        <button class="btn btn-sm btn-primary" onclick="openReviewModal()" id="yt-push-btn" disabled>Review &amp; Push to Notion →</button>
+      </div>
+    </div>
+    <div class="video-grid" id="yt-video-grid"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 2 — EPISODE BUILDER
+     ═══════════════════════════════════════════ -->
+<div class="stage-panel" id="stage-2">
+  <div class="stage-header">
+    <h1>Episode Builder</h1>
+    <span class="subtitle">stage 2 · theme → episode → route</span>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('ep', 'queue')">📋 Source Queue</div>
+    <div class="tab" onclick="switchTab('ep', 'theme')">🧭 Theme Workshop</div>
+    <div class="tab" onclick="switchTab('ep', 'create')">🎬 Create Episode</div>
+    <div class="tab" onclick="switchTab('ep', 'calendar')">📅 Calendar</div>
+    <div class="tab" onclick="switchTab('ep', 'gap')">🔍 What's Next?</div>
+  </div>
+
+  <!-- QUEUE TAB -->
+  <div id="ep-tab-queue">
+    <div class="card">
+      <div class="btn-row" style="margin-top:0;margin-bottom:14px">
+        <button class="btn btn-sm" onclick="loadSourceQueue()">↻ Load from Notion</button>
+        <div style="flex:1"></div>
+        <span id="ep-sel-count" style="font-size:12px;color:var(--text2)">0 selected</span>
+        <button class="btn btn-sm btn-ghost" onclick="clearEpSelection()">Clear</button>
+        <button class="btn btn-sm btn-primary" id="ep-theme-btn" disabled onclick="switchTab('ep','theme');generateThemes()">Build Episode Theme →</button>
+      </div>
+      <div id="ep-queue-area">
+        <div class="empty-state">
+          <div class="icon">📋</div>
+          <p>Load your Source Videos queue from Notion to see what's ready for production.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- THEME TAB -->
+  <div id="ep-tab-theme" style="display:none">
+    <div class="card">
+      <div class="card-title"><span class="icon">🧭</span> Theme Workshop</div>
+      <div id="theme-selected-videos" style="margin-bottom:14px;color:var(--text3);font-size:13px">
+        Select videos from the Source Queue tab first.
+      </div>
+      <button class="btn btn-primary" onclick="generateThemes()" id="gen-theme-btn">Generate Episode Themes with Claude →</button>
+      <div id="theme-loading" style="display:none" class="loading-row"><div class="spinner"></div> Claude is reading your videos and suggesting themes…</div>
+      <div id="theme-results" style="display:none;margin-top:16px"></div>
+    </div>
+    <div class="card" id="places-match-card" style="display:none">
+      <div class="card-title"><span class="icon">📍</span> Places from Your Database That Match</div>
+      <div id="places-match-list"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="proceed-theme-btn" style="display:none" onclick="switchTab('ep','create')">Proceed with Selected Theme →</button>
+    </div>
+  </div>
+
+  <!-- CREATE EPISODE TAB -->
+  <div id="ep-tab-create" style="display:none">
+    <div class="card">
+      <div class="card-title"><span class="icon">🎬</span> Episode Identity</div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Series</label>
+          <select id="ep-series">
+            <option>Japan Unfiltered</option>
+            <option>Hidden Roads</option>
+            <option>Van Life Chronicles</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Episode Number</label>
+          <input type="number" id="ep-number" placeholder="01">
+        </div>
+      </div>
+      <div class="field">
+        <label>Working Title Options (Claude suggests — you pick)</label>
+        <div id="ep-title-options" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
+        <input type="text" id="ep-title-custom" placeholder="Or write your own title theme…">
+      </div>
+      <div style="font-size:12px;color:var(--text3);font-family:var(--font-mono);padding:10px;background:var(--surface2);border-radius:var(--radius);margin-bottom:14px" id="ep-name-preview">
+        Select series + number + theme above
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Country</label>
+          <select id="ep-country">
+            <option>Japan</option><option>Australia</option><option>ASEAN</option>
+            <option>Russia</option><option>China</option><option>Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Target Publish Date</label>
+          <input type="date" id="ep-date">
+        </div>
+      </div>
+      <div class="field">
+        <label>Episode Concept (2-3 sentences)</label>
+        <textarea id="ep-concept" rows="3" placeholder="What connects these videos…"></textarea>
+      </div>
+      <div class="field">
+        <label>Hook / Angle (one line — why should someone watch this?)</label>
+        <input type="text" id="ep-hook" placeholder="The angle that makes this unmissable…">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="createEpisode()">Create Episode in Notion →</button>
+        <div id="ep-creating" style="display:none" class="loading-row"><div class="spinner"></div> Creating episode…</div>
+      </div>
+      <div id="ep-create-result" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- CALENDAR TAB -->
+  <div id="ep-tab-calendar" style="display:none">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="card-title" style="margin:0"><span class="icon">📅</span> Content Calendar</div>
+        <button class="btn btn-sm" onclick="loadCalendar()">↻ Load Calendar</button>
+      </div>
+      <div id="calendar-area">
+        <div class="empty-state"><div class="icon">📅</div><p>Load calendar to see your episode schedule.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAP TAB -->
+  <div id="ep-tab-gap" style="display:none">
+    <div class="card">
+      <div class="card-title"><span class="icon">🔍</span> What should I make next?</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Claude reads your Episodes and Places databases and suggests uncovered prefectures, underrepresented content types, and seasonal opportunities.</p>
+      <button class="btn btn-primary" onclick="runGapAnalysis()">🔍 Analyse My Content Gaps →</button>
+      <div id="gap-loading" style="display:none" class="loading-row"><div class="spinner"></div> Claude is analysing your content library…</div>
+      <div id="gap-results" style="margin-top:16px;display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 3A — TRANSCRIPT
+     ═══════════════════════════════════════════ -->
+<div class="stage-panel" id="stage-3">
+  <div class="stage-header">
+    <h1>Transcript</h1>
+    <span class="subtitle">stage 3A · upload, detect, translate, outline</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">🎞️</span> Source Video</div>
+    <div class="field">
+      <label>Select Source Video</label>
+      <select id="transcript-video-select" onchange="onTranscriptVideoSelect()">
+        <option value="">— select a source video —</option>
+      </select>
+    </div>
+    <button class="btn btn-sm" onclick="loadTranscriptVideos()">↻ Load Source Videos from Notion</button>
+  </div>
+
+  <div id="transcript-work-area" style="display:none">
+    <div class="card">
+      <div class="card-title"><span class="icon">📄</span> SRT / Transcript Upload</div>
+      <div class="field">
+        <label>Paste SRT content or plain transcript</label>
+        <textarea id="transcript-input" rows="10" placeholder="Paste SRT or transcript here… If none available, leave blank and Claude will generate a content outline from video metadata."></textarea>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <div id="lang-detect-badge" class="badge">Language: auto-detect</div>
+        <div id="translate-toggle" style="display:none">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+            <input type="checkbox" id="translate-check" checked> Translate JP→EN (Gemini Flash)
+          </label>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="runPass1()">Run Pass 1 — Extract Outline →</button>
+        <div id="pass1-loading" style="display:none" class="loading-row"><div class="spinner"></div> Haiku extracting key moments and places…</div>
+      </div>
+    </div>
+
+    <div id="pass1-result-card" style="display:none" class="card">
+      <div class="card-title"><span class="icon">📋</span> Content Outline (Pass 1 Output)</div>
+      <div id="pass1-output" class="code-block"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveOutlineToNotion()">Save Outline to Notion →</button>
+        <button class="btn" onclick="showStage(3.5)">Continue → Stage 3B Places →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 3B — PLACES REVIEW
+     ═══════════════════════════════════════════ -->
+<div class="stage-panel" id="stage-35">
+  <div class="stage-header">
+    <h1>Places Review</h1>
+    <span class="subtitle">stage 3B · extract, cross-reference, confirm</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">📍</span> Extract Places from Transcript Outline</div>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Claude (Sonnet) extracts all mentioned places, cross-references the Places Database for duplicates, and generates entries for new locations.</p>
+    <button class="btn btn-primary" onclick="extractPlaces()">Extract Places with Claude →</button>
+    <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Sonnet extracting and cross-referencing places…</div>
+  </div>
+
+  <div id="places-review-area" style="display:none">
+    <div class="card">
+      <div class="card-title"><span class="icon">🗂️</span> Places to Review</div>
+      <div id="places-list"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="icon">🗺️</span> Route Order</div>
+      <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Drag confirmed places to set episode route sequence. This becomes the section structure for Stage 4.</p>
+      <div id="route-order-list"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveConfirmedPlaces()">Push Confirmed Places to Notion →</button>
+        <button class="btn" onclick="showStage(4)">Continue → Script Builder →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 4 — SCRIPT BUILDER
+     ═══════════════════════════════════════════ -->
+<div class="stage-panel" id="stage-4">
+  <div class="stage-header">
+    <h1>Script Builder</h1>
+    <span class="subtitle">stage 4 · kai & mia dialogue, section by section</span>
+  </div>
+
+  <div class="card" id="script-ep-info">
+    <div class="card-title"><span class="icon">🎬</span> Active Episode</div>
+    <div id="script-ep-display" style="color:var(--text2)">No active episode — return to Stage 2 to select one.</div>
+    <div class="btn-row">
+      <button class="btn btn-sm" onclick="loadSections()">↻ Load Sections from Notion</button>
+      <button class="btn btn-sm btn-primary" onclick="openAddSectionModal()">+ Add Section</button>
+    </div>
+  </div>
+
+  <div id="sections-area"></div>
+
+  <!-- EPISODE TEMPLATES -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📐</span> Episode Templates</div>
+    <div class="grid-2">
+      <div style="padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">
+        <div style="font-weight:500;margin-bottom:6px">Template A — Standard Road Trip</div>
+        <div style="font-size:12px;color:var(--text3)">5 sections · Intro → Food → Place → Cultural Note → Outro</div>
+        <button class="btn btn-sm" style="margin-top:10px" onclick="applyTemplate('A')">Apply Template A</button>
+      </div>
+      <div style="padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">
+        <div style="font-weight:500;margin-bottom:6px">Template B — Single Destination</div>
+        <div style="font-size:12px;color:var(--text3)">4 sections · Intro → History → Experience → Outro</div>
+        <button class="btn btn-sm" style="margin-top:10px" onclick="applyTemplate('B')">Apply Template B</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 5 — AUDIO TTS
+     ═══════════════════════════════════════════ -->
+<div class="stage-panel" id="stage-5">
+  <div class="stage-header">
+    <h1>Audio TTS</h1>
+    <span class="subtitle">stage 5 · kai & mia voiceover generation</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">🎙️</span> Voice Configuration</div>
+    <div class="grid-2">
+      <div style="padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">
+        <div style="color:var(--blue);font-family:var(--font-mono);font-size:12px;margin-bottom:8px">KAI</div>
+        <div class="field">
+          <label>Voice</label>
+          <select id="kai-voice"><option value="en-US-Neural2-D">en-US-Neural2-D (default)</option><option value="en-US-Neural2-J">en-US-Neural2-J</option></select>
+        </div>
+        <div class="field">
+          <label>Speed (0.95x default)</label>
+          <input type="number" id="kai-speed" value="0.95" step="0.05" min="0.5" max="2.0">
+        </div>
+      </div>
+      <div style="padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">
+        <div style="color:var(--purple);font-family:var(--font-mono);font-size:12px;margin-bottom:8px">MIA</div>
+        <div class="field">
+          <label>Voice</label>
+          <select id="mia-voice"><option value="en-US-Neural2-F">en-US-Neural2-F (default)</option><option value="en-US-Neural2-H">en-US-Neural2-H</option></select>
+        </div>
+        <div class="field">
+          <label>Speed (1.0x default)</label>
+          <input type="number" id="mia-speed" value="1.0" step="0.05" min="0.5" max="2.0">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">🎵</span> Section Audio Render</div>
+    <div id="audio-sections-list">
+      <div class="empty-state"><div class="icon">🎵</div><p>Load Script sections from Stage 4 to begin audio generation.</p></div>
+    </div>
+    <div class="btn-row" id="audio-controls" style="display:none">
+      <button class="btn btn-primary" onclick="renderAllAudio()">🎙️ Render All Sections →</button>
+      <button class="btn" onclick="playFullEpisode()">▶ Full Episode Playback</button>
+      <button class="btn" onclick="exportAudio()">⬇ Export MP3 Package</button>
+    </div>
+  </div>
+
+  <div class="card" id="audio-player-card" style="display:none">
+    <div class="card-title"><span class="icon">▶</span> Full Episode Playback</div>
+    <div style="height:4px;background:var(--surface2);border-radius:2px;margin-bottom:12px;overflow:hidden">
+      <div id="episode-progress-bar" style="height:100%;background:var(--accent3);width:0%;transition:width .1s;border-radius:2px"></div>
+    </div>
+    <div id="audio-timeline"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 6 — PRODUCTION HANDOFF
+     ═══════════════════════════════════════════ -->
+<div class="stage-panel" id="stage-6">
+  <div class="stage-header">
+    <h1>Production Handoff</h1>
+    <span class="subtitle">stage 6 · auto-generated doc → CapCut → Canva → YouTube</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">📋</span> Generate Handoff Document</div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:14px">
+      Claude (Haiku) generates a complete production handoff including: place list with routes and B-roll cues, section timestamps, Canva slides brief, thumbnail brief, CapCut edit guide, and YouTube metadata.
+    </p>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="generateHandoff()">Generate Handoff Doc →</button>
+      <div id="handoff-loading" style="display:none" class="loading-row"><div class="spinner"></div> Haiku assembling your handoff document…</div>
+    </div>
+    <div id="handoff-saved-notice" style="display:none" class="info-box success" style="margin-top:12px"></div>
+  </div>
+
+  <div id="handoff-doc" style="display:none">
+
+    <div class="card handoff-section">
+      <div class="card-title"><span class="icon">🎬</span> Episode Overview</div>
+      <div id="handoff-overview"></div>
+    </div>
+
+    <div class="card handoff-section">
+      <div class="card-title"><span class="icon">📍</span> Place List + Route + B-Roll Cues</div>
+      <div id="handoff-places"></div>
+    </div>
+
+    <div class="card handoff-section">
+      <div class="card-title"><span class="icon">📝</span> Section Breakdown + Timestamps</div>
+      <div id="handoff-sections"></div>
+    </div>
+
+    <div class="card handoff-section">
+      <div class="card-title"><span class="icon">🎨</span> Canva Slides Brief</div>
+      <div id="handoff-canva" class="code-block"></div>
+    </div>
+
+    <div class="card handoff-section">
+      <div class="card-title"><span class="icon">🖼️</span> Thumbnail Brief</div>
+      <div id="handoff-thumb" class="code-block"></div>
+    </div>
+
+    <div class="card handoff-section">
+      <div class="card-title"><span class="icon">✂️</span> CapCut Edit Guide</div>
+      <div id="handoff-capcut" class="code-block"></div>
+    </div>
+
+    <div class="card handoff-section">
+      <div class="card-title"><span class="icon">📺</span> YouTube Metadata</div>
+      <div id="handoff-yt"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="saveHandoffToNotion()">💾 Save Handoff Doc to Notion →</button>
+      <button class="btn" onclick="regenerateHandoff()">↻ Regenerate</button>
+    </div>
+  </div>
+</div>
+
+</main>
+</div>
+
+<!-- ═══════════ MODALS ═══════════ -->
+
+<!-- REVIEW & PUSH MODAL -->
+<div class="modal-overlay" id="modal-review">
+  <div class="modal" style="max-width:720px;width:95%">
+    <div class="modal-title">Review & Push to Notion</div>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Claude has auto-generated a content angle for each video. Review, edit if needed, then push all to your Source Videos database.</p>
+    <div id="review-list"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="closeModal('modal-review')">Cancel</button>
+      <button class="btn btn-primary" onclick="pushToNotion()">Push All to Notion →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD SECTION MODAL -->
+<div class="modal-overlay" id="modal-add-section">
+  <div class="modal">
+    <div class="modal-title">Add Section</div>
+    <div class="field">
+      <label>Section Title</label>
+      <input type="text" id="sec-title" placeholder="e.g. Intro, Stop 1 — Tsurumi Onsen">
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label>Type</label>
+        <select id="sec-type">
+          <option>Intro</option><option>Travel Segment</option><option>Food Stop</option>
+          <option>Place / Attraction</option><option>Cultural Note</option>
+          <option>Onsen / Wellness</option><option>Overnight Stop</option><option>Outro</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Target Duration (min)</label>
+        <input type="number" id="sec-duration" value="2" step="0.5">
+      </div>
+    </div>
+    <div class="field">
+      <label>Tone</label>
+      <select id="sec-tone">
+        <option>Conversational & warm</option><option>Humorous & playful</option>
+        <option>Educational with light banter</option><option>Storytelling & immersive</option>
+        <option>Reflective & philosophical</option><option>Excited & energetic</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Voice Configuration</label>
+      <select id="sec-voice">
+        <option>Both alternating (default)</option><option>Kai leads, Mia responds</option>
+        <option>Mia leads, Kai responds</option><option>Kai solo</option>
+        <option>Mia solo</option><option>Kai intro + Mia outro</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Brief (what you want this section to cover)</label>
+      <textarea id="sec-brief" rows="3" placeholder="Describe what Kai and Mia should cover in this section…"></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="closeModal('modal-add-section')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSection()">Add Section →</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toasts"></div>
+
+<!-- ═══════════ JAVASCRIPT ═══════════ -->
+<script>
+// ─── CONSTANTS ─────────────────────────────────────────────────────────────
+const APP_SETTINGS_PAGE_ID = '33c9ba2b-3900-8132-b172-f136389ac2e2';
+const DB_IDS = {
+  sourceVideos:  '29429e5b-dd37-4ab8-93a5-b1e092df9e60',
+  episodes:      'b298e52a-19e1-47b5-bfa2-d846dbc69291',
+  scripts:       'be955033-cd95-4801-8e05-bcdce05cedc5',
+  places:        '9b03bb34-9d44-4eba-9744-5073bc881656',
+  sourceChannels:'ad90cd8a-276c-4cf6-9414-697401380388',
+  costs:         '6c2855fd-38c8-4e81-8f4d-4c4070b3b82d',
+};
+
+// ─── STATE ──────────────────────────────────────────────────────────────────
+const S = {
+  notionToken: '',
+  keys: {},
+  models: {},
+  dna: {},
+  lookups: { sections: [], tones: [], voices: [] },
+  channels: ['MinivanLife', 'yagai_no_moriko', 'MariLife', 'Traiteperip'],
+  ytVideos: [],
+  ytSelected: new Set(),
+  epSelected: new Set(),
+  epQueue: [],
+  chosenTheme: null,
+  activeEpisode: null,
+  sections: [],
+  audioBuffers: {},
+  audioCtx: null,
+  currentTranscriptOutline: '',
+  extractedPlaces: [],
+  confirmedPlaces: [],
+  handoffDoc: null,
+};
+
+// ─── PROXY HELPERS ──────────────────────────────────────────────────────────
+async function notionAPI(endpoint, method = 'GET', body = null) {
+  const res = await fetch('/.netlify/functions/notion-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint, method, body, token: S.notionToken }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Notion API error ${res.status}`);
+  }
+  return res.json();
+}
+
+async function ytAPI(path, params = {}) {
+  const res = await fetch('/.netlify/functions/youtube-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, params, apiKey: S.keys.youtube }),
+  });
+  return res.json();
+}
+
+async function claudeAPI(messages, model, system = '') {
+  const modelStr = S.models[model] || model;
+  const res = await fetch('/.netlify/functions/anthropic-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: modelStr, max_tokens: 2000, system, messages, apiKey: S.keys.anthropic }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || data.error);
+  return data.content?.[0]?.text || '';
+}
+
+async function ttsAPI(text, voice, speed) {
+  const res = await fetch('/.netlify/functions/tts-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text,
+      voice: { languageCode: 'en-US', name: voice },
+      audioConfig: { audioEncoding: 'MP3', speakingRate: speed },
+      apiKey: S.keys.tts,
+    }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || data.error);
+  return data.audioContent; // base64 MP3
+}
+
+// ─── NOTION PAGE PARSER ─────────────────────────────────────────────────────
+// Reads a Notion page's plain_text blocks and extracts key=value tables
+function parseSettingsPage(pageData) {
+  // pageData is the raw Notion blocks response
+  // We look for table rows with Key/Value columns
+  const out = {};
+  if (!pageData.results) return out;
+  for (const block of pageData.results) {
+    if (block.type === 'table_row') {
+      const cells = block.table_row?.cells || [];
+      if (cells.length >= 2) {
+        const key = cells[0].map(r => r.plain_text).join('').trim();
+        const val = cells[1].map(r => r.plain_text).join('').trim();
+        if (key) out[key] = val;
+      }
+    }
+  }
+  return out;
+}
+
+// Recursively get all blocks from a page
+async function getPageBlocks(pageId) {
+  const data = await notionAPI(`blocks/${pageId}/children?page_size=100`);
+  return data.results || [];
+}
+
+// ─── STAGE NAVIGATION ───────────────────────────────────────────────────────
+const stageMap = {
+  0: 'stage-0', 1: 'stage-1', 2: 'stage-2',
+  3: 'stage-3', 3.5: 'stage-35', 4: 'stage-4',
+  5: 'stage-5', 6: 'stage-6',
+};
+const navMap = {
+  0: 0, 1: 1, 2: 2, 3: 3, 3.5: 3, 4: 4, 5: 5, 6: 6,
+};
+
+function showStage(n) {
+  // hide all
+  document.querySelectorAll('.stage-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+  // show target
+  const panel = document.getElementById(stageMap[n]);
+  if (panel) panel.classList.add('active');
+  // highlight nav
+  const navItems = document.querySelectorAll('.nav-item');
+  navItems.forEach((item, idx) => {
+    if (idx === Math.floor(n)) item.classList.add('active');
+  });
+  // save current stage
+  if (S.notionToken) writeAppState({ 'Current Stage': `Stage ${n}` });
+}
+
+// ─── TAB SWITCHING ───────────────────────────────────────────────────────────
+function switchTab(prefix, tab) {
+  // find all siblings
+  document.querySelectorAll(`[id^="${prefix}-tab-"]`).forEach(el => el.style.display = 'none');
+  document.getElementById(`${prefix}-tab-${tab}`).style.display = '';
+  // update tab buttons
+  const tabBar = document.querySelector('.tabs');
+  if (tabBar) {
+    tabBar.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    const allTabs = tabBar.querySelectorAll('.tab');
+    const tabNames = ['queue','theme','create','calendar','gap'];
+    const idx = tabNames.indexOf(tab);
+    if (idx >= 0 && allTabs[idx]) allTabs[idx].classList.add('active');
+  }
+}
+
+// ─── TOAST ──────────────────────────────────────────────────────────────────
+function toast(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ─── MODAL ──────────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ─── STAGE 0 — SETTINGS ─────────────────────────────────────────────────────
+async function connectNotion() {
+  const tokenEl = document.getElementById('notion-token');
+  const token = tokenEl.value.trim();
+  if (!token) { toast('Enter your Notion token first', 'error'); return; }
+  S.notionToken = token;
+
+  const statusEl = document.getElementById('notion-status');
+  statusEl.style.display = '';
+  statusEl.className = 'info-box';
+  statusEl.textContent = 'Connecting…';
+
+  try {
+    // Verify token by fetching users/me
+    const me = await notionAPI('users/me');
+    statusEl.className = 'info-box success';
+    statusEl.textContent = `✓ Connected as ${me.name || me.bot?.owner?.user?.name || 'Bot'} — loading settings…`;
+
+    await loadSettingsFromNotion();
+  } catch (err) {
+    statusEl.className = 'info-box error';
+    statusEl.textContent = `✗ Connection failed: ${err.message}`;
+    S.notionToken = '';
+  }
+}
+
+async function loadSettingsFromNotion() {
+  try {
+    const blocks = await getPageBlocks(APP_SETTINGS_PAGE_ID);
+    parseAndApplySettings(blocks);
+    renderSettingsUI();
+    document.getElementById('nav-0').className = 'nav-status ok';
+    toast('Settings loaded from Notion', 'success');
+  } catch (err) {
+    toast(`Failed to load settings: ${err.message}`, 'error');
+    console.error(err);
+  }
+}
+
+function parseAndApplySettings(blocks) {
+  // Walk blocks and extract tables
+  let currentSection = '';
+  const keysRaw = {};
+  const modelsRaw = {};
+
+  for (const block of blocks) {
+    if (block.type === 'heading_1' || block.type === 'heading_2') {
+      const txt = block[block.type]?.rich_text?.map(r => r.plain_text).join('') || '';
+      currentSection = txt.toLowerCase();
+    }
+    if (block.type === 'table_row') {
+      const cells = block.table_row?.cells || [];
+      if (cells.length >= 2) {
+        const key = cells[0].map(r => r.plain_text).join('').trim();
+        const val = cells[1].map(r => r.plain_text).join('').trim();
+        if (!key) continue;
+        if (currentSection.includes('api key')) keysRaw[key] = val;
+        else if (currentSection.includes('model')) {
+          // columns: Task, Provider, Model, Notes
+          const model = cells[2]?.map(r => r.plain_text).join('').trim() || '';
+          if (key && model) modelsRaw[key] = model;
+        }
+      }
+    }
+    // paragraph blocks for DNA
+    if (block.type === 'paragraph') {
+      const txt = block.paragraph?.rich_text?.map(r => r.plain_text).join('') || '';
+      if (txt.startsWith('**Channel Name:**')) S.dna.name = txt.split(':**')[1]?.trim() || '';
+      if (txt.startsWith('**Tagline:**')) S.dna.tagline = txt.split(':**')[1]?.trim() || '';
+      if (txt.startsWith('**Target Audience:**')) S.dna.audience = txt.split(':**')[1]?.trim() || '';
+      if (txt.startsWith('**Tone:**')) S.dna.tone = txt.split(':**')[1]?.trim() || '';
+      if (txt.startsWith('**Host Ratio:**')) S.dna.ratio = txt.split(':**')[1]?.trim() || '';
+      if (txt.startsWith('**Intro Style:**')) S.dna.intro = txt.split(':**')[1]?.trim() || '';
+      if (txt.startsWith('**Always Include:**')) S.dna.include = txt.split(':**')[1]?.trim() || '';
+      if (txt.startsWith('**Always Avoid:**')) S.dna.avoid = txt.split(':**')[1]?.trim() || '';
+      if (txt.startsWith('**Recurring Sign-off:**')) S.dna.signoff = txt.split(':**')[1]?.trim() || '';
+      // App State
+      if (txt.startsWith('**Active Episode:**')) S.activeEpisode = txt.split(':**')[1]?.trim() || '';
+    }
+    // Lookup tables — bulleted lists
+    if (block.type === 'bulleted_list_item') {
+      const txt = block.bulleted_list_item?.rich_text?.map(r => r.plain_text).join('') || '';
+      if (currentSection.includes('section type')) S.lookups.sections.push(txt);
+      else if (currentSection.includes('tone')) S.lookups.tones.push(txt);
+      else if (currentSection.includes('voice')) S.lookups.voices.push(txt);
+    }
+  }
+
+  // Apply parsed keys
+  S.keys.youtube   = keysRaw['YouTube Data API v3'] || '';
+  S.keys.anthropic = keysRaw['Anthropic API Key'] || '';
+  S.keys.notion    = keysRaw['Notion Integration Token'] || S.notionToken;
+  S.keys.tts       = keysRaw['Google Cloud TTS API Key'] || '';
+  S.keys.openai    = keysRaw['OpenAI API Key (optional)'] || '';
+  S.keys.gemini    = keysRaw['Google Gemini API Key (optional)'] || '';
+
+  // Apply model config
+  S.models = {
+    angle:       modelsRaw['Content Angle Generation'] || 'claude-haiku-4-5-20251001',
+    translation: modelsRaw['Translation JP→EN'] || 'gemini-2.0-flash',
+    pass1:       modelsRaw['Transcript Structure Extraction (Pass 1)'] || 'claude-haiku-4-5-20251001',
+    places:      modelsRaw['Places Extraction'] || 'claude-sonnet-4-6',
+    theme:       modelsRaw['Episode Theme Suggestion'] || 'claude-sonnet-4-6',
+    dialogue:    modelsRaw['Dialogue Generation'] || 'claude-sonnet-4-6',
+    thumbnail:   modelsRaw['Thumbnail Brief'] || 'claude-haiku-4-5-20251001',
+    metadata:    modelsRaw['YT Metadata Generation'] || 'claude-haiku-4-5-20251001',
+    gap:         modelsRaw['Gap Analysis / What to make next'] || 'claude-haiku-4-5-20251001',
+  };
+
+  // defaults if lookups empty
+  if (!S.lookups.sections.length) S.lookups.sections = ['Intro','Travel Segment','Food Stop','Place / Attraction','Cultural Note','Onsen / Wellness','Overnight Stop','Outro'];
+  if (!S.lookups.tones.length) S.lookups.tones = ['Conversational & warm','Humorous & playful','Educational with light banter','Storytelling & immersive','Reflective & philosophical','Excited & energetic'];
+  if (!S.lookups.voices.length) S.lookups.voices = ['Both alternating (default)','Kai leads, Mia responds','Mia leads, Kai responds','Kai solo','Mia solo','Kai intro + Mia outro'];
+
+  // Default DNA
+  if (!S.dna.name) S.dna.name = 'Nomad Dimension';
+  if (!S.dna.tagline) S.dna.tagline = 'Odyssey of Discovery';
+  if (!S.dna.ratio) S.dna.ratio = 'Kai 55% / Mia 45%';
+}
+
+function renderSettingsUI() {
+  // Keys card
+  const keysCard = document.getElementById('keys-card');
+  keysCard.style.display = '';
+  const tbody = document.getElementById('keys-tbody');
+  const keyDefs = [
+    { label: 'YouTube Data API v3', k: 'youtube' },
+    { label: 'Anthropic API Key', k: 'anthropic' },
+    { label: 'Google Cloud TTS', k: 'tts' },
+    { label: 'OpenAI (optional)', k: 'openai' },
+    { label: 'Gemini (optional)', k: 'gemini' },
+  ];
+  tbody.innerHTML = keyDefs.map(kd => {
+    const val = S.keys[kd.k] || '';
+    const preview = val ? `${val.substring(0,8)}…${val.slice(-4)}` : '—';
+    const status = val ? '<span class="badge badge-green">✓ Set</span>' : '<span class="badge badge-red">Missing</span>';
+    return `<tr><td>${kd.label}</td><td style="font-family:var(--font-mono);font-size:11px">${preview}</td><td>${status}</td></tr>`;
+  }).join('');
+
+  // Models card
+  document.getElementById('models-card').style.display = '';
+  document.getElementById('models-table').innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Task</th><th>Model</th></tr></thead>
+      <tbody>
+        ${Object.entries(S.models).map(([k,v]) => `
+          <tr><td style="font-size:12px">${k}</td>
+          <td><input type="text" value="${v}" data-model="${k}" style="font-family:var(--font-mono);font-size:11px"></td></tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+
+  // DNA card
+  document.getElementById('dna-card').style.display = '';
+  document.getElementById('dna-name').value      = S.dna.name || '';
+  document.getElementById('dna-tagline').value   = S.dna.tagline || '';
+  document.getElementById('dna-audience').value  = S.dna.audience || '';
+  document.getElementById('dna-tone').value      = S.dna.tone || '';
+  document.getElementById('dna-ratio').value     = S.dna.ratio || '';
+  document.getElementById('dna-signoff').value   = S.dna.signoff || '';
+  document.getElementById('dna-intro').value     = S.dna.intro || '';
+  document.getElementById('dna-include').value   = S.dna.include || '';
+  document.getElementById('dna-avoid').value     = S.dna.avoid || '';
+
+  // Lookup tables
+  document.getElementById('lookup-card').style.display = '';
+  renderLookupList('sections', S.lookups.sections);
+  renderLookupList('tones', S.lookups.tones);
+  renderLookupList('voices', S.lookups.voices);
+
+  // App state
+  document.getElementById('state-card').style.display = '';
+  document.getElementById('state-episode').textContent = S.activeEpisode || '—';
+  document.getElementById('state-stage').textContent = '—';
+  document.getElementById('state-updated').textContent = new Date().toLocaleString();
+
+  // Health + Begin
+  document.getElementById('health-card').style.display = '';
+  document.getElementById('begin-card').style.display = '';
+
+  // Update topbar
+  if (S.activeEpisode && S.activeEpisode !== '*(none)*' && S.activeEpisode !== '') {
+    document.getElementById('topbar-ep').classList.add('active');
+    document.getElementById('topbar-ep-text').textContent = S.activeEpisode;
+  }
+}
+
+function renderLookupList(type, items) {
+  const el = document.getElementById(`lt-${type}`);
+  el.innerHTML = items.map((item, i) => `
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+      <input type="text" value="${item}" data-lookup="${type}" data-idx="${i}" style="font-size:12px">
+      <button class="btn btn-sm btn-ghost" onclick="removeLookupItem('${type}',${i})" style="padding:4px 8px">✕</button>
+    </div>`).join('');
+}
+
+function addLookupItem(type) {
+  S.lookups[type].push('New item');
+  renderLookupList(type, S.lookups[type]);
+}
+
+function removeLookupItem(type, idx) {
+  S.lookups[type].splice(idx, 1);
+  renderLookupList(type, S.lookups[type]);
+}
+
+function saveLookups() {
+  // Read current values from inputs
+  ['sections','tones','voices'].forEach(type => {
+    const inputs = document.querySelectorAll(`[data-lookup="${type}"]`);
+    S.lookups[type] = Array.from(inputs).map(i => i.value).filter(Boolean);
+  });
+  toast('Lookup tables saved locally. Notion write coming soon.', 'success');
+}
+
+function saveModels() {
+  document.querySelectorAll('[data-model]').forEach(inp => {
+    S.models[inp.dataset.model] = inp.value.trim();
+  });
+  toast('Model config saved locally. Notion write coming soon.', 'success');
+}
+
+function saveDNA() {
+  S.dna.name     = document.getElementById('dna-name').value;
+  S.dna.tagline  = document.getElementById('dna-tagline').value;
+  S.dna.audience = document.getElementById('dna-audience').value;
+  S.dna.tone     = document.getElementById('dna-tone').value;
+  S.dna.ratio    = document.getElementById('dna-ratio').value;
+  S.dna.signoff  = document.getElementById('dna-signoff').value;
+  S.dna.intro    = document.getElementById('dna-intro').value;
+  S.dna.include  = document.getElementById('dna-include').value;
+  S.dna.avoid    = document.getElementById('dna-avoid').value;
+  toast('Channel DNA saved locally.', 'success');
+}
+
+async function runHealthCheck() {
+  const el = document.getElementById('health-results');
+  el.innerHTML = '<div class="loading-row"><div class="spinner"></div> Running checks…</div>';
+  const results = [];
+
+  // Check Notion
+  try {
+    await notionAPI('users/me');
+    results.push({ label: 'Notion API', ok: true });
+  } catch { results.push({ label: 'Notion API', ok: false }); }
+
+  // Check YouTube (simple channel fetch)
+  if (S.keys.youtube) {
+    try {
+      const r = await ytAPI('channels', { part: 'snippet', id: 'UC_x5XG1OV2P6uZZ5FSM9Ttw', maxResults: 1 });
+      results.push({ label: 'YouTube API', ok: !r.error });
+    } catch { results.push({ label: 'YouTube API', ok: false }); }
+  } else {
+    results.push({ label: 'YouTube API', ok: false, note: 'Key missing' });
+  }
+
+  // Check Anthropic
+  if (S.keys.anthropic) {
+    try {
+      await claudeAPI([{ role: 'user', content: 'ping' }], 'claude-haiku-4-5-20251001');
+      results.push({ label: 'Anthropic API', ok: true });
+    } catch { results.push({ label: 'Anthropic API', ok: false }); }
+  } else {
+    results.push({ label: 'Anthropic API', ok: false, note: 'Key missing' });
+  }
+
+  // Check TTS
+  results.push({ label: 'Google TTS API', ok: !!S.keys.tts, note: S.keys.tts ? '' : 'Key missing — skipped' });
+
+  el.innerHTML = results.map(r =>
+    `<div class="row" style="margin-bottom:6px">
+      <span class="${r.ok ? 'badge badge-green' : 'badge badge-red'}">${r.ok ? '✓' : '✗'} ${r.label}</span>
+      ${r.note ? `<span style="font-size:11px;color:var(--text3)">${r.note}</span>` : ''}
+    </div>`
+  ).join('');
+}
+
+function resumeSession() {
+  if (S.activeEpisode) {
+    toast(`Resuming — active episode: ${S.activeEpisode}`, 'success');
+    showStage(4);
+  } else {
+    toast('No active episode to resume', '');
+  }
+}
+
+function clearState() {
+  S.activeEpisode = null;
+  document.getElementById('state-episode').textContent = '—';
+  document.getElementById('topbar-ep').classList.remove('active');
+  document.getElementById('topbar-ep-text').textContent = 'No active episode';
+  toast('State cleared');
+}
+
+async function writeAppState(fields) {
+  // We'd write to the Notion App Settings page — simplified for now
+  console.log('App state update:', fields);
+}
+
+// ─── STAGE 1 — YOUTUBE BROWSER ───────────────────────────────────────────────
+function renderChannelChips() {
+  const area = document.getElementById('channel-chips-area');
+  area.innerHTML = S.channels.map((ch, i) =>
+    `<div class="chip active" data-ch="${i}" onclick="toggleChannel(${i})">
+      ${ch}
+      <span class="chip-rm" onclick="removeChannel(event,${i})">×</span>
+    </div>`
+  ).join('');
+}
+
+function toggleChannel(i) {
+  const chip = document.querySelector(`[data-ch="${i}"]`);
+  chip?.classList.toggle('active');
+}
+
+function removeChannel(e, i) {
+  e.stopPropagation();
+  S.channels.splice(i, 1);
+  renderChannelChips();
+}
+
+function addChannel() {
+  const inp = document.getElementById('new-channel-input');
+  const val = inp.value.trim();
+  if (!val) return;
+  S.channels.push(val);
+  inp.value = '';
+  renderChannelChips();
+}
+
+async function fetchYouTube() {
+  if (!S.keys.youtube) { toast('YouTube API key not loaded — connect Notion first', 'error'); return; }
+
+  const activeChips = document.querySelectorAll('[data-ch].active');
+  if (!activeChips.length) { toast('Select at least one channel', 'error'); return; }
+
+  const keyword = document.getElementById('yt-keyword').value.trim();
+  const maxResults = document.getElementById('yt-max-results').value;
+  const btn = document.getElementById('yt-fetch-btn');
+  btn.disabled = true;
+  btn.textContent = 'Fetching…';
+
+  S.ytVideos = [];
+  S.ytSelected.clear();
+  document.getElementById('yt-results-area').style.display = 'none';
+
+  try {
+    const channelNames = Array.from(activeChips).map(c => S.channels[+c.dataset.ch]);
+
+    for (const chName of channelNames) {
+      // First resolve channel ID
+      const searchRes = await ytAPI('search', {
+        part: 'snippet',
+        q: chName,
+        type: 'channel',
+        maxResults: 1,
+      });
+      const channelId = searchRes.items?.[0]?.id?.channelId;
+      if (!channelId) continue;
+
+      // Fetch videos from channel
+      const params = {
+        part: 'snippet',
+        channelId,
+        type: 'video',
+        maxResults,
+        order: 'date',
+      };
+      if (keyword) params.q = keyword;
+
+      const videosRes = await ytAPI('search', params);
+      const videoIds = videosRes.items?.map(v => v.id?.videoId).filter(Boolean) || [];
+      if (!videoIds.length) continue;
+
+      // Get video details (views, duration)
+      const detailsRes = await ytAPI('videos', {
+        part: 'snippet,contentDetails,statistics',
+        id: videoIds.join(','),
+      });
+
+      const videos = detailsRes.items?.map(v => ({
+        id: v.id,
+        channelName: chName,
+        title: v.snippet?.title || '',
+        description: v.snippet?.description || '',
+        thumbnail: v.snippet?.thumbnails?.medium?.url || '',
+        publishedAt: v.snippet?.publishedAt || '',
+        duration: v.contentDetails?.duration || '',
+        views: parseInt(v.statistics?.viewCount || 0).toLocaleString(),
+        url: `https://youtube.com/watch?v=${v.id}`,
+        angle: '', // to be generated by Claude
+        contentType: [],
+        region: '',
+      })) || [];
+
+      S.ytVideos.push(...videos);
+    }
+
+    renderYTVideos();
+    document.getElementById('yt-results-area').style.display = '';
+    toast(`Fetched ${S.ytVideos.length} videos`, 'success');
+  } catch (err) {
+    toast(`YouTube fetch failed: ${err.message}`, 'error');
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Fetch All →';
+  }
+}
+
+function renderYTVideos() {
+  const grid = document.getElementById('yt-video-grid');
+  grid.innerHTML = S.ytVideos.map((v, i) => `
+    <div class="video-card ${S.ytSelected.has(i) ? 'selected' : ''}" onclick="toggleYTVideo(${i})">
+      ${v.thumbnail
+        ? `<img class="video-thumb" src="${v.thumbnail}" alt="${v.title}" loading="lazy">`
+        : `<div class="video-thumb-placeholder">🎥</div>`}
+      <div class="video-info">
+        <div class="video-title">${v.title}</div>
+        <div class="video-meta">
+          <span class="video-stat">${v.channelName}</span>
+          <span class="video-stat">👁 ${v.views}</span>
+          <span class="video-stat">${formatISO8601Duration(v.duration)}</span>
+        </div>
+      </div>
+    </div>`).join('');
+  updateYTSelectionCount();
+}
+
+function formatISO8601Duration(d) {
+  if (!d) return '';
+  const m = d.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return d;
+  const h = m[1]||0, min = m[2]||0, s = m[3]||0;
+  return h ? `${h}:${String(min).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${min}:${String(s).padStart(2,'0')}`;
+}
+
+function toggleYTVideo(i) {
+  if (S.ytSelected.has(i)) S.ytSelected.delete(i);
+  else S.ytSelected.add(i);
+  document.querySelectorAll('.video-card')[i]?.classList.toggle('selected');
+  updateYTSelectionCount();
+}
+
+function updateYTSelectionCount() {
+  const n = S.ytSelected.size;
+  document.getElementById('yt-selection-count').textContent = `${n} video${n!==1?'s':''} selected`;
+  document.getElementById('yt-push-btn').disabled = n === 0;
+}
+
+function clearYTSelection() {
+  S.ytSelected.clear();
+  renderYTVideos();
+}
+
+async function openReviewModal() {
+  const selected = [...S.ytSelected].map(i => S.ytVideos[i]);
+  const listEl = document.getElementById('review-list');
+  listEl.innerHTML = '<div class="loading-row"><div class="spinner"></div> Claude is generating content angles…</div>';
+  openModal('modal-review');
+
+  // Generate angles for each video
+  const system = buildDNASystem();
+  const rows = [];
+
+  for (const v of selected) {
+    try {
+      const prompt = `You are analysing a YouTube video for the Nomad Dimension channel.
+Video title: "${v.title}"
+Channel: ${v.channelName}
+Description: ${v.description.substring(0, 500)}
+Views: ${v.views} | Duration: ${formatISO8601Duration(v.duration)}
+
+Generate a short content angle (1-2 sentences) explaining what this video is about and why it might inspire a Nomad Dimension episode. Also suggest: content_type (one of: Road Trip, Food/Restaurant, Nature/Landscape, Cultural/History, Onsen/Wellness, Urban Exploration, Michi-no-eki), region/prefecture, country.
+
+Respond in JSON: {"angle":"...","content_type":"...","region":"...","country":"..."}`;
+
+      const raw = await claudeAPI(
+        [{ role: 'user', content: prompt }],
+        S.models.angle || 'claude-haiku-4-5-20251001',
+        system
+      );
+
+      let parsed = {};
+      try { parsed = JSON.parse(raw.replace(/```json|```/g, '').trim()); } catch {}
+      v.angle = parsed.angle || '';
+      v.contentType = [parsed.content_type || ''];
+      v.region = parsed.region || '';
+      v.country = parsed.country || '';
+    } catch (err) {
+      v.angle = 'Could not generate angle';
+    }
+    rows.push(v);
+  }
+
+  listEl.innerHTML = rows.map((v, i) => `
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:10px">
+      <div style="font-weight:500;margin-bottom:6px">${v.title}</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <span class="badge">${v.channelName}</span>
+        <span class="badge badge-blue">${v.contentType[0]||''}</span>
+        <span class="badge">${v.region||''}</span>
+        <span class="badge">${v.country||''}</span>
+      </div>
+      <div>
+        <label>Content Angle</label>
+        <textarea data-review-idx="${i}" rows="2" style="font-size:12px">${v.angle}</textarea>
+      </div>
+    </div>`).join('');
+
+  // Store selected for push
+  S._reviewVideos = rows;
+}
+
+async function pushToNotion() {
+  if (!S._reviewVideos?.length) return;
+  const btn = document.querySelector('#modal-review .btn-primary');
+  btn.disabled = true;
+  btn.textContent = 'Pushing…';
+
+  // Read back edited angles
+  document.querySelectorAll('[data-review-idx]').forEach(el => {
+    S._reviewVideos[+el.dataset.reviewIdx].angle = el.value;
+  });
+
+  let pushed = 0;
+  for (const v of S._reviewVideos) {
+    try {
+      await notionAPI(`pages`, 'POST', {
+        parent: { database_id: DB_IDS.sourceVideos },
+        properties: {
+          'Name': { title: [{ text: { content: v.title } }] },
+          'YouTube URL': { url: v.url },
+          'Channel': { rich_text: [{ text: { content: v.channelName } }] },
+          'Content Angle': { rich_text: [{ text: { content: v.angle } }] },
+          'Country': { select: { name: v.country || 'Japan' } },
+          'Views': { number: parseInt(v.views.replace(/,/g,'')) || 0 },
+          'B-Roll Status': { select: { name: 'Not Started' } },
+        },
+      });
+      pushed++;
+    } catch (err) {
+      console.error('Push error for', v.title, err);
+    }
+  }
+
+  toast(`Pushed ${pushed}/${S._reviewVideos.length} videos to Notion`, 'success');
+  closeModal('modal-review');
+  btn.disabled = false;
+  btn.textContent = 'Push All to Notion →';
+}
+
+// ─── STAGE 2 — EPISODE BUILDER ───────────────────────────────────────────────
+async function loadSourceQueue() {
+  const area = document.getElementById('ep-queue-area');
+  area.innerHTML = '<div class="loading-row"><div class="spinner"></div> Loading from Notion…</div>';
+  S.epSelected.clear();
+
+  try {
+    const data = await notionAPI(`databases/${DB_IDS.sourceVideos}/query`, 'POST', {
+      filter: { property: 'B-Roll Status', select: { equals: 'Not Started' } },
+      page_size: 50,
+    });
+
+    S.epQueue = (data.results || []).map(p => ({
+      id: p.id,
+      title: p.properties?.Name?.title?.[0]?.plain_text || 'Untitled',
+      channel: p.properties?.Channel?.rich_text?.[0]?.plain_text || '',
+      angle: p.properties?.['Content Angle']?.rich_text?.[0]?.plain_text || '',
+      country: p.properties?.Country?.select?.name || '',
+      url: p.properties?.['YouTube URL']?.url || '',
+    }));
+
+    if (!S.epQueue.length) {
+      area.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>No videos in queue. Push videos from Stage 1 first.</p></div>';
+      return;
+    }
+
+    area.innerHTML = `
+      <table class="data-table">
+        <thead><tr><th></th><th>Title</th><th>Channel</th><th>Angle</th><th>Country</th></tr></thead>
+        <tbody>
+          ${S.epQueue.map((v, i) => `
+            <tr onclick="toggleEpVideo(${i})" style="cursor:pointer" id="ep-row-${i}">
+              <td><input type="checkbox" id="ep-cb-${i}" ${S.epSelected.has(i)?'checked':''}></td>
+              <td style="font-weight:500">${v.title}</td>
+              <td style="font-size:12px;color:var(--text2)">${v.channel}</td>
+              <td style="font-size:12px;color:var(--text3)">${v.angle}</td>
+              <td><span class="badge">${v.country}</span></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+    toast(`Loaded ${S.epQueue.length} videos from queue`, 'success');
+  } catch (err) {
+    area.innerHTML = `<div class="info-box error">Failed to load: ${err.message}</div>`;
+  }
+}
+
+function toggleEpVideo(i) {
+  if (S.epSelected.has(i)) S.epSelected.delete(i);
+  else S.epSelected.add(i);
+  document.getElementById(`ep-cb-${i}`).checked = S.epSelected.has(i);
+  const n = S.epSelected.size;
+  document.getElementById('ep-sel-count').textContent = `${n} selected`;
+  document.getElementById('ep-theme-btn').disabled = n < 2;
+}
+
+function clearEpSelection() {
+  S.epSelected.clear();
+  document.querySelectorAll('[id^="ep-cb-"]').forEach(cb => cb.checked = false);
+  document.getElementById('ep-sel-count').textContent = '0 selected';
+  document.getElementById('ep-theme-btn').disabled = true;
+}
+
+async function generateThemes() {
+  const selected = [...S.epSelected].map(i => S.epQueue[i]);
+  if (selected.length < 2) { toast('Select at least 2 videos first', 'error'); return; }
+
+  const loadEl = document.getElementById('theme-loading');
+  const resultsEl = document.getElementById('theme-results');
+  const btn = document.getElementById('gen-theme-btn');
+  loadEl.style.display = 'flex';
+  resultsEl.style.display = 'none';
+  btn.disabled = true;
+
+  const sel = document.getElementById('theme-selected-videos');
+  sel.textContent = `${selected.length} videos selected: ${selected.map(v=>v.title).join(' · ')}`;
+
+  const system = buildDNASystem();
+  const videoList = selected.map((v,i) =>
+    `${i+1}. "${v.title}" (${v.channel}) — ${v.angle} [${v.country}]`
+  ).join('\n');
+
+  try {
+    const raw = await claudeAPI([{
+      role: 'user',
+      content: `You are a YouTube episode strategist for the Nomad Dimension channel. Here are ${selected.length} source videos:
+
+${videoList}
+
+Suggest 3 distinct episode concepts that connect these videos into a compelling narrative. Each concept should feel like a real YouTube episode title and hook.
+
+Respond ONLY in JSON (no markdown): {"themes":[{"title":"...","concept":"...","hook":"...","tone":"..."},...]}`
+    }], S.models.theme || 'claude-sonnet-4-6', system);
+
+    let parsed;
+    try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
+    catch { throw new Error('Claude returned invalid JSON'); }
+
+    S._suggestedThemes = parsed.themes || [];
+    S.chosenTheme = null;
+
+    resultsEl.innerHTML = `
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;font-family:var(--font-mono)">CHOOSE YOUR EPISODE DIRECTION</div>
+      ${S._suggestedThemes.map((t, i) => `
+        <div class="card" style="cursor:pointer;margin-bottom:10px;border:1px solid var(--border)" onclick="selectTheme(${i})" id="theme-opt-${i}">
+          <div style="font-weight:500;margin-bottom:6px">${t.title}</div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:6px">${t.concept}</div>
+          <div style="font-size:12px;color:var(--accent);font-family:var(--font-mono)">${t.hook}</div>
+        </div>`).join('')}`;
+
+    resultsEl.style.display = '';
+    document.getElementById('proceed-theme-btn').style.display = 'none';
+  } catch (err) {
+    resultsEl.innerHTML = `<div class="info-box error">${err.message}</div>`;
+    resultsEl.style.display = '';
+  } finally {
+    loadEl.style.display = 'none';
+    btn.disabled = false;
+  }
+}
+
+function selectTheme(i) {
+  S.chosenTheme = S._suggestedThemes[i];
+  document.querySelectorAll('[id^="theme-opt-"]').forEach((el,j) => {
+    el.style.borderColor = j === i ? 'var(--accent3)' : 'var(--border)';
+    el.style.background = j === i ? 'rgba(168,197,160,.06)' : '';
+  });
+  // Pre-fill episode create form
+  if (S.chosenTheme) {
+    document.getElementById('ep-concept').value = S.chosenTheme.concept;
+    document.getElementById('ep-hook').value    = S.chosenTheme.hook;
+    suggestEpisodeTitles(S.chosenTheme);
+  }
+  document.getElementById('proceed-theme-btn').style.display = '';
+}
+
+async function suggestEpisodeTitles(theme) {
+  const system = buildDNASystem();
+  try {
+    const raw = await claudeAPI([{
+      role: 'user',
+      content: `Suggest 3 episode title options for the Nomad Dimension channel based on this theme:
+Theme: ${theme.title}
+Concept: ${theme.concept}
+Format: [Series] · EP## · [Theme]
+Examples: "Japan Unfiltered · EP01 · Kyushu in the Rain"
+
+Respond ONLY in JSON: {"titles":["...","...","..."]}`
+    }], S.models.angle, system);
+    const parsed = JSON.parse(raw.replace(/```json|```/g,'').trim());
+    const optArea = document.getElementById('ep-title-options');
+    optArea.innerHTML = (parsed.titles || []).map((t,i) =>
+      `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+        <input type="radio" name="ep-title-radio" value="${t}" onchange="document.getElementById('ep-name-preview').textContent=this.value"> ${t}
+      </label>`
+    ).join('');
+  } catch {}
+}
+
+function updateEpisodePreview() {
+  const series  = document.getElementById('ep-series').value;
+  const num     = document.getElementById('ep-number').value.padStart(2,'0');
+  const custom  = document.getElementById('ep-title-custom').value.trim();
+  const radio   = document.querySelector('input[name="ep-title-radio"]:checked');
+  const title   = custom || (radio?.value) || '…';
+  const preview = `${series} · EP${num} · ${title}`;
+  document.getElementById('ep-name-preview').textContent = preview;
+}
+document.getElementById('ep-series').addEventListener('change', updateEpisodePreview);
+document.getElementById('ep-number').addEventListener('input', updateEpisodePreview);
+document.getElementById('ep-title-custom').addEventListener('input', updateEpisodePreview);
+
+async function createEpisode() {
+  const series  = document.getElementById('ep-series').value;
+  const num     = document.getElementById('ep-number').value.padStart(2,'0');
+  const custom  = document.getElementById('ep-title-custom').value.trim();
+  const radio   = document.querySelector('input[name="ep-title-radio"]:checked');
+  const title   = custom || (radio?.value) || 'New Episode';
+  const country = document.getElementById('ep-country').value;
+  const date    = document.getElementById('ep-date').value;
+  const concept = document.getElementById('ep-concept').value;
+  const hook    = document.getElementById('ep-hook').value;
+
+  if (!title || !concept) { toast('Fill in title and concept first', 'error'); return; }
+
+  const epName = `${series} · EP${num} · ${title}`;
+  document.getElementById('ep-creating').style.display = 'flex';
+  document.getElementById('ep-create-result').style.display = 'none';
+
+  try {
+    const props = {
+      'Name': { title: [{ text: { content: epName } }] },
+      'Series': { select: { name: series } },
+      'Status': { select: { name: '🔍 Research' } },
+      'Country': { select: { name: country } },
+      'Episode Concept': { rich_text: [{ text: { content: concept } }] },
+    };
+    if (hook) props['Hook'] = { rich_text: [{ text: { content: hook } }] };
+    if (date) props['Target Publish Date'] = { date: { start: date } };
+
+    const res = await notionAPI('pages', 'POST', {
+      parent: { database_id: DB_IDS.episodes },
+      properties: props,
+    });
+
+    S.activeEpisode = epName;
+    document.getElementById('topbar-ep').classList.add('active');
+    document.getElementById('topbar-ep-text').textContent = epName;
+    document.getElementById('state-episode').textContent  = epName;
+    document.getElementById('ep-create-result').style.display = '';
+    document.getElementById('ep-create-result').innerHTML = `<div class="info-box success">✓ Episode created: <strong>${epName}</strong></div>`;
+
+    // Mark source videos as promoted
+    for (const i of S.epSelected) {
+      const v = S.epQueue[i];
+      try {
+        await notionAPI(`pages/${v.id}`, 'PATCH', {
+          properties: { 'B-Roll Status': { select: { name: 'Promoted' } } }
+        });
+      } catch {}
+    }
+
+    toast(`Episode "${epName}" created!`, 'success');
+    await writeAppState({ 'Active Episode': epName, 'Current Stage': 'Stage 3' });
+  } catch (err) {
+    document.getElementById('ep-create-result').style.display = '';
+    document.getElementById('ep-create-result').innerHTML = `<div class="info-box error">Failed: ${err.message}</div>`;
+  } finally {
+    document.getElementById('ep-creating').style.display = 'none';
+  }
+}
+
+async function loadCalendar() {
+  const area = document.getElementById('calendar-area');
+  area.innerHTML = '<div class="loading-row"><div class="spinner"></div> Loading episodes…</div>';
+  try {
+    const data = await notionAPI(`databases/${DB_IDS.episodes}/query`, 'POST', {
+      sorts: [{ property: 'Target Publish Date', direction: 'ascending' }],
+      page_size: 30,
+    });
+    const eps = (data.results || []).map(p => ({
+      name: p.properties?.Name?.title?.[0]?.plain_text || 'Untitled',
+      status: p.properties?.Status?.select?.name || '—',
+      date: p.properties?.['Target Publish Date']?.date?.start || null,
+    }));
+
+    if (!eps.length) {
+      area.innerHTML = '<div class="empty-state"><div class="icon">📅</div><p>No episodes yet. Create your first episode in the Create tab.</p></div>';
+      return;
+    }
+
+    const statusColors = {
+      '💡 Idea':'badge','🔍 Research':'badge-blue','✍️ Script':'badge-purple',
+      '🎙️ Audio Ready':'badge-green','🎬 Editing':'badge-amber','⬆️ Scheduled':'badge-amber','✅ Published':'badge-green',
+    };
+
+    area.innerHTML = `<table class="data-table">
+      <thead><tr><th>Episode</th><th>Status</th><th>Target Date</th></tr></thead>
+      <tbody>
+        ${eps.map(e => `
+          <tr>
+            <td style="font-weight:500">${e.name}</td>
+            <td><span class="badge ${statusColors[e.status]||'badge'}">${e.status}</span></td>
+            <td style="font-family:var(--font-mono);font-size:12px">${e.date || '—'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+  } catch (err) {
+    area.innerHTML = `<div class="info-box error">Failed: ${err.message}</div>`;
+  }
+}
+
+async function runGapAnalysis() {
+  const loadEl = document.getElementById('gap-loading');
+  const resultsEl = document.getElementById('gap-results');
+  loadEl.style.display = 'flex';
+  resultsEl.style.display = 'none';
+
+  try {
+    // Fetch episodes and places
+    const [epsData, placesData] = await Promise.all([
+      notionAPI(`databases/${DB_IDS.episodes}/query`, 'POST', { page_size: 50 }),
+      notionAPI(`databases/${DB_IDS.places}/query`, 'POST', { page_size: 100 }),
+    ]);
+
+    const eps = (epsData.results || []).map(p => p.properties?.Name?.title?.[0]?.plain_text || '');
+    const places = (placesData.results || []).map(p => ({
+      name: p.properties?.Name?.title?.[0]?.plain_text || '',
+      prefecture: p.properties?.Prefecture?.select?.name || '',
+      type: p.properties?.Type?.select?.name || '',
+    }));
+
+    const system = buildDNASystem();
+    const raw = await claudeAPI([{
+      role: 'user',
+      content: `You are a content strategist for the Nomad Dimension YouTube channel.
+
+Current episodes (${eps.length}): ${eps.join(', ') || 'none yet'}
+
+Logged places (${places.length}): ${places.slice(0,30).map(p=>`${p.name} (${p.prefecture}, ${p.type})`).join(', ')}
+
+Suggest 5 specific content opportunities based on gaps — uncovered prefectures, underrepresented content types, seasonal opportunities for the coming months, unused logged places. Be specific and actionable.
+
+Format as a bulleted list with context.`
+    }], S.models.gap, system);
+
+    resultsEl.innerHTML = `<div class="card"><div class="card-title"><span class="icon">💡</span> Content Opportunities</div><div class="code-block" style="white-space:pre-wrap">${raw}</div></div>`;
+    resultsEl.style.display = '';
+  } catch (err) {
+    resultsEl.innerHTML = `<div class="info-box error">${err.message}</div>`;
+    resultsEl.style.display = '';
+  } finally {
+    loadEl.style.display = 'none';
+  }
+}
+
+// ─── STAGE 3A — TRANSCRIPT ────────────────────────────────────────────────────
+async function loadTranscriptVideos() {
+  const sel = document.getElementById('transcript-video-select');
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const data = await notionAPI(`databases/${DB_IDS.sourceVideos}/query`, 'POST', {
+      filter: { property: 'B-Roll Status', select: { equals: 'Promoted' } },
+      page_size: 50,
+    });
+    const vids = (data.results || []);
+    sel.innerHTML = '<option value="">— select a source video —</option>' +
+      vids.map(p => {
+        const title = p.properties?.Name?.title?.[0]?.plain_text || 'Untitled';
+        return `<option value="${p.id}">${title}</option>`;
+      }).join('');
+    toast(`Loaded ${vids.length} promoted videos`, 'success');
+  } catch (err) {
+    sel.innerHTML = '<option>Failed to load</option>';
+    toast(`Error: ${err.message}`, 'error');
+  }
+}
+
+function onTranscriptVideoSelect() {
+  const val = document.getElementById('transcript-video-select').value;
+  document.getElementById('transcript-work-area').style.display = val ? '' : 'none';
+  document.getElementById('pass1-result-card').style.display = 'none';
+}
+
+async function runPass1() {
+  const transcript = document.getElementById('transcript-input').value.trim();
+  const loadEl = document.getElementById('pass1-loading');
+  loadEl.style.display = 'flex';
+
+  // Auto-detect language
+  const isJapanese = /[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uffef\u4e00-\u9faf]/.test(transcript.substring(0,200));
+  document.getElementById('lang-detect-badge').textContent = isJapanese ? '🇯🇵 Japanese detected' : '🇺🇸 English detected';
+  document.getElementById('translate-toggle').style.display = isJapanese ? '' : 'none';
+
+  const system = buildDNASystem();
+  const hasTranscript = transcript.length > 50;
+
+  try {
+    const prompt = hasTranscript
+      ? `You are analysing a video transcript for the Nomad Dimension YouTube channel.
+
+${isJapanese ? 'This transcript is in Japanese. First translate the key content for a Western English-speaking audience (not literal — culturally explained), then continue with the analysis.' : ''}
+
+TRANSCRIPT (or excerpt):
+${transcript.substring(0, 8000)}
+
+Perform a two-part structured analysis:
+
+1. KEY MOMENTS: List the 5-8 most significant narrative moments or scenes
+2. PLACES MENTIONED: List every location mentioned (name, type if known, context)
+3. NARRATIVE ARC: One paragraph summary of the overall story/journey
+4. CONTENT THEMES: What content pillars does this touch? (Off-beaten-path / Michi-no-eki / Slow travel / Food / Cultural)
+5. EPISODE POTENTIAL: How well does this fit the Nomad Dimension format?
+
+Be specific and extract actual place names. Format clearly with headers.`
+      : `No transcript available. Using video metadata only.
+Active episode: ${S.activeEpisode || 'Unknown'}
+Generate a content outline based on what a video on this topic would typically cover for the Nomad Dimension channel format. Clearly mark this as METADATA-ONLY OUTLINE.`;
+
+    const result = await claudeAPI(
+      [{ role: 'user', content: prompt }],
+      S.models.pass1 || 'claude-haiku-4-5-20251001',
+      system
+    );
+
+    S.currentTranscriptOutline = result;
+    document.getElementById('pass1-output').textContent = result;
+    document.getElementById('pass1-result-card').style.display = '';
+    toast('Pass 1 complete — outline extracted', 'success');
+  } catch (err) {
+    toast(`Pass 1 failed: ${err.message}`, 'error');
+  } finally {
+    loadEl.style.display = 'none';
+  }
+}
+
+async function saveOutlineToNotion() {
+  const videoId = document.getElementById('transcript-video-select').value;
+  if (!videoId) return;
+  try {
+    await notionAPI(`pages/${videoId}`, 'PATCH', {
+      properties: {
+        'Content Outline': { rich_text: [{ text: { content: S.currentTranscriptOutline.substring(0, 2000) } }] }
+      }
+    });
+    toast('Outline saved to Notion', 'success');
+  } catch (err) {
+    toast(`Save failed: ${err.message}`, 'error');
+  }
+}
+
+// ─── STAGE 3B — PLACES ────────────────────────────────────────────────────────
+async function extractPlaces() {
+  if (!S.currentTranscriptOutline) { toast('Run Pass 1 transcript analysis first', 'error'); return; }
+  const loadEl = document.getElementById('places-loading');
+  loadEl.style.display = 'flex';
+
+  try {
+    // Fetch existing places from DB for cross-reference
+    const existingData = await notionAPI(`databases/${DB_IDS.places}/query`, 'POST', { page_size: 100 });
+    const existingPlaces = (existingData.results || []).map(p => ({
+      id: p.id,
+      name: p.properties?.Name?.title?.[0]?.plain_text || '',
+      prefecture: p.properties?.Prefecture?.select?.name || '',
+      usedIn: p.properties?.['Used In Episodes']?.relation?.map(r=>r.id) || [],
+    }));
+
+    const system = buildDNASystem();
+    const raw = await claudeAPI([{
+      role: 'user',
+      content: `Extract ALL places mentioned in this content outline. For each place, check against the existing places database and classify as existing or new.
+
+CONTENT OUTLINE:
+${S.currentTranscriptOutline}
+
+EXISTING PLACES DATABASE (${existingPlaces.length} entries):
+${existingPlaces.map(p => `- ${p.name} (${p.prefecture}) [ID: ${p.id}]`).slice(0,50).join('\n')}
+
+For each extracted place, generate:
+- name (as it appears / romanised)
+- type: one of Food/Restaurant, Onsen, Nature/Landscape, Cultural/Historical, Roadside Station (Michi-no-eki), Accommodation, Viewpoint, Other
+- prefecture
+- country (default: Japan)
+- is_existing: true/false (match against existing DB)
+- existing_id: (if existing, the DB entry ID)
+- google_maps_url: https://www.google.com/maps/search/[name]+[prefecture]+Japan
+- broll_description: what this looks like on screen in 1-2 sentences
+- halal_estimate: Yes/No/Unknown
+- price_range: ¥/¥¥/¥¥¥/Free/Unknown
+- already_in_episode_warning: true if used in a previous episode
+
+Respond ONLY in JSON: {"places":[{...},...]}
+`
+    }], S.models.places || 'claude-sonnet-4-6', system);
+
+    let parsed;
+    try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
+    catch { throw new Error('Claude returned invalid JSON for places'); }
+
+    S.extractedPlaces = parsed.places || [];
+    S.confirmedPlaces = [];
+    renderPlacesReview();
+    document.getElementById('places-review-area').style.display = '';
+    toast(`Extracted ${S.extractedPlaces.length} places`, 'success');
+  } catch (err) {
+    toast(`Places extraction failed: ${err.message}`, 'error');
+    console.error(err);
+  } finally {
+    loadEl.style.display = 'none';
+  }
+}
+
+function renderPlacesReview() {
+  const listEl = document.getElementById('places-list');
+  listEl.innerHTML = S.extractedPlaces.map((p, i) => `
+    <div class="place-row ${p.is_existing ? 'existing' : 'new-place'}" id="place-${i}">
+      <div>
+        <div class="place-name">${p.name}</div>
+        <div class="place-type">${p.type} · ${p.prefecture || ''}</div>
+        ${p.is_existing ? '<span class="badge badge-green" style="font-size:10px">✓ In DB</span>' : '<span class="badge badge-blue" style="font-size:10px">🆕 New</span>'}
+        ${p.already_in_episode_warning ? '<span class="badge badge-amber" style="font-size:10px">⚠ Used before</span>' : ''}
+      </div>
+      <div style="font-size:11px;color:var(--text3)">${p.halal_estimate||''}</div>
+      <div style="font-size:12px;font-family:var(--font-mono)">${p.price_range||''}</div>
+      <div><a href="${p.google_maps_url}" target="_blank" style="font-size:11px;color:var(--blue)">Maps ↗</a></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-primary" onclick="confirmPlace(${i})">✓</button>
+        <button class="btn btn-sm btn-ghost" onclick="skipPlace(${i})">Skip</button>
+      </div>
+    </div>`).join('');
+}
+
+function confirmPlace(i) {
+  const p = S.extractedPlaces[i];
+  if (!S.confirmedPlaces.find(cp => cp.name === p.name)) {
+    S.confirmedPlaces.push(p);
+  }
+  const el = document.getElementById(`place-${i}`);
+  if (el) { el.style.opacity = '.5'; el.style.pointerEvents = 'none'; }
+  renderRouteOrder();
+  toast(`✓ ${p.name} confirmed`);
+}
+
+function skipPlace(i) {
+  const el = document.getElementById(`place-${i}`);
+  if (el) { el.style.opacity = '.3'; el.style.pointerEvents = 'none'; }
+}
+
+function renderRouteOrder() {
+  const listEl = document.getElementById('route-order-list');
+  listEl.innerHTML = S.confirmedPlaces.map((p, i) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--text3);min-width:20px">${i+1}</span>
+      <span style="flex:1;font-weight:500">${p.name}</span>
+      <span style="font-size:11px;color:var(--text3)">${p.type}</span>
+      <button class="btn btn-sm btn-ghost" onclick="movePlaceUp(${i})" ${i===0?'disabled':''}>↑</button>
+      <button class="btn btn-sm btn-ghost" onclick="movePlaceDown(${i})" ${i===S.confirmedPlaces.length-1?'disabled':''}>↓</button>
+    </div>`).join('');
+}
+
+function movePlaceUp(i) {
+  if (i===0) return;
+  [S.confirmedPlaces[i-1], S.confirmedPlaces[i]] = [S.confirmedPlaces[i], S.confirmedPlaces[i-1]];
+  renderRouteOrder();
+}
+function movePlaceDown(i) {
+  if (i===S.confirmedPlaces.length-1) return;
+  [S.confirmedPlaces[i], S.confirmedPlaces[i+1]] = [S.confirmedPlaces[i+1], S.confirmedPlaces[i]];
+  renderRouteOrder();
+}
+
+async function saveConfirmedPlaces() {
+  if (!S.confirmedPlaces.length) { toast('No confirmed places to save', 'error'); return; }
+  let saved = 0;
+  for (const p of S.confirmedPlaces.filter(p => !p.is_existing)) {
+    try {
+      await notionAPI('pages', 'POST', {
+        parent: { database_id: DB_IDS.places },
+        properties: {
+          'Name': { title: [{ text: { content: p.name } }] },
+          'Type': { select: { name: p.type || 'Other' } },
+          'Prefecture': { select: { name: p.prefecture || 'Unknown' } },
+          'Country': { select: { name: p.country || 'Japan' } },
+          'Google Maps URL': { url: p.google_maps_url || null },
+          'B-Roll Description': { rich_text: [{ text: { content: p.broll_description || '' } }] },
+          'Halal': { select: { name: p.halal_estimate || 'Unknown' } },
+          'Price Range': { select: { name: p.price_range || 'Unknown' } },
+        }
+      });
+      saved++;
+    } catch (err) { console.error('Place save error', p.name, err); }
+  }
+  toast(`Saved ${saved} new places to Notion`, 'success');
+}
+
+// ─── STAGE 4 — SCRIPT BUILDER ────────────────────────────────────────────────
+async function loadSections() {
+  const area = document.getElementById('sections-area');
+  area.innerHTML = '<div class="loading-row"><div class="spinner"></div> Loading sections…</div>';
+
+  try {
+    const data = await notionAPI(`databases/${DB_IDS.scripts}/query`, 'POST', {
+      page_size: 20,
+    });
+
+    S.sections = (data.results || []).map(p => ({
+      id: p.id,
+      title: p.properties?.Name?.title?.[0]?.plain_text || 'Section',
+      type: p.properties?.Type?.select?.name || '',
+      duration: p.properties?.['Target Duration']?.number || 2,
+      tone: p.properties?.Tone?.select?.name || '',
+      voiceConfig: p.properties?.['Voice Config']?.select?.name || 'Both alternating (default)',
+      brief: p.properties?.Brief?.rich_text?.[0]?.plain_text || '',
+      dialogue: p.properties?.['Dialogue Content']?.rich_text?.[0]?.plain_text || '',
+      version: p.properties?.['Dialogue Version']?.number || 0,
+      locked: p.properties?.Locked?.checkbox || false,
+    }));
+
+    if (S.activeEpisode) {
+      document.getElementById('script-ep-display').innerHTML =
+        `<strong>${S.activeEpisode}</strong>`;
+    }
+
+    renderSections();
+    toast(`Loaded ${S.sections.length} sections`, 'success');
+  } catch (err) {
+    area.innerHTML = `<div class="info-box error">${err.message}</div>`;
+  }
+}
+
+function renderSections() {
+  const area = document.getElementById('sections-area');
+  if (!S.sections.length) {
+    area.innerHTML = '<div class="empty-state"><div class="icon">📝</div><p>No sections yet. Add sections or apply an episode template.</p></div>';
+    return;
+  }
+  area.innerHTML = S.sections.map((sec, i) => renderSectionCard(sec, i)).join('');
+  document.getElementById('audio-sections-list').innerHTML = S.sections.map((sec, i) => `
+    <div class="audio-segment" id="audio-seg-${i}">
+      <div class="play-btn" onclick="playSegment(${i})">▶</div>
+      <div>
+        <div style="font-size:13px;font-weight:500">${sec.title}</div>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--font-mono)">${sec.voiceConfig} · ${sec.duration}min</div>
+      </div>
+      <div style="margin-left:auto">
+        ${sec.dialogue ? '<span class="badge badge-green" style="font-size:10px">Has Dialogue</span>' : '<span class="badge" style="font-size:10px">No Dialogue</span>'}
+      </div>
+    </div>`).join('');
+  document.getElementById('audio-controls').style.display = S.sections.some(s=>s.dialogue) ? '' : 'none';
+}
+
+function renderSectionCard(sec, i) {
+  const dialogue = sec.dialogue ? parseDialogue(sec.dialogue) : [];
+  return `
+    <div class="section-card" id="sec-card-${i}">
+      <div class="section-header" onclick="toggleSection(${i})">
+        <span class="section-num">${String(i+1).padStart(2,'0')}</span>
+        <span class="section-name">${sec.title}</span>
+        <span class="badge" style="font-size:10px">${sec.type}</span>
+        <span style="font-size:11px;color:var(--text3);font-family:var(--font-mono)">${sec.duration}min</span>
+        ${sec.locked ? '<span class="badge badge-green" style="font-size:10px">🔒 Locked</span>' : ''}
+        <span style="color:var(--text3);font-size:12px">▾</span>
+      </div>
+      <div class="section-body" id="sec-body-${i}" style="display:none">
+        <div class="grid-2" style="margin-bottom:14px">
+          <div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Voice Config</div>
+            <div style="font-size:12px">${sec.voiceConfig}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Tone</div>
+            <div style="font-size:12px">${sec.tone}</div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Brief</label>
+          <textarea id="sec-brief-${i}" rows="2" style="font-size:12px">${sec.brief}</textarea>
+        </div>
+        <div class="btn-row" style="margin-bottom:16px">
+          <button class="btn btn-primary btn-sm" onclick="generateDialogue(${i})" ${sec.locked?'disabled':''}>Generate Dialogue →</button>
+          <button class="btn btn-sm" onclick="lockSection(${i})" ${sec.locked?'disabled':''}>🔒 Lock</button>
+          ${sec.version ? `<span style="font-size:11px;color:var(--text3);font-family:var(--font-mono)">v${sec.version}</span>` : ''}
+          <div id="sec-loading-${i}" style="display:none" class="loading-row"><div class="spinner"></div> Generating…</div>
+        </div>
+        <div id="sec-dialogue-${i}">
+          ${dialogue.length ? dialogue.map(line => `
+            <div class="dialogue-line">
+              <span class="speaker ${line.speaker.toLowerCase()}">${line.speaker}</span>
+              <span>${line.text}</span>
+            </div>`).join('') : `<div style="color:var(--text3);font-size:13px">No dialogue yet.</div>`}
+        </div>
+      </div>
+    </div>`;
+}
+
+function toggleSection(i) {
+  const body = document.getElementById(`sec-body-${i}`);
+  body.style.display = body.style.display === 'none' ? '' : 'none';
+}
+
+function parseDialogue(raw) {
+  const lines = raw.split('\n').filter(Boolean);
+  return lines.map(line => {
+    const match = line.match(/^\*?\*?(KAI|MIA):?\*?\*?\s*(.+)/i);
+    if (match) return { speaker: match[1].toUpperCase(), text: match[2].trim() };
+    return { speaker: 'KAI', text: line };
+  });
+}
+
+async function generateDialogue(i) {
+  const sec = S.sections[i];
+  const briefEl = document.getElementById(`sec-brief-${i}`);
+  const brief = briefEl?.value || sec.brief;
+  const loadEl = document.getElementById(`sec-loading-${i}`);
+  loadEl.style.display = 'flex';
+
+  const system = buildDNASystem();
+  const routeCtx = S.confirmedPlaces.length
+    ? `\nEpisode route (in order): ${S.confirmedPlaces.map(p=>p.name).join(' → ')}`
+    : '';
+  const placesCtx = S.confirmedPlaces.find(p=>sec.title.toLowerCase().includes(p.name.toLowerCase()))
+    ? `\nThis section focuses on: ${S.confirmedPlaces.find(p=>sec.title.toLowerCase().includes(p.name.toLowerCase()))?.broll_description || ''}`
+    : '';
+
+  try {
+    const prompt = `Write a podcast-style dialogue script for the Nomad Dimension YouTube channel.
+
+SECTION: "${sec.title}"
+TYPE: ${sec.type}
+TARGET DURATION: ${sec.duration} minutes (~${Math.round(sec.duration * 130)} words)
+TONE: ${sec.tone}
+VOICE CONFIG: ${sec.voiceConfig}${routeCtx}${placesCtx}
+
+BRIEF (what to cover): ${brief}
+
+Rules:
+- Format every line as: KAI: [dialogue] or MIA: [dialogue]
+- Never break this format — no stage directions, no asterisks
+- Kai is calm, philosophical, observational (Voice: en-US-Neural2-D)
+- Mia is energetic, funny, opinionated (Voice: en-US-Neural2-F)
+- ${sec.voiceConfig.includes('Kai leads') ? 'Kai speaks first' : sec.voiceConfig.includes('Mia leads') ? 'Mia speaks first' : 'Alternate naturally'}
+- No "welcome to the channel", no generic travel clichés
+- Start in the middle of an observation or moment
+- Include specific cultural details, food prices/descriptions where relevant
+- Around ${Math.round(sec.duration * 130)} total words
+
+Write the dialogue only. No preamble.`;
+
+    const result = await claudeAPI(
+      [{ role: 'user', content: prompt }],
+      S.models.dialogue || 'claude-sonnet-4-6',
+      system
+    );
+
+    // Save to Notion
+    await notionAPI(`pages/${sec.id}`, 'PATCH', {
+      properties: {
+        'Dialogue Content': { rich_text: [{ text: { content: result.substring(0, 2000) } }] },
+        'Dialogue Version': { number: (sec.version || 0) + 1 },
+      }
+    });
+
+    S.sections[i].dialogue = result;
+    S.sections[i].version = (sec.version || 0) + 1;
+    S.sections[i].brief = brief;
+
+    // Re-render dialogue area
+    const dialogueArea = document.getElementById(`sec-dialogue-${i}`);
+    const parsed = parseDialogue(result);
+    dialogueArea.innerHTML = parsed.map(line => `
+      <div class="dialogue-line">
+        <span class="speaker ${line.speaker.toLowerCase()}">${line.speaker}</span>
+        <span>${line.text}</span>
+      </div>`).join('');
+
+    toast(`Dialogue generated for "${sec.title}"`, 'success');
+  } catch (err) {
+    toast(`Dialogue generation failed: ${err.message}`, 'error');
+  } finally {
+    loadEl.style.display = 'none';
+  }
+}
+
+async function lockSection(i) {
+  S.sections[i].locked = true;
+  try {
+    await notionAPI(`pages/${S.sections[i].id}`, 'PATCH', {
+      properties: { 'Locked': { checkbox: true } }
+    });
+  } catch {}
+  renderSections();
+  toast(`Section "${S.sections[i].title}" locked`, 'success');
+}
+
+function openAddSectionModal() {
+  // Populate dropdowns from lookup tables
+  document.getElementById('sec-type').innerHTML = S.lookups.sections.map(s=>`<option>${s}</option>`).join('') || '<option>Intro</option>';
+  document.getElementById('sec-tone').innerHTML = S.lookups.tones.map(t=>`<option>${t}</option>`).join('');
+  document.getElementById('sec-voice').innerHTML = S.lookups.voices.map(v=>`<option>${v}</option>`).join('');
+  openModal('modal-add-section');
+}
+
+async function saveSection() {
+  const title  = document.getElementById('sec-title').value.trim();
+  const type   = document.getElementById('sec-type').value;
+  const dur    = parseFloat(document.getElementById('sec-duration').value) || 2;
+  const tone   = document.getElementById('sec-tone').value;
+  const voice  = document.getElementById('sec-voice').value;
+  const brief  = document.getElementById('sec-brief').value.trim();
+  if (!title) { toast('Section title required', 'error'); return; }
+
+  try {
+    const res = await notionAPI('pages', 'POST', {
+      parent: { database_id: DB_IDS.scripts },
+      properties: {
+        'Name': { title: [{ text: { content: title } }] },
+        'Type': { select: { name: type } },
+        'Target Duration': { number: dur },
+        'Tone': { select: { name: tone } },
+        'Voice Config': { select: { name: voice } },
+        'Brief': { rich_text: [{ text: { content: brief } }] },
+        'Dialogue Version': { number: 0 },
+        'Locked': { checkbox: false },
+      }
+    });
+    S.sections.push({ id: res.id, title, type, duration: dur, tone, voiceConfig: voice, brief, dialogue: '', version: 0, locked: false });
+    renderSections();
+    closeModal('modal-add-section');
+    toast(`Section "${title}" added`, 'success');
+  } catch (err) {
+    toast(`Failed: ${err.message}`, 'error');
+  }
+}
+
+async function applyTemplate(t) {
+  const templates = {
+    A: [
+      { title: 'Intro', type: 'Intro', duration: 1.5, tone: 'Storytelling & immersive', voiceConfig: 'Both alternating (default)' },
+      { title: 'Stop 1 — Food', type: 'Food Stop', duration: 2, tone: 'Humorous & playful', voiceConfig: 'Mia leads, Kai responds' },
+      { title: 'Stop 2 — Place', type: 'Place / Attraction', duration: 2.5, tone: 'Educational with light banter', voiceConfig: 'Kai leads, Mia responds' },
+      { title: 'Cultural Note', type: 'Cultural Note', duration: 1.5, tone: 'Reflective & philosophical', voiceConfig: 'Both alternating (default)' },
+      { title: 'Outro', type: 'Outro', duration: 1.5, tone: 'Conversational & warm', voiceConfig: 'Both alternating (default)' },
+    ],
+    B: [
+      { title: 'Intro', type: 'Intro', duration: 2, tone: 'Storytelling & immersive', voiceConfig: 'Both alternating (default)' },
+      { title: 'History & Context', type: 'Cultural Note', duration: 3, tone: 'Educational with light banter', voiceConfig: 'Kai leads, Mia responds' },
+      { title: 'Food & People', type: 'Food Stop', duration: 3, tone: 'Humorous & playful', voiceConfig: 'Mia leads, Kai responds' },
+      { title: 'Outro & Reflection', type: 'Outro', duration: 2, tone: 'Reflective & philosophical', voiceConfig: 'Both alternating (default)' },
+    ],
+  };
+  const secs = templates[t];
+  if (!secs) return;
+  for (const sec of secs) {
+    try {
+      const res = await notionAPI('pages', 'POST', {
+        parent: { database_id: DB_IDS.scripts },
+        properties: {
+          'Name': { title: [{ text: { content: sec.title } }] },
+          'Type': { select: { name: sec.type } },
+          'Target Duration': { number: sec.duration },
+          'Tone': { select: { name: sec.tone } },
+          'Voice Config': { select: { name: sec.voiceConfig } },
+          'Dialogue Version': { number: 0 },
+          'Locked': { checkbox: false },
+        }
+      });
+      S.sections.push({ id: res.id, ...sec, brief: '', dialogue: '', version: 0, locked: false });
+    } catch (err) { console.error(err); }
+  }
+  renderSections();
+  toast(`Template ${t} applied (${secs.length} sections)`, 'success');
+}
+
+// ─── STAGE 5 — AUDIO TTS ──────────────────────────────────────────────────────
+const audioCache = {};
+
+async function renderAllAudio() {
+  if (!S.keys.tts) { toast('TTS API key not loaded', 'error'); return; }
+  const secsWithDialogue = S.sections.filter(s => s.dialogue);
+  if (!secsWithDialogue.length) { toast('No sections with dialogue to render', 'error'); return; }
+  toast(`Rendering ${secsWithDialogue.length} sections…`);
+
+  for (let i = 0; i < S.sections.length; i++) {
+    const sec = S.sections[i];
+    if (!sec.dialogue) continue;
+    const lines = parseDialogue(sec.dialogue);
+    const segEl = document.getElementById(`audio-seg-${i}`);
+    if (segEl) segEl.classList.add('playing');
+
+    for (let j = 0; j < lines.length; j++) {
+      const line = lines[j];
+      const isKai = line.speaker === 'KAI';
+      const voice  = isKai ? document.getElementById('kai-voice').value : document.getElementById('mia-voice').value;
+      const speed  = isKai ? parseFloat(document.getElementById('kai-speed').value) : parseFloat(document.getElementById('mia-speed').value);
+      const cacheKey = `${i}-${j}-${voice}-${speed}`;
+      if (audioCache[cacheKey]) continue;
+      try {
+        const b64 = await ttsAPI(line.text, voice, speed);
+        audioCache[cacheKey] = b64;
+      } catch (err) { console.error('TTS error', err); }
+    }
+    if (segEl) segEl.classList.remove('playing');
+  }
+  toast('Audio rendering complete', 'success');
+}
+
+function playSegment(i) {
+  const sec = S.sections[i];
+  if (!sec?.dialogue) { toast('Generate dialogue for this section first', ''); return; }
+  toast('Audio playback requires rendering first — click "Render All Sections"');
+}
+
+function playFullEpisode() {
+  toast('Full episode playback — render audio first');
+}
+
+function exportAudio() {
+  const keys = Object.keys(audioCache);
+  if (!keys.length) { toast('Render audio first', 'error'); return; }
+  // Create download links for each rendered segment
+  let html = '<h3 style="margin-bottom:12px">Download Audio Segments</h3>';
+  keys.forEach(k => {
+    const b64 = audioCache[k];
+    const a = document.createElement('a');
+    a.href = `data:audio/mp3;base64,${b64}`;
+    a.download = `nomad-${k}.mp3`;
+    a.click();
+  });
+  toast(`Downloading ${keys.length} audio files`, 'success');
+}
+
+// ─── STAGE 6 — HANDOFF ────────────────────────────────────────────────────────
+async function generateHandoff() {
+  const loadEl = document.getElementById('handoff-loading');
+  loadEl.style.display = 'flex';
+
+  const system = buildDNASystem();
+  const placesCtx = S.confirmedPlaces.map((p,i) =>
+    `${i+1}. ${p.name} (${p.type}, ${p.prefecture}) — ${p.broll_description || 'No B-roll desc'} | Maps: ${p.google_maps_url || '—'}`
+  ).join('\n');
+  const sectionsCtx = S.sections.map((s,i) =>
+    `Section ${i+1}: "${s.title}" (${s.type}, ${s.duration}min, ${s.voiceConfig})\n${s.dialogue ? s.dialogue.substring(0,400)+'...' : 'No dialogue yet'}`
+  ).join('\n\n');
+
+  try {
+    const raw = await claudeAPI([{
+      role: 'user',
+      content: `Generate a complete production handoff document for the Nomad Dimension episode: "${S.activeEpisode || 'Untitled Episode'}"
+
+CONFIRMED PLACES (route order):
+${placesCtx || 'No places confirmed yet'}
+
+SECTIONS:
+${sectionsCtx || 'No sections yet'}
+
+Generate the following sections in this exact JSON structure:
+{
+  "overview": "Episode title, series, concept summary, and hook in 2 short paragraphs",
+  "places": "Formatted place list with route order, Google Maps links, and B-roll descriptions",
+  "sections": "Section breakdown with estimated timestamps (start from 00:00) for each section and key dialogue moments",
+  "canva": "Canva slides brief — what each slide should show, travel path order, visual mood per section",
+  "thumbnail": "Thumbnail brief — key visual moment, mood/colour direction, which source video frame to use, composition suggestion",
+  "capcut": "CapCut edit guide — audio file order, suggested B-roll timestamps, section transitions",
+  "youtube_title_1": "Title option 1 (under 70 chars)",
+  "youtube_title_2": "Title option 2 (under 70 chars)",
+  "youtube_description": "Full YouTube description with chapters",
+  "youtube_tags": ["tag1","tag2",...]
+}
+
+Respond ONLY in valid JSON.`
+    }], S.models.thumbnail || 'claude-haiku-4-5-20251001', system);
+
+    let parsed;
+    try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
+    catch { throw new Error('Invalid JSON from Claude'); }
+
+    S.handoffDoc = parsed;
+    renderHandoffDoc(parsed);
+    document.getElementById('handoff-doc').style.display = '';
+    toast('Handoff document generated', 'success');
+  } catch (err) {
+    toast(`Handoff generation failed: ${err.message}`, 'error');
+    console.error(err);
+  } finally {
+    loadEl.style.display = 'none';
+  }
+}
+
+function renderHandoffDoc(doc) {
+  document.getElementById('handoff-overview').innerHTML = `<div class="code-block" style="white-space:pre-wrap">${doc.overview||''}</div>`;
+  document.getElementById('handoff-places').innerHTML   = `<div class="code-block" style="white-space:pre-wrap">${doc.places||''}</div>`;
+  document.getElementById('handoff-sections').innerHTML = `<div class="code-block" style="white-space:pre-wrap">${doc.sections||''}</div>`;
+  document.getElementById('handoff-canva').textContent  = doc.canva || '';
+  document.getElementById('handoff-thumb').textContent  = doc.thumbnail || '';
+  document.getElementById('handoff-capcut').textContent = doc.capcut || '';
+  document.getElementById('handoff-yt').innerHTML = `
+    <div class="field"><label>Title Option 1</label>
+      <input type="text" value="${doc.youtube_title_1||''}" readonly></div>
+    <div class="field"><label>Title Option 2</label>
+      <input type="text" value="${doc.youtube_title_2||''}" readonly></div>
+    <div class="field"><label>Description</label>
+      <textarea rows="8" readonly style="font-size:12px">${doc.youtube_description||''}</textarea></div>
+    <div class="field"><label>Tags</label>
+      <input type="text" value="${(doc.youtube_tags||[]).join(', ')}" readonly></div>`;
+}
+
+async function saveHandoffToNotion() {
+  if (!S.handoffDoc || !S.activeEpisode) { toast('No handoff doc or active episode', 'error'); return; }
+  const content = JSON.stringify(S.handoffDoc, null, 2).substring(0, 2000);
+  try {
+    // Save as a child page of the active episode
+    // First find episode page ID
+    const epsData = await notionAPI(`databases/${DB_IDS.episodes}/query`, 'POST', {
+      filter: { property: 'Name', title: { equals: S.activeEpisode } }
+    });
+    const epPage = epsData.results?.[0];
+    if (!epPage) { toast('Episode page not found in Notion', 'error'); return; }
+
+    await notionAPI('pages', 'POST', {
+      parent: { page_id: epPage.id },
+      properties: {
+        'title': { title: [{ text: { content: `Handoff Doc — ${S.activeEpisode}` } }] }
+      }
+    });
+
+    // Update episode status
+    await notionAPI(`pages/${epPage.id}`, 'PATCH', {
+      properties: { 'Status': { select: { name: '🖼️ Thumbnail' } } }
+    });
+
+    document.getElementById('handoff-saved-notice').style.display = '';
+    document.getElementById('handoff-saved-notice').textContent = `✓ Handoff saved to Notion. Episode status → 🖼️ Thumbnail`;
+    toast('Handoff saved to Notion', 'success');
+  } catch (err) {
+    toast(`Save failed: ${err.message}`, 'error');
+  }
+}
+
+function regenerateHandoff() {
+  document.getElementById('handoff-doc').style.display = 'none';
+  generateHandoff();
+}
+
+// ─── CHANNEL DNA SYSTEM PROMPT ────────────────────────────────────────────────
+function buildDNASystem() {
+  const d = S.dna;
+  return `You are an expert content creator for ${d.name || 'Nomad Dimension'} — a YouTube channel about Japan travel.
+Tagline: ${d.tagline || 'Odyssey of Discovery'}
+Target Audience: ${d.audience || 'English-speaking Western travellers curious about real, unhurried Japan'}
+Tone: ${d.tone || 'Warm, curious, culturally respectful, occasionally humorous — never touristy or superficial'}
+Host Ratio: ${d.ratio || 'Kai 55% / Mia 45%'}
+Intro Style: ${d.intro || 'Start in the middle of action — never Hi welcome to our channel'}
+Always Include: ${d.include || 'Local cultural context, food details with prices and practical info'}
+Always Avoid: ${d.avoid || 'Clichés, generic tourism language, over-simplification of culture'}
+Sign-off: ${d.signoff || ''}
+
+Hosts:
+- KAI: The curious wanderer. Calm, observational, philosophical. Finds meaning in small details. Asks thoughtful questions. Goes deep on cultural context.
+- MIA: The energetic storyteller. Warm, funny, opinionated. Loves food, people, surprising facts. Challenges Kai's overthinking with wit.
+
+Content Pillars: Off-beaten-path places · Michi-no-eki (Japan's 1,200+ roadside rest stations) · Slow travel`;
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+function init() {
+  renderChannelChips();
+  // Check for saved token in sessionStorage (only per-session, not persisted)
+  const savedToken = sessionStorage.getItem('nd_notion_token');
+  if (savedToken) {
+    document.getElementById('notion-token').value = savedToken;
+    S.notionToken = savedToken;
+    connectNotion();
+  }
+  showStage(0);
+}
+
+// Save token to session on input
+document.getElementById('notion-token').addEventListener('input', function() {
+  sessionStorage.setItem('nd_notion_token', this.value.trim());
+});
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+  });
+});
+
+init();
+</script>
+</body>
+</html>
