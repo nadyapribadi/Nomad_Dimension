@@ -2078,7 +2078,10 @@ Respond in JSON: {"angle":"...","content_type":"...","region":"...","country":".
       );
 
       let parsed = {};
-      try { parsed = JSON.parse(raw.replace(/```json|```/g, '').trim()); } catch {}
+try {
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+} catch {}
       v.angle = parsed.angle || '';
       v.contentType = [parsed.content_type || ''];
       v.region = parsed.region || '';
