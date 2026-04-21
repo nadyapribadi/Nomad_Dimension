@@ -2114,15 +2114,14 @@ async function pushToNotion() {
   for (const v of S._reviewVideos) {
     try {
       await notionAPI(`pages`, 'POST', {
-        parent: { database_id: DB_IDS.sourceVideos },
-        properties: {
-          'Name': { title: [{ text: { content: v.title } }] },
-          'YouTube URL': { url: v.url },
-          'Channel': { rich_text: [{ text: { content: v.channelName } }] },
-          'Content Angle': { rich_text: [{ text: { content: v.angle } }] },
-          'Country': { select: { name: v.country || 'Japan' } },
-          'Views': { number: parseInt(v.views.replace(/,/g,'')) || 0 },
-          'B-Roll Status': { select: { name: 'Not Started' } },
+  parent: { database_id: DB_IDS.sourceVideos },
+  properties: {
+    'Video Title': { title: [{ text: { content: v.title } }] },
+    'userDefined:YouTube URL': { url: v.url },
+    'Source Channel': { rich_text: [{ text: { content: v.channelName } }] },
+    'Content Angle': { rich_text: [{ text: { content: v.angle } }] },
+    'Country': { select: { name: v.country || 'Japan' } },
+    'B-Roll Status': { select: { name: 'Available' } },
         },
       });
       pushed++;
@@ -2145,17 +2144,17 @@ async function loadSourceQueue() {
 
   try {
     const data = await notionAPI(`databases/${DB_IDS.sourceVideos}/query`, 'POST', {
-      filter: { property: 'B-Roll Status', select: { equals: 'Not Started' } },
+      filter: { property: 'B-Roll Status', select: { equals: 'Available' } },
       page_size: 50,
     });
 
     S.epQueue = (data.results || []).map(p => ({
-      id: p.id,
-      title: p.properties?.Name?.title?.[0]?.plain_text || 'Untitled',
-      channel: p.properties?.Channel?.rich_text?.[0]?.plain_text || '',
-      angle: p.properties?.['Content Angle']?.rich_text?.[0]?.plain_text || '',
-      country: p.properties?.Country?.select?.name || '',
-      url: p.properties?.['YouTube URL']?.url || '',
+  id: p.id,
+  title: p.properties?.['Video Title']?.title?.[0]?.plain_text || 'Untitled',
+  channel: p.properties?.['Source Channel']?.rich_text?.[0]?.plain_text || '',
+  angle: p.properties?.['Content Angle']?.rich_text?.[0]?.plain_text || '',
+  country: p.properties?.Country?.select?.name || '',
+  url: p.properties?.['userDefined:YouTube URL']?.url || '',
     }));
 
     if (!S.epQueue.length) {
@@ -2328,14 +2327,14 @@ async function createEpisode() {
 
   try {
     const props = {
-      'Name': { title: [{ text: { content: epName } }] },
-      'Series': { select: { name: series } },
-      'Status': { select: { name: '🔍 Research' } },
-      'Country': { select: { name: country } },
-      'Episode Concept': { rich_text: [{ text: { content: concept } }] },
-    };
-    if (hook) props['Hook'] = { rich_text: [{ text: { content: hook } }] };
-    if (date) props['Target Publish Date'] = { date: { start: date } };
+  'Episode Title': { title: [{ text: { content: epName } }] },
+  'Series': { select: { name: series } },
+  'Status': { select: { name: '🔍 Research' } },
+  'Country': { select: { name: country } },
+  'Episode Concept': { rich_text: [{ text: { content: concept } }] },
+};
+if (hook) props['Hook / Angle'] = { rich_text: [{ text: { content: hook } }] };
+if (date) props['Target Publish Date'] = { date: { start: date } };
 
     const res = await notionAPI('pages', 'POST', {
       parent: { database_id: DB_IDS.episodes },
@@ -2354,7 +2353,7 @@ async function createEpisode() {
       const v = S.epQueue[i];
       try {
         await notionAPI(`pages/${v.id}`, 'PATCH', {
-          properties: { 'B-Roll Status': { select: { name: 'Promoted' } } }
+          properties: { 'B-Roll Status': { select: { name: 'Partially Used' } } }
         });
       } catch {}
     }
@@ -2459,7 +2458,7 @@ async function loadTranscriptVideos() {
   sel.innerHTML = '<option value="">Loading…</option>';
   try {
     const data = await notionAPI(`databases/${DB_IDS.sourceVideos}/query`, 'POST', {
-      filter: { property: 'B-Roll Status', select: { equals: 'Promoted' } },
+      filter: { property: 'B-Roll Status', select: { equals: 'Partially Used' } },
       page_size: 50,
     });
     const vids = (data.results || []);
@@ -2911,15 +2910,12 @@ async function saveSection() {
   try {
     const res = await notionAPI('pages', 'POST', {
       parent: { database_id: DB_IDS.scripts },
-      properties: {
-        'Name': { title: [{ text: { content: title } }] },
-        'Type': { select: { name: type } },
-        'Target Duration': { number: dur },
-        'Tone': { select: { name: tone } },
-        'Voice Config': { select: { name: voice } },
-        'Brief': { rich_text: [{ text: { content: brief } }] },
-        'Dialogue Version': { number: 0 },
-        'Locked': { checkbox: false },
+  properties: {
+    'Section Title': { title: [{ text: { content: title } }] },
+    'Section Type': { select: { name: type } },
+    'Estimated Duration': { rich_text: [{ text: { content: String(dur) } }] },
+    'Section Brief': { rich_text: [{ text: { content: brief } }] },
+    'Dialogue Version': { number: 0 },
       }
     });
     S.sections.push({ id: res.id, title, type, duration: dur, tone, voiceConfig: voice, brief, dialogue: '', version: 0, locked: false });
@@ -2954,13 +2950,11 @@ async function applyTemplate(t) {
       const res = await notionAPI('pages', 'POST', {
         parent: { database_id: DB_IDS.scripts },
         properties: {
-          'Name': { title: [{ text: { content: sec.title } }] },
-          'Type': { select: { name: sec.type } },
-          'Target Duration': { number: sec.duration },
-          'Tone': { select: { name: sec.tone } },
-          'Voice Config': { select: { name: sec.voiceConfig } },
-          'Dialogue Version': { number: 0 },
-          'Locked': { checkbox: false },
+  'Section Title': { title: [{ text: { content: sec.title } }] },
+  'Section Type': { select: { name: sec.type } },
+  'Estimated Duration': { rich_text: [{ text: { content: String(sec.duration) } }] },
+  'Section Brief': { rich_text: [{ text: { content: '' } }] },
+  'Dialogue Version': { number: 0 },
         }
       });
       S.sections.push({ id: res.id, ...sec, brief: '', dialogue: '', version: 0, locked: false });
