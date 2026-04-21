@@ -1527,7 +1527,16 @@ function parseSettingsPage(pageData) {
 // Recursively get all blocks from a page
 async function getPageBlocks(pageId) {
   const data = await notionAPI(`blocks/${pageId}/children?page_size=100`);
-  return data.results || [];
+  const blocks = data.results || [];
+  const expanded = [];
+  for (const block of blocks) {
+    expanded.push(block);
+    if (block.type === 'table') {
+      const tableData = await notionAPI(`blocks/${block.id}/children?page_size=100`);
+      expanded.push(...(tableData.results || []));
+    }
+  }
+  return expanded;
 }
 
 // ─── STAGE NAVIGATION ───────────────────────────────────────────────────────
@@ -1652,17 +1661,17 @@ function parseAndApplySettings(blocks) {
     // paragraph blocks for DNA
     if (block.type === 'paragraph') {
       const txt = block.paragraph?.rich_text?.map(r => r.plain_text).join('') || '';
-      if (txt.startsWith('**Channel Name:**')) S.dna.name = txt.split(':**')[1]?.trim() || '';
-      if (txt.startsWith('**Tagline:**')) S.dna.tagline = txt.split(':**')[1]?.trim() || '';
-      if (txt.startsWith('**Target Audience:**')) S.dna.audience = txt.split(':**')[1]?.trim() || '';
-      if (txt.startsWith('**Tone:**')) S.dna.tone = txt.split(':**')[1]?.trim() || '';
-      if (txt.startsWith('**Host Ratio:**')) S.dna.ratio = txt.split(':**')[1]?.trim() || '';
-      if (txt.startsWith('**Intro Style:**')) S.dna.intro = txt.split(':**')[1]?.trim() || '';
-      if (txt.startsWith('**Always Include:**')) S.dna.include = txt.split(':**')[1]?.trim() || '';
-      if (txt.startsWith('**Always Avoid:**')) S.dna.avoid = txt.split(':**')[1]?.trim() || '';
-      if (txt.startsWith('**Recurring Sign-off:**')) S.dna.signoff = txt.split(':**')[1]?.trim() || '';
-      // App State
-      if (txt.startsWith('**Active Episode:**')) S.activeEpisode = txt.split(':**')[1]?.trim() || '';
+if (txt.startsWith('Channel Name:')) S.dna.name = txt.split('Channel Name:')[1]?.trim() || '';
+if (txt.startsWith('Tagline:')) S.dna.tagline = txt.split('Tagline:')[1]?.trim() || '';
+if (txt.startsWith('Target Audience:')) S.dna.audience = txt.split('Target Audience:')[1]?.trim() || '';
+if (txt.startsWith('Tone:')) S.dna.tone = txt.split('Tone:')[1]?.trim() || '';
+if (txt.startsWith('Host Ratio:')) S.dna.ratio = txt.split('Host Ratio:')[1]?.trim() || '';
+if (txt.startsWith('Intro Style:')) S.dna.intro = txt.split('Intro Style:')[1]?.trim() || '';
+if (txt.startsWith('Always Include:')) S.dna.include = txt.split('Always Include:')[1]?.trim() || '';
+if (txt.startsWith('Always Avoid:')) S.dna.avoid = txt.split('Always Avoid:')[1]?.trim() || '';
+if (txt.startsWith('Recurring Sign-off:')) S.dna.signoff = txt.split('Recurring Sign-off:')[1]?.trim() || '';
+// App State
+if (txt.startsWith('Active Episode:')) S.activeEpisode = txt.split('Active Episode:')[1]?.trim() || '';
     }
     // Lookup tables — bulleted lists
     if (block.type === 'bulleted_list_item') {
