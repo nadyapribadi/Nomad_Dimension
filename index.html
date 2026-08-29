@@ -1206,6 +1206,18 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
   <div id="sections-area"></div>
 
+  <!-- SCRIPT CHECK -->
+  <div class="card">
+    <div class="card-title"><span class="icon">🧪</span> Script Check</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px">
+      Deterministic QA over all loaded sections — missing dialogue, word count vs target,
+      Kai/Mia ratio, clichés, repeated phrasing, and places reused from a past episode.
+      No AI call, no cost. Advisory only.
+    </div>
+    <button class="btn btn-sm btn-primary" onclick="runScriptCheck()">Run Script Check</button>
+    <div id="script-check-results"></div>
+  </div>
+
   <!-- EPISODE TEMPLATES -->
   <div class="card">
     <div class="card-title"><span class="icon">📐</span> Episode Templates</div>
@@ -2818,6 +2830,104 @@ function parseDialogue(raw) {
     if (match) return { speaker: match[1].toUpperCase(), text: match[2].trim() };
     return { speaker: 'KAI', text: line };
   });
+}
+
+// ─── SCRIPT CHECK (deterministic QA — no API call) ──────────────────────────
+function runScriptCheck() {
+  const out = document.getElementById('script-check-results');
+  if (!S.sections.length) {
+    out.innerHTML = '<div class="info-box" style="margin-top:10px">Load sections first (↻ Load Sections from Notion).</div>';
+    return;
+  }
+
+  const withDialogue = S.sections.filter(s => s.dialogue && s.dialogue.trim());
+  const wordCount = t => (t.match(/[A-Za-z0-9'’\-]+/g) || []).length;
+  const findings = [];
+
+  // 1 — Missing dialogue
+  const missing = S.sections.filter(s => !s.dialogue || !s.dialogue.trim());
+  findings.push(missing.length
+    ? { warn: true, label: 'Sections without dialogue', detail: missing.map(s => s.title).join(', ') }
+    : { warn: false, label: 'All sections have dialogue' });
+
+  // 2 — Word count vs target (~130 words per target minute)
+  const wc = [];
+  withDialogue.forEach(s => {
+    const target = Math.round((s.duration || 2) * 130);
+    const actual = parseDialogue(s.dialogue).reduce((n, l) => n + wordCount(l.text), 0);
+    const pct = target ? actual / target : 1;
+    if (pct < 0.7 || pct > 1.3) wc.push(`${s.title}: ${actual} vs ~${target} words (${Math.round(pct * 100)}%)`);
+  });
+  findings.push(wc.length
+    ? { warn: true, label: 'Word count >30% off target', detail: wc.join(' · ') }
+    : { warn: false, label: 'Word counts within 30% of target' });
+
+  // 3 — Kai / Mia line ratio
+  let kai = 0, mia = 0;
+  withDialogue.forEach(s => parseDialogue(s.dialogue).forEach(l => {
+    if (l.speaker === 'KAI') kai++; else if (l.speaker === 'MIA') mia++;
+  }));
+  const total = kai + mia;
+  if (total) {
+    const targetKai = parseInt((S.dna.ratio || 'Kai 55%').match(/(\d+)/)?.[1] || '55', 10);
+    const kaiPct = Math.round((kai / total) * 100);
+    findings.push(Math.abs(kaiPct - targetKai) > 15
+      ? { warn: true, label: 'Host ratio off target', detail: `Kai ${kaiPct}% / Mia ${100 - kaiPct}% — target Kai ${targetKai}%` }
+      : { warn: false, label: `Host ratio OK — Kai ${kaiPct}% / Mia ${100 - kaiPct}%` });
+  }
+
+  // 4 — Cliché / avoided-phrase scan (heuristic list + quoted phrases from Channel DNA "Always Avoid")
+  const banned = ['welcome to', 'in this video', 'without further ado', 'hidden gem', 'bucket list',
+    'nestled', 'a feast for the senses', 'stepping back in time', 'picture this', 'little did',
+    'needless to say', 'at the end of the day', 'like something out of'];
+  ((S.dna.avoid || '').match(/"([^"]+)"/g) || []).forEach(q => banned.push(q.replace(/"/g, '').toLowerCase()));
+  const hits = [];
+  withDialogue.forEach(s => {
+    const lc = s.dialogue.toLowerCase();
+    banned.forEach(b => { if (lc.includes(b)) hits.push(`${s.title}: “${b}”`); });
+  });
+  findings.push(hits.length
+    ? { warn: true, label: 'Clichés / avoided phrases found', detail: hits.join(' · ') }
+    : { warn: false, label: 'No flagged clichés (heuristic list)' });
+
+  // 5 — Repeated phrasing across sections (shared 8-word runs)
+  const shingles = new Map();
+  withDialogue.forEach(s => {
+    const words = s.dialogue.toLowerCase().match(/[a-z0-9']+/g) || [];
+    const seen = new Set();
+    for (let i = 0; i + 8 <= words.length; i++) {
+      const sh = words.slice(i, i + 8).join(' ');
+      if (seen.has(sh)) continue;
+      seen.add(sh);
+      if (!shingles.has(sh)) shingles.set(sh, new Set());
+      shingles.get(sh).add(s.title);
+    }
+  });
+  const repeats = [...shingles.entries()].filter(([, secs]) => secs.size > 1).slice(0, 5)
+    .map(([sh, secs]) => `“${sh}…” in ${[...secs].join(' & ')}`);
+  findings.push(repeats.length
+    ? { warn: true, label: 'Repeated phrasing across sections', detail: repeats.join(' · ') }
+    : { warn: false, label: 'No repeated 8-word runs across sections' });
+
+  // 6 — Confirmed places used in a previous episode
+  const reused = (S.confirmedPlaces || []).filter(p => p.already_in_episode_warning).map(p => p.name);
+  findings.push(reused.length
+    ? { warn: true, label: 'Confirmed places reused from a past episode', detail: reused.join(', ') }
+    : { warn: false, label: 'No confirmed places flagged as reused' });
+
+  const warns = findings.filter(f => f.warn).length;
+  out.innerHTML = `
+    <div style="margin:12px 0 8px;font-size:13px;color:var(--text2)">
+      ${warns ? `⚠️ ${warns} of ${findings.length} checks need a look` : `✅ All ${findings.length} checks passed`}
+    </div>
+    ${findings.map(f => `
+      <div style="display:flex;gap:10px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
+        <span>${f.warn ? '⚠️' : '✅'}</span>
+        <div>
+          <div style="font-size:13px;font-weight:500">${f.label}</div>
+          ${f.detail ? `<div style="font-size:12px;color:var(--text3);margin-top:2px">${f.detail}</div>` : ''}
+        </div>
+      </div>`).join('')}`;
 }
 
 async function generateDialogue(i) {
