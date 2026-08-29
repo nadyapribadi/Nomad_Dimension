@@ -1,6 +1,7 @@
 // netlify/functions/anthropic-proxy.js
 // Proxies Anthropic API /v1/messages requests.
-// Browser sends: { model, max_tokens, system, messages, apiKey }
+// Key resolution: process.env.ANTHROPIC_API_KEY, else payload.apiKey (legacy).
+// Browser sends: { model, max_tokens, system, messages, apiKey? }
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
@@ -18,7 +19,8 @@ exports.handler = async (event) => {
   }
 
   const { model, max_tokens = 1000, system, messages, apiKey } = payload;
-  if (!messages || !apiKey) return respond(400, { error: 'Missing messages or apiKey' });
+  const key = process.env.ANTHROPIC_API_KEY || apiKey;
+  if (!messages || !key) return respond(400, { error: 'Missing messages or API key' });
 
   const reqBody = { model: model || 'claude-haiku-4-5-20251001', max_tokens, messages };
   if (system) reqBody.system = system;
@@ -27,7 +29,7 @@ exports.handler = async (event) => {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'x-api-key': apiKey,
+        'x-api-key': key,
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json',
       },
