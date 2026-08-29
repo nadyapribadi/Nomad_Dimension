@@ -35,19 +35,22 @@ Nomad_Dimension/
 │   ├── tts-proxy.js
 │   └── youtube-proxy.js
 └── Docs/
-    ├── AS_BUILT.md           # ← how the current system actually works
+    ├── AS_BUILT.md           # code-side view: IDs, proxy contract, code-vs-spec gaps
     ├── README.md
-    └── target-architecture/  # aspirational future design (not built)
+    └── archive/              # shelved Python/agent redesign (not built)
 ```
 
 ## Documentation
 
-- **[`Docs/AS_BUILT.md`](Docs/AS_BUILT.md)** — how the deployed system works:
-  stages, Notion databases, the four proxies, known gaps. **Start here.**
+- **Source of truth:** the Notion page "📖 Nomad Dimension — System
+  Documentation" — channel model, 8-stage pipeline, 8-database schema, model
+  routing, status flow, design decisions.
+- **[`Docs/AS_BUILT.md`](Docs/AS_BUILT.md)** — the code-side companion:
+  identifiers used in `index.html`, function map, and where the code diverges
+  from the Notion spec.
 - **[`functions/README.md`](functions/README.md)** — the proxy/API contract.
-- **[`Docs/target-architecture/`](Docs/target-architecture/)** — a much more
-  ambitious design (Python, local-first, autonomous agents, an independent
-  Critic). **Not built**; kept as reference for a possible future version.
+- **[`Docs/archive/`](Docs/archive/)** — a shelved redesign (Python, autonomous
+  agents, a Critic). Not built; kept for the engineering thinking.
 
 ## Tech Stack
 
