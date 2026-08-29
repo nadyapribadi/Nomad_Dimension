@@ -2581,11 +2581,13 @@ async function extractPlaces() {
       role: 'user',
       content: `Extract ALL places mentioned in this content outline. For each place, check against the existing places database and classify as existing or new.
 
-CONTENT OUTLINE:
+<outline>
 ${S.currentTranscriptOutline}
+</outline>
 
-EXISTING PLACES DATABASE (${existingPlaces.length} entries):
+<existing_places count="${existingPlaces.length}">
 ${existingPlaces.map(p => `- ${p.name} (${p.prefecture}) [ID: ${p.id}]`).slice(0,50).join('\n')}
+</existing_places>
 
 For each extracted place, generate:
 - name (as it appears / romanised)
@@ -2842,7 +2844,10 @@ TARGET DURATION: ${sec.duration} minutes (~${Math.round(sec.duration * 130)} wor
 TONE: ${sec.tone}
 VOICE CONFIG: ${sec.voiceConfig}${routeCtx}${placesCtx}
 
-BRIEF (what to cover): ${brief}
+BRIEF (what to cover):
+<brief>
+${brief}
+</brief>
 
 Rules:
 - Format every line as: KAI: [dialogue] or MIA: [dialogue]
