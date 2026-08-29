@@ -1,11 +1,22 @@
 # Netlify Functions — Provider Proxies
 
 These four functions are the app's **provider boundary**. Each is a stateless
-CORS proxy: the browser sends the payload (including the upstream API key), the
-function forwards to the upstream API and returns its JSON response unchanged.
+CORS proxy: the browser sends the payload, the function forwards it to the
+upstream API and returns the JSON response unchanged.
 
-No function stores state, reads env vars, or holds credentials — keys travel in
-the request body (loaded by the app from the Notion App Settings page).
+**Key resolution:** each function uses its Netlify environment variable first,
+falling back to the key in the request body (legacy path, being removed):
+
+| Function             | Env var              |
+| -------------------- | -------------------- |
+| `anthropic-proxy.js` | `ANTHROPIC_API_KEY`  |
+| `tts-proxy.js`       | `GOOGLE_TTS_API_KEY` |
+| `youtube-proxy.js`   | `YOUTUBE_API_KEY`    |
+| `notion-proxy.js`    | `NOTION_TOKEN`       |
+
+Set these in the Netlify dashboard (Site settings → Environment variables) and,
+for local `netlify dev`, in a gitignored `.env` (see `.env.example`). Once set,
+the browser no longer needs to send keys.
 
 All functions: `POST` only (plus `OPTIONS` preflight),
 `Access-Control-Allow-Origin: *`, JSON in / JSON out, upstream errors returned

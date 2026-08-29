@@ -1,6 +1,7 @@
 // netlify/functions/tts-proxy.js
 // Proxies Google Cloud Text-to-Speech API requests.
-// Browser sends: { text, voice, audioConfig, apiKey }
+// Key resolution: process.env.GOOGLE_TTS_API_KEY, else payload.apiKey (legacy).
+// Browser sends: { text, voice, audioConfig, apiKey? }
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
@@ -18,7 +19,8 @@ exports.handler = async (event) => {
   }
 
   const { text, voice, audioConfig, apiKey } = payload;
-  if (!text || !apiKey) return respond(400, { error: 'Missing text or apiKey' });
+  const key = process.env.GOOGLE_TTS_API_KEY || apiKey;
+  if (!text || !key) return respond(400, { error: 'Missing text or API key' });
 
   const reqBody = {
     input: { text },
@@ -26,7 +28,7 @@ exports.handler = async (event) => {
     audioConfig: audioConfig || { audioEncoding: 'MP3' },
   };
 
-  const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`;
+  const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${key}`;
 
   try {
     const res = await fetch(url, {

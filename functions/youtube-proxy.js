@@ -1,6 +1,7 @@
 // netlify/functions/youtube-proxy.js
 // Proxies YouTube Data API v3 requests.
-// Browser sends: { path, params, apiKey }
+// Key resolution: process.env.YOUTUBE_API_KEY, else payload.apiKey (legacy).
+// Browser sends: { path, params, apiKey? }
 // path example: "search" | "videos" | "channels" | "captions"
 
 exports.handler = async (event) => {
@@ -19,10 +20,11 @@ exports.handler = async (event) => {
   }
 
   const { path, params = {}, apiKey } = payload;
+  const key = process.env.YOUTUBE_API_KEY || apiKey;
   if (!path) return respond(400, { error: 'Missing path' });
-  if (!apiKey) return respond(400, { error: 'Missing apiKey' });
+  if (!key) return respond(400, { error: 'Missing API key' });
 
-  const qs = new URLSearchParams({ ...params, key: apiKey }).toString();
+  const qs = new URLSearchParams({ ...params, key }).toString();
   const url = `https://www.googleapis.com/youtube/v3/${path}?${qs}`;
 
   try {
