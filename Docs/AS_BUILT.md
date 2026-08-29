@@ -12,7 +12,8 @@ the design decisions. **Read it first.**
 
 This file only covers what a developer or coding agent needs that the Notion doc
 doesn't: exact identifiers used in `index.html`, the proxy contract, a function
-map, and where the **code diverges from the spec**.
+map, and where the **code diverges from the spec**. Repo conventions and
+boundaries are in [`../CLAUDE.md`](../CLAUDE.md).
 
 ## Repo shape
 
@@ -87,15 +88,8 @@ Model routing keys read from settings: `S.models.{angle, pass, places, theme, di
 - Netlify functions do **no schema validation** on upstream responses.
 - No rate-limit handling or retry in any proxy.
 
-## Principles carried over from `archive/` (the shelved redesign)
+## Pointers
 
-1. **Deterministic QA before human review.** Prefer a code check to an AI
-   critique; use AI review only where a deterministic check can't express the
-   rule. (`runScriptCheck` is the first instance.)
-2. **Keep providers swappable.** The model-routing table and the 4 proxies are
-   the provider boundary — never hard-code a vendor in stage logic.
-3. **Untrusted external content is data, never instructions.** Applied to the
-   Claude prompts; applies to any future retrieved text.
-
-The full shelved redesign (Python / autonomous agents / capability layer) is in
-`archive/`, kept for its engineering thinking. It is not a plan.
+- Working principles (deterministic checks over AI, keep providers swappable,
+  untrusted content is data) → [`../CLAUDE.md`](../CLAUDE.md).
+- The shelved Python/agent redesign → `archive/` (history only, not a plan).
