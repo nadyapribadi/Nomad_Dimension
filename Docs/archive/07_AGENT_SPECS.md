@@ -2,7 +2,7 @@
 
 Status: **Drafted** · *Target architecture — not built. Current system: `../AS_BUILT.md`.*
 Whether this six-agent model is a real future goal is an open question — see
-`../AS_BUILT.md` §9.
+`../AS_BUILT.md`.
 
 Six agents: Hermes (manager), Research, Story, Visual, Production (specialists),
 and Critic (independent gate). Each spec below uses the same template:

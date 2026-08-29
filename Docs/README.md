@@ -1,25 +1,23 @@
 # Nomad Dimension Documentation
 
-## Current system
+## Source of truth
 
-**[`AS_BUILT.md`](AS_BUILT.md)** — the system that exists and is deployed: a
-JS/Netlify single-page app with Notion state, an 8-stage operator-driven wizard,
-Kai/Mia dual-host format, Google TTS, and a CapCut/Canva handoff. Start here.
+The operating manual is in **Notion**: "📖 Nomad Dimension — System Documentation"
+(page id `3499ba2b-3900-8087-8800-cd0db5f579f5`). It covers the channel model,
+the 8-stage pipeline, the 8-database schema, model routing, status flow, naming
+conventions, and the design decisions. Read it first.
 
-The proxy/API contract lives in [`../functions/README.md`](../functions/README.md).
+## In this repo
 
-## Target architecture (not built)
+- **[`AS_BUILT.md`](AS_BUILT.md)** — the code-side companion: identifiers used in
+  `index.html`, the proxy contract, a function map, and where the code diverges
+  from the Notion spec.
+- **[`../functions/README.md`](../functions/README.md)** — the proxy/API contract.
 
-**[`target-architecture/`](target-architecture/)** — an aspirational design
-(Python, local-first, SQLite, six autonomous agents, an independent Critic,
-DaVinci handoff) extrapolated from
-`target-architecture/Nomad_Dimension_Master_Architecture_and_Operating_Blueprint.docx`.
+## `archive/`
 
-It is **reference for a possible future version**, not a plan, and is not kept in
-sync with the code. Whether that direction is ever pursued is an open question —
-see `AS_BUILT.md` §9. Each file carries a one-line banner to that effect.
-
-## Rule
-
-When `target-architecture/` disagrees with `AS_BUILT.md`, `AS_BUILT.md` wins for
-"what is".
+**[`archive/`](archive/)** holds a shelved redesign (Python, local-first, SQLite,
+autonomous agents, an independent Critic, a capability layer) plus the original
+blueprint `.docx`. It was superseded by the Notion System Documentation as the
+source of truth. Kept for its engineering thinking — **not a plan, not
+maintained.**

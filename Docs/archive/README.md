@@ -1,22 +1,18 @@
-# Target Architecture (not built)
+# Archive — Shelved Redesign
 
-These documents describe an **aspirational** design for Nomad Dimension: Python,
+**Superseded.** The source of truth is the Notion page "📖 Nomad Dimension —
+System Documentation". The code-side view is [`../AS_BUILT.md`](../AS_BUILT.md).
+
+These documents describe an **aspirational** design that was never built: Python,
 local-first, SQLite, a Hermes orchestrator with five specialist agents, an
 independent Critic quality gate, a provider-agnostic capability layer, and a
-DaVinci Resolve handoff. They were written from the blueprint `.docx` (also in
-this folder) before the shipped app's shape was settled.
+DaVinci Resolve handoff. They were extrapolated from the blueprint `.docx` (also
+here) before the real system's shape was understood.
 
-**None of this is implemented.** The current system is a JS/Netlify/Notion wizard
-app — see [`../AS_BUILT.md`](../AS_BUILT.md).
-
-Treat this folder as:
-
-- a record of a considered direction,
-- a source of ideas to fold into the current app (`../AS_BUILT.md` §9),
-- **not** a build plan, and **not** maintained against the code.
-
-Whether the agent-orchestration direction is ever pursued is an open question for
-the operator.
+Kept for the engineering thinking — capability-layer design, the Critic concept,
+risk register, test strategy — which may inform future work. **Not a plan, not
+maintained.** Ideas worth carrying forward are listed in `../AS_BUILT.md` under
+"Principles carried over".
 
 ## Contents
 

@@ -76,8 +76,7 @@ Forwards to `https://www.googleapis.com/youtube/v3/{path}`.
 ## Contract stability
 
 The browser (`index.html`) depends on these shapes. Change them additively only;
-a breaking change means updating `index.html` in the same commit. See
-`Docs/AS_BUILT.md` §3.
+a breaking change means updating `index.html` in the same commit.
 
 ## Known gaps
 

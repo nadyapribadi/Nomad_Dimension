@@ -1,140 +1,101 @@
-# As-Built System (v0)
+# As-Built — Code-Side Notes
 
-Status: **Drafted** — describes what exists in the repo today, as of this pass.
+Status: **Drafted** — the code-side companion to the operating manual.
 
-This document is the source of truth for the *current* system.
-`target-architecture/` describes an aspirational design; where it disagrees with
-this file, this file wins for "what is". See §9 for the relationship.
+## Source of truth
 
-## 1. What It Is
+The operating manual for Nomad Dimension is the Notion page
+**"📖 Nomad Dimension — System Documentation"**
+(id `3499ba2b-3900-8087-8800-cd0db5f579f5`). It covers the channel model, the
+8-stage pipeline, the 8-database schema, model routing, status flow, naming, and
+the design decisions. **Read it first.**
 
-A single-page web app that walks one operator through producing a documentary
-YouTube episode, stage by stage, with Claude assisting at each step and **Notion**
-as the cross-device state store. Deployed on Netlify; push to `main` deploys.
+This file only covers what a developer or coding agent needs that the Notion doc
+doesn't: exact identifiers used in `index.html`, the proxy contract, a function
+map, and where the **code diverges from the spec**.
 
-- **Format:** dual-host ("Kai" = host ~55%, "Mia" = co-host ~45").
-- **Channel focus:** history / culture / travel / geography.
-- **Handoff target:** CapCut (edit) + Canva (thumbnail) + YouTube metadata — not
-  DaVinci.
+## Repo shape
 
-## 2. Stack
-
-| Part | Implementation |
+| Path | |
 | --- | --- |
-| Frontend | One file: `index.html` (~3,200 lines), inline `<style>` + `<script>`, vanilla JS, no framework, no build step |
-| Backend | 4 Netlify Functions in `functions/` — thin CORS proxies |
-| State / DB | Notion (6 databases + 1 settings page) |
-| LLM | Anthropic Claude via `anthropic-proxy.js` (default `claude-haiku-4-5-20251001`) |
-| TTS | Google Cloud Text-to-Speech via `tts-proxy.js` (`en-US-Neural2-D` Kai, `en-US-Neural2-F` Mia) |
-| Video data | YouTube Data API v3 via `youtube-proxy.js` |
-| Hosting | Netlify (`netlify.toml`: `publish = "."`, `functions = "functions"`) |
-| Secrets | Stored in the Notion **App Settings** page, loaded into memory at runtime, passed per-request to the proxies. Notion integration token kept in `sessionStorage` only. |
+| `index.html` | The whole app — inline `<style>` + `<script>`, ~3,300 lines, no build step |
+| `functions/*.js` | 4 Netlify proxies — see `../functions/README.md` |
+| `netlify.toml` | `publish = "."`, `functions = "functions"`; push to `main` deploys |
+| `package.json` etc. | ESLint + Prettier + CI + pre-commit (lint/format only) |
 
-## 3. Netlify Functions (the provider boundary)
+## Identifiers hard-coded in `index.html`
 
-Each is a stateless proxy: browser sends the payload incl. the API key, function
-forwards to the upstream API, returns the JSON. CORS `*`. See
-`functions/README.md` for the request/response contract.
+```js
+APP_SETTINGS_PAGE_ID = '33c9ba2b-3900-8132-b172-f136389ac2e2'
+DB_IDS = {
+  sourceVideos:   '29429e5b-dd37-4ab8-93a5-b1e092df9e60',
+  episodes:       'b298e52a-19e1-47b5-bfa2-d846dbc69291',
+  scripts:        'be955033-cd95-4801-8e05-bcdce05cedc5',
+  places:         '9b03bb34-9d44-4eba-9744-5073bc881656',
+  sourceChannels: 'ad90cd8a-276c-4cf6-9414-697401380388',
+  costs:          '6c2855fd-38c8-4e81-8f4d-4c4070b3b82d',
+}
+```
 
-| Function | Upstream | Browser payload |
-| --- | --- | --- |
-| `notion-proxy.js` | `api.notion.com/v1/{endpoint}` | `{ endpoint, method, body, token }` |
-| `anthropic-proxy.js` | `api.anthropic.com/v1/messages` | `{ model, max_tokens, system, messages, apiKey }` |
-| `tts-proxy.js` | `texttospeech.googleapis.com/v1/text:synthesize` | `{ text, voice, audioConfig, apiKey }` |
-| `youtube-proxy.js` | `googleapis.com/youtube/v3/{path}` | `{ path, params, apiKey }` |
+The Notion doc lists **8 databases**; the code references **6**. Not in `DB_IDS`:
+the **Performance** database (`a488f781-ef28-4006-9b97-44b72d16d4ba`) — no stage
+reads or writes it. (App Settings is a page, handled via `APP_SETTINGS_PAGE_ID`.)
 
-## 4. Notion Data Model
+## Function map (by stage)
 
-Hard-coded IDs in `index.html` (`DB_IDS` + `APP_SETTINGS_PAGE_ID`):
+| Stage | Functions |
+| --- | --- |
+| 0 Settings | `connectNotion` · `loadSettingsFromNotion` · `parseAndApplySettings` · `parseSettingsPage` · `getPageBlocks` · `renderSettingsUI` · `runHealthCheck` · `resumeSession` · `writeAppState` · `saveModels` · `saveLookups` · `saveDNA` |
+| 1 YouTube Browser | `fetchYouTube` · `renderYTVideos` · `openReviewModal` · `pushToNotion` |
+| 2 Episode Builder | `loadSourceQueue` · `generateThemes` · `selectTheme` · `suggestEpisodeTitles` · `createEpisode` · `loadCalendar` · `runGapAnalysis` |
+| 3A Transcript | `loadTranscriptVideos` · `runPass1` · `saveOutlineToNotion` |
+| 3B Places | `extractPlaces` · `renderPlacesReview` · `confirmPlace` · `skipPlace` · `renderRouteOrder` · `movePlaceUp/Down` · `saveConfirmedPlaces` |
+| 4 Script Builder | `loadSections` · `renderSections` · `renderSectionCard` · `generateDialogue` · `lockSection` · `saveSection` · `applyTemplate` · `parseDialogue` · **`runScriptCheck`** (deterministic QA, added) |
+| 5 Audio TTS | `renderAllAudio` · `playSegment` · `playFullEpisode` · `exportAudio` |
+| 6 Handoff | `generateHandoff` · `renderHandoffDoc` · `saveHandoffToNotion` · `regenerateHandoff` |
+| shared | `notionAPI` · `ytAPI` · `claudeAPI` · `ttsAPI` · `buildDNASystem` · `showStage` · `toast` |
 
-| Key | Notion DB | Role |
-| --- | --- | --- |
-| App Settings page | `33c9ba2b-3900-8132-b172-f136389ac2e2` | API keys, model config, Channel DNA, lookup tables, app state (current stage) |
-| `sourceChannels` | `ad90cd8a-…` | YouTube channels to browse for inspiration |
-| `sourceVideos` | `29429e5b-…` | Discovered/queued inspiration videos |
-| `episodes` | `b298e52a-…` | Episode records (number, title, concept, hook, status) |
-| `scripts` | `be955033-…` | Script sections + Kai/Mia dialogue per episode |
-| `places` | `9b03bb34-…` | Places extracted from transcripts, confirmed + route-ordered |
-| `costs` | `6c2855fd-…` | Cost tracking — **declared but not yet written to** |
+Model routing keys read from settings: `S.models.{angle, pass, places, theme, dialogue, thumbnail, gap}`.
 
-"Channel DNA" and lookup tables (sections, tones, voices) live as key/value
-blocks on the App Settings page, parsed by `parseAndApplySettings()`.
+## Code vs. spec — open gaps
 
-## 5. Stages (as implemented)
+| Spec (Notion doc) | Code today |
+| --- | --- |
+| "Every API call logged to **Production Costs** DB with episode link; Total Cost USD rollup on Episodes" | `costs` ID is declared; **nothing writes cost rows**, no rollup |
+| **Performance** DB — post-publish metrics at 3 checkpoints | not referenced in code |
+| App Settings is the source of truth for model config / lookup tables | `saveModels()` / `saveLookups()` only update memory ("Notion write coming soon") |
+| Two-pass transcript: Pass 2 uses "only the relevant **outline chunk** + place details + brief" | `generateDialogue` passes brief + route order + matched place b-roll — **not the outline chunk** |
+| "Each dialogue line gets an estimated timestamp" | `generateDialogue` output is `KAI:` / `MIA:` lines only; no timestamps produced |
+| Dialogue version history — "last 5 versions stored" | `Dialogue Version` number increments; prior text is overwritten, not kept |
 
-| # | Stage | Key functions | Notes |
-| --- | --- | --- | --- |
-| 0 | Settings | `connectNotion`, `loadSettingsFromNotion`, `parseAndApplySettings`, `renderSettingsUI`, `runHealthCheck`, `resumeSession` | `saveModels` / `saveLookups` are **local-only** ("Notion write coming soon") |
-| 1 | YouTube Browser | `fetchYouTube`, `renderYTVideos`, `openReviewModal`, `pushToNotion` | Browse source channels, select inspiration videos, push to Source Videos |
-| 2 | Episode Builder | `loadSourceQueue`, `generateThemes`, `selectTheme`, `suggestEpisodeTitles`, `createEpisode`, `loadCalendar`, `runGapAnalysis` | Tabs: Queue / Theme / Create / Calendar / Gap |
-| 3A | Transcript | `loadTranscriptVideos`, `runPass1`, `saveOutlineToNotion` | Paste SRT or let Claude build an outline from metadata |
-| 3B | Places Review | `extractPlaces`, `renderPlacesReview`, `confirmPlace`, `renderRouteOrder`, `movePlaceUp/Down`, `saveConfirmedPlaces` | Extract + confirm + order places |
-| 4 | Script Builder | `loadSections`, `renderSectionCard`, `generateDialogue`, `lockSection`, `saveSection`, `applyTemplate` | Section-by-section Kai/Mia dialogue via Claude |
-| 5 | Audio TTS | `renderAllAudio`, `playSegment`, `playFullEpisode`, `exportAudio` | Google Neural TTS per line, full playback, export |
-| 6 | Handoff | `generateHandoff`, `renderHandoffDoc`, `saveHandoffToNotion`, `regenerateHandoff` | CapCut guide + Canva brief + thumbnail brief + YouTube metadata |
+## Applied since the reverse-engineering pass
 
-`buildDNASystem()` composes the Channel DNA into the system prompt used for
-Claude calls.
+- **Prompt-injection hardening** — transcript / outline / place list / brief are
+  wrapped in XML tags in `runPass1`, `extractPlaces`, `generateDialogue`, with a
+  data-handling clause in `buildDNASystem()`. External text is treated as data.
+- **Script Check** (Stage 4) — `runScriptCheck()`, deterministic, no API call:
+  missing dialogue, word count vs `duration*130`, Kai/Mia line ratio vs
+  `S.dna.ratio`, cliché/avoided-phrase scan, repeated 8-word runs across
+  sections, confirmed places flagged `already_in_episode_warning`.
 
-## 6. Runtime State (`S` object)
+## Security notes (not in the Notion doc)
 
-In-memory only (not persisted except via explicit Notion writes): `notionToken`,
-`keys`, `models`, `dna`, `lookups`, `channels`, `ytVideos`/`ytSelected`,
-`epQueue`/`epSelected`, `chosenTheme`, `activeEpisode`, `sections`,
-`audioBuffers`, `extractedPlaces`/`confirmedPlaces`, `handoffDoc`.
+- **API keys live in plain text on the App Settings Notion page**, loaded into
+  browser memory and passed per-request to the proxies. Anyone with that page —
+  or the Notion integration token — has every key. Rotating a key = editing the
+  page. There is no server-side secret store.
+- Netlify functions do **no schema validation** on upstream responses.
+- No rate-limit handling or retry in any proxy.
 
-App state (current stage) is mirrored to Notion via `writeAppState()`.
+## Principles carried over from `archive/` (the shelved redesign)
 
-## 7. Known Gaps in v0
+1. **Deterministic QA before human review.** Prefer a code check to an AI
+   critique; use AI review only where a deterministic check can't express the
+   rule. (`runScriptCheck` is the first instance.)
+2. **Keep providers swappable.** The model-routing table and the 4 proxies are
+   the provider boundary — never hard-code a vendor in stage logic.
+3. **Untrusted external content is data, never instructions.** Applied to the
+   Claude prompts; applies to any future retrieved text.
 
-- `saveModels()` and `saveLookups()` don't persist to Notion.
-- The `costs` database is declared but nothing writes cost rows.
-- No `package.json`, ESLint, Prettier, tests, or CI (added by revised P0).
-- All CSS + JS inline in `index.html` — not independently lintable/reviewable.
-- No error surface beyond `toast()`; proxy errors bubble up as raw messages.
-- Notion DB IDs and the settings page ID are hard-coded in the HTML.
-- No schema validation on Notion responses (treated as trusted).
-- Transcript / web text is passed into Claude prompts without explicit
-  data/instruction delimiting — a prompt-injection surface.
-
-### Security note: where the API keys live
-
-All provider keys (Anthropic, Google, YouTube) are stored as plain text on the
-Notion **App Settings** page and loaded into browser memory at runtime. Anyone
-with access to that Notion page — or to the Notion integration token — has every
-key. There is no server-side secret store; the Netlify functions only forward
-whatever key the browser sends. Rotating a key means editing the Notion page.
-Treat the App Settings page as a credentials file.
-
-## 8. What Is NOT Here
-
-No Python, no SQLite, no local-first runtime, no Hermes orchestrator, no
-autonomous agents, no independent Critic loop, no image/video/maps generation, no
-Replicate/Tavily/ElevenLabs, no DaVinci handoff. Those live in
-`target-architecture/` — see §9.
-
-## 9. Relationship to `target-architecture/`
-
-`Docs/target-architecture/` (files `00`–`24`, plus `KNOWN_LIMITATIONS.md`,
-`REQUIREMENTS_TRACEABILITY.md`, and the blueprint `.docx`) is an aspirational
-design: Python, local-first, SQLite, six autonomous agents, an independent
-Critic, DaVinci handoff. It was written from the `.docx` before this app's shape
-was settled.
-
-Decisions:
-
-1. **The shipped JS/Netlify/Notion app is the product.** No Python rebuild.
-2. **`target-architecture/` is reference for a possible future version**, not a
-   plan. It is not maintained against the current code.
-3. **Whether that direction (agent orchestration + Critic) is ever pursued is an
-   open question for the operator.** Until answered, it stays parked.
-
-Ideas from it worth pulling into the current app, in rough priority:
-
-- Wire the `costs` Notion DB (cost per episode). *(target: `15_EFFICIENCY_AND_COST.md`)*
-- Persist `saveModels` / `saveLookups` to Notion.
-- A lightweight per-stage QA prompt — a "mini-Critic" for script and place lists.
-- Keep external text (transcripts, web content) clearly delimited when passed to
-  Claude, never as instructions. *(target: `09_POLICY_AND_SAFETY_MODEL.md` §8)*
-- Note the secret-handling risk: API keys live on a Notion page; anyone with
-  that page has them. *(target: `19_RISK_REGISTER.md`)*
+The full shelved redesign (Python / autonomous agents / capability layer) is in
+`archive/`, kept for its engineering thinking. It is not a plan.
