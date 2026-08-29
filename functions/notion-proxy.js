@@ -26,7 +26,7 @@ exports.handler = async (event) => {
   const { endpoint, method = 'GET', body, token } = payload;
 
   if (!endpoint) return respond(400, { error: 'Missing endpoint' });
-  if (!token)    return respond(400, { error: 'Missing Notion token' });
+  if (!token) return respond(400, { error: 'Missing Notion token' });
 
   const url = `https://api.notion.com/v1/${endpoint}`;
 
