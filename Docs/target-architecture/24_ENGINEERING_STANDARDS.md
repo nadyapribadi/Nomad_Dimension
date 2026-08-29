@@ -11,8 +11,8 @@ multi-contributor.
 
 - Python, typed. Public functions and all boundaries have type hints; Pydantic
   for data crossing a module or process boundary.
-- Formatter + linter + type-checker run in CI.
-  <!-- DECISION NEEDED: ruff + mypy vs pyright -->
+- `ruff` (lint + format) and `mypy` (type check) run in CI and in a pre-commit
+  hook (ADR-P012).
 - Modules stay within their layer (`05_ARCHITECTURE.md` §3). Agents do not import
   provider adapters. Adapters do not import agents.
 - Errors: a shared taxonomy for provider/capability failures
@@ -73,10 +73,9 @@ wording.
 - Keep `docs/` in sync with behavior — a change that alters behavior updates the
   relevant doc and `17_MASTER_CHECKLIST.md` in the same commit.
 
-## 7. Open Questions
+## 7. Resolved (ADR-P012)
 
-- Lint/type toolchain.
-- Whether a pre-commit hook set is worth it for a solo repo (recommend: yes,
-  format + type-check only).
-- Commit message convention (recommend: plain imperative; Conventional Commits
-  only if tooling later needs it).
+- Toolchain: `uv`, `ruff` (lint + format), `mypy`, `pytest`.
+- Pre-commit hook: yes — runs `ruff` and `mypy` only.
+- Commit messages: plain imperative. Conventional Commits only if tooling later
+  needs it.

@@ -8,18 +8,18 @@ Non-functional and engineering requirements. IDs are `TRD-NNN`.
 
 - TRD-001 — The system shall run on a single local machine (Linux or macOS)
   without external infrastructure beyond Google Drive and provider APIs.
-- TRD-002 — Python [version] shall be the implementation language.
-  <!-- DECISION NEEDED: minimum Python version (3.11 / 3.12) -->
-- TRD-003 — Dependencies shall be managed with [tool].
-  <!-- DECISION NEEDED: uv / poetry / pip-tools -->
+- TRD-002 — Python 3.12 shall be the implementation language (ADR-P012).
+- TRD-003 — Dependencies and the virtualenv shall be managed with `uv`
+  (ADR-P012).
 - TRD-004 — The system shall run offline for all non-provider operations
   (state, knowledge, workflow, policy).
 
 ## 2. Data and Persistence
 
 - TRD-010 — Operational state and relationships shall be stored in SQLite.
-- TRD-011 — Schema migrations shall be versioned and forward-only.
-  <!-- DECISION NEEDED: alembic vs. hand-rolled migration runner -->
+- TRD-011 — Schema migrations shall be versioned and forward-only, run by a
+  hand-rolled runner (`migrations/NNNN_name.sql` + a `schema_version` table)
+  (ADR-P008).
 - TRD-012 — State writes that span multiple rows shall be transactional.
 - TRD-013 — Knowledge shall be Markdown; configuration shall be YAML; structured
   exchange shall be JSON. YAML shall not be used as a database or knowledge base.
@@ -77,9 +77,8 @@ Non-functional and engineering requirements. IDs are `TRD-NNN`.
 
 - TRD-060 — Every agent action, policy decision, capability call, and state
   transition shall emit a structured event linked to the episode.
-- TRD-061 — Events shall be persisted append-only (JSONL or a SQLite events
-  table).
-  <!-- DECISION NEEDED: JSONL files vs. SQLite events table vs. both -->
+- TRD-061 — Events shall be persisted append-only in a SQLite `events` table
+  (ADR-P006). A JSONL export helper may be added later as a convenience.
 - TRD-062 — A per-episode timeline shall be reconstructable from events.
 
 ## 8. Portability and Migration
@@ -94,7 +93,7 @@ Non-functional and engineering requirements. IDs are `TRD-NNN`.
 ## 9. Build, Test, CI
 
 - TRD-080 — `pytest` shall be the test framework; see `23_TEST_STRATEGY.md`.
-- TRD-081 — Lint/format/type-check shall run in CI.
-  <!-- DECISION NEEDED: ruff + mypy? pyright? -->
+- TRD-081 — `ruff` (lint + format) and `mypy` (type check) shall run in CI and
+  in a pre-commit hook (ADR-P012).
 - TRD-082 — Provider adapters shall have conformance tests against the capability
   interface.

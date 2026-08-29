@@ -138,6 +138,6 @@ Notes / acceptance: ...
 
 ## 12. Interfaces
 
-- FRD-IFC-001 — shall provide a CLI to start an episode, show status, list
-  pending approvals, and resolve approvals.
-<!-- DECISION NEEDED: is a FastAPI local API in v1, or CLI only? -->
+- FRD-IFC-001 — shall provide a `nomad` CLI to start an episode, show status,
+  list pending approvals, and resolve approvals. **CLI only in v1** (ADR-P007);
+  no FastAPI until a second surface needs it.

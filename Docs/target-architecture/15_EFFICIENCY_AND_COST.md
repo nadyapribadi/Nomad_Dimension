@@ -2,6 +2,18 @@
 
 Status: **Scaffold**
 
+## 0. Where the Money Goes
+
+At the v1 budget of **$25/episode** (ADR-P009), cost is dominated by
+**AI video generation**, then image, then audio (ElevenLabs), then LLM calls;
+research (Tavily) and maps (Google Maps Static) are rounding error.
+
+Consequence: the mixed-media philosophy (`13_VISUAL_PHILOSOPHY.md`) is also the
+budget strategy. Keeping AI-video seconds low — favouring archival, on-location
+footage, maps, stills, typography, and diagrams — is what keeps an episode under
+$25. The per-call cap ($3) exists to stop one runaway video/image generation
+from consuming the episode.
+
 ## 1. Strategy
 
 1. **Route by complexity.** Strong models for high-value reasoning (plan, write,
@@ -61,6 +73,8 @@ sum; it drives the budget check.
 
 ## 6. Open Questions
 
-- Model-per-tier selection.
+- Exact model per tier, and the specific Replicate video model (chosen at P7).
 - Cache implementation (sqlite table vs. files) and TTLs.
-- Whether to hard-stop or soft-warn at `alert_at_fraction` of budget.
+- Whether to hard-stop or soft-warn at `alert_at_fraction` of budget. Current
+  stance: soft-warn at 0.8; the per-call cap and budget check are the hard
+  stops.

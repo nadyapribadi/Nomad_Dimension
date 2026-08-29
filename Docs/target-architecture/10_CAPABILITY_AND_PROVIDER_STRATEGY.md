@@ -14,14 +14,14 @@ data. Every capability must pass this test.
 
 ## 2. Capabilities
 
-| Capability | Purpose | v1 first provider | In v1? |
+| Capability | Purpose | v1 first provider (see `20_DECISIONS.md`) | In v1? |
 | --- | --- | --- | --- |
-| `models` | LLM reasoning, synthesis, review | Anthropic (strong tier), Google Gemini (alt/economical) | yes |
-| `research` | Search / retrieval / structured research | <!-- DECISION NEEDED: structured-results + recency API --> | yes |
-| `image` | Still image generation | Replicate or Runway <!-- DECISION NEEDED: pick one --> | yes |
-| `video` | Video clip generation | Runway or Replicate <!-- DECISION NEEDED: pick one --> | yes |
-| `audio` | Narration / TTS, music, SFX | ElevenLabs | yes |
-| `maps` | Geographic visualization, routes, satellite/context | <!-- DECISION NEEDED: e.g. Mapbox / MapTiler / Google Maps Static --> | yes (channel needs it) |
+| `models` | LLM reasoning, synthesis, review | Anthropic (strong tier), Google Gemini (economical / fallback) — ADR-P001 | yes |
+| `research` | Search / retrieval / structured research | Tavily (fallback: Brave Search API) — ADR-P002 | yes |
+| `image` | Still image generation | Replicate (Flux) — ADR-P003b | yes |
+| `video` | Video clip generation | Replicate (low-cost model: Kling std / Wan / LTX) — ADR-P003b | yes |
+| `audio` | Narration / TTS, music, SFX | ElevenLabs — ADR-P003 | yes |
+| `maps` | Geographic visualization, routes, satellite/context | Google Maps Static API — ADR-P011 | yes (channel needs it) |
 | `three_d` | Terrain, buildings, reconstructions | — | v2 (stub interface in P6) |
 | `design` | Titles, lower thirds, diagrams, thumbnails | code-generated (SVG/templating) before a provider | yes (minimal) |
 | `storage` | Heavy binary storage | Google Drive | yes |
@@ -75,6 +75,7 @@ class Capability[Req, Res](Protocol):
 ModelRequest  { task: enum(plan|synthesize|write|review|classify), messages, tools?, max_output, temperature? }
 ModelResponse { text | structured, usage, finish_reason }
 ```
+
 Routing: strong model for `plan|write|review`; economical model for
 `classify|short synthesize` (see `15_EFFICIENCY_AND_COST.md`).
 
@@ -84,6 +85,7 @@ Routing: strong model for `plan|write|review`; economical model for
 ResearchRequest  { query, depth, recency?, domain_filters? }
 ResearchResponse { results: [{title, url, snippet, published_at?, source_type}] }
 ```
+
 Content is untrusted data (`09_POLICY_AND_SAFETY_MODEL.md` §8).
 
 ### image / video
@@ -92,6 +94,7 @@ Content is untrusted data (`09_POLICY_AND_SAFETY_MODEL.md` §8).
 MediaRequest  { prompt, medium, aspect_ratio, duration_sec?, reference_assets?, seed? }
 MediaResponse { binary_ref, generation_params, cost_cents }
 ```
+
 Binary is handed to `storage` for Drive upload; metadata to the asset registry.
 
 ### audio
@@ -114,6 +117,7 @@ StoragePut { binary, name, folder_path, mime }         -> { file_id, checksum }
 StorageGet { file_id }                                  -> { binary }
 StorageMeta{ file_id }                                  -> { name, size, checksum, ... }
 ```
+
 Google Drive is one adapter. No caller depends on Drive semantics.
 
 ## 5. MCP vs Direct APIs
@@ -143,12 +147,13 @@ Each adapter must pass a shared suite per capability:
 - rejects/redacts secret material in inputs it echoes back
 <!-- TODO: build the shared conformance harness in tests/capabilities/ -->
 
-## 8. Open Questions / Decisions
+## 8. Resolved / Open
 
-- First provider for each capability (`20_DECISIONS.md` ADR-P series).
-- Whether `three_d` and `maps` are in MVP or v2.
-- Cost normalization: store native provider cost, or convert to a common unit at
-  call time? (recommend: store `cost_cents` normalized at call time, keep raw in
-  `generation_params`).
-- Routing config shape for `models` (per-task provider map vs. a single default +
-  overrides).
+- **First providers — decided** (`20_DECISIONS.md`): models = Anthropic + Gemini;
+  research = Tavily; image/video = Replicate; audio = ElevenLabs; maps = Google
+  Maps Static; storage = Google Drive. `maps` is in v1, `three_d` is v2.
+- **Cost normalization — decided:** store `cost_cents` normalized at call time;
+  keep the raw provider figure in `generation_params`.
+- **Model routing — decided:** per-task provider/model map (`config/models.yaml`).
+- **Open:** exact model ids per tier and the specific Replicate video model —
+  chosen at P7 against current availability and price.

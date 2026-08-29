@@ -12,12 +12,14 @@ exports.handler = async (event) => {
   }
 
   let payload;
-  try { payload = JSON.parse(event.body); } catch {
+  try {
+    payload = JSON.parse(event.body);
+  } catch {
     return respond(400, { error: 'Invalid JSON' });
   }
 
   const { path, params = {}, apiKey } = payload;
-  if (!path)   return respond(400, { error: 'Missing path' });
+  if (!path) return respond(400, { error: 'Missing path' });
   if (!apiKey) return respond(400, { error: 'Missing apiKey' });
 
   const qs = new URLSearchParams({ ...params, key: apiKey }).toString();

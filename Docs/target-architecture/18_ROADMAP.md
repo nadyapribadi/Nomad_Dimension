@@ -59,7 +59,5 @@ sake.
 
 ## Open Questions
 
-- Which maps/geographic provider for v1 (Mapbox / MapTiler / Google Maps
-  Static / other)?
 - Does v2 need a lightweight review UI, or is the CLI + Drive still enough?
 - What concrete metric thresholds move an item from "later" to "now"?

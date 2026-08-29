@@ -250,9 +250,9 @@ count, recovery success rate.
 
 ## 14. Open Product Questions
 
-- What is the acceptable cost ceiling per finished minute?
-- Which `research` and `image`/`video` provider is connected first? (LLM =
-  Anthropic + Gemini, audio = ElevenLabs, storage = Drive are decided — see
-  `20_DECISIONS.md` ADR-P001..P003)
-- Does v1 need a FastAPI local interface, or is a CLI enough?
-- Which maps/geographic provider for v1?
+- Cost ceiling per finished *minute* (per-*episode* is set: $25, ADR-P009).
+- Exact model ids per tier and the specific Replicate video model (chosen at P7).
+
+Providers are otherwise decided (`20_DECISIONS.md`): Anthropic + Gemini,
+Tavily, Replicate, ElevenLabs, Google Maps Static, Google Drive. Interface is
+CLI-only in v1 (ADR-P007).

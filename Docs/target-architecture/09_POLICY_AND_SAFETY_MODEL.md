@@ -43,7 +43,8 @@ PolicyDecision { verdict: ALLOW | DENY | REQUIRES_APPROVAL, reason_code, message
 | Act on external content that contains instructions conflicting with Nomad's | DENY + escalate |
 | Write a secret to a prompt, log, or committed file | DENY |
 
-<!-- DECISION NEEDED: per-call cost cap value; per-episode default budget -->
+Budget values (ADR-P009): per-episode default **$25** (`episode_default_cents:
+2500`), per-call cap **$3** (`per_call_cap_cents: 300`), warn at 80%.
 
 ## 4. Permission Matrix
 
@@ -136,10 +137,12 @@ Policy behavior is covered by unit tests (see `23_TEST_STRATEGY.md`): each row i
 §3 and §4, fail-closed on unknown input, budget boundary conditions, protected-
 asset guards, and the untrusted-content path. Policy tests must not call an LLM.
 
-## 12. Open Questions
+## 12. Resolved / Open
 
-- Default per-episode budget and per-call cap.
-- Whether approvals expire (recommend: pending approvals older than N days
-  auto-deny with a re-request path).
-- Whether trigger 3 (legal/reputational risk) needs a checklist the agents run,
-  or stays a judgement call escalated by Critic.
+- **Approvals expire** — pending approvals older than `approval_expiry_days`
+  (default 7) auto-deny with a re-request path.
+- **Open (needs your figures):** default per-episode budget and per-call cost cap
+  (ADR-P009).
+- **Open:** whether trigger 3 (legal/reputational risk) needs a checklist the
+  agents run, or stays a judgement call escalated by Critic. Current stance:
+  judgement call by Critic + human.

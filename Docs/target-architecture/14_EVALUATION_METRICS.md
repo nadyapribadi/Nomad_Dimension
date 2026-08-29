@@ -48,15 +48,14 @@ per episode, and rolled up across episodes.
 
 ## 5. Sampling for Accuracy Checks
 
-- N claims sampled per episode for the research-accuracy metric.
-  <!-- DECISION NEEDED: N (draft: 10 or all if fewer) -->
+- 10 claims sampled per episode for the research-accuracy metric (or all claims
+  if the episode has fewer than 10).
 - Sampling is random over `important = true` claims first, then the rest.
 - Re-check is done by the human or by a fresh Critic pass with source access.
 
 ## 6. Open Questions
 
-- Cost ceiling per finished minute.
-- Sample size N.
+- Cost ceiling per finished minute (ADR-P009 — needs your figure).
 - Whether token efficiency is tracked per stage or per deliverable type.
 - Baseline capture method for coordination effort (needs a few manual episodes
   logged for comparison, or a one-time estimate).

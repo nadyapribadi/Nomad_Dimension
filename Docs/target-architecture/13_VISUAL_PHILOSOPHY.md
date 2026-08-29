@@ -48,7 +48,7 @@ Applied at the Visual stage and again on the Production package:
 | Check | REWORK if |
 | --- | --- |
 | Relevance | A shot does not serve its script beat |
-| Variety | More than [N] consecutive shots share one medium without reason |
+| Variety | More than 3 consecutive shots share one medium without reason |
 | Repetition | Near-duplicate compositions / subjects recur |
 | Artifacts | AI output has visible artifacts, wrong anatomy, text garble, uncanny faces |
 | Pacing alignment | Shot durations fight the script's rhythm |
@@ -56,7 +56,7 @@ Applied at the Visual stage and again on the Production package:
 | Spatial payoff | A map/3D shot does not actually clarify space |
 | Brand fit | Titles/lower-thirds/thumbnail diverge from channel brand notes |
 
-<!-- DECISION NEEDED: N for consecutive same-medium run (draft: 3) -->
+Consecutive same-medium run limit = 3 (guideline, not hard policy — see §7).
 
 ## 5. Interaction with Cost
 
@@ -73,7 +73,7 @@ Channel brand notes (voice, palette, typography, thumbnail style) live in
 
 ## 7. Open Questions
 
-- The consecutive-same-medium threshold.
 - Whether a fixed medium-mix target per episode (e.g. "no more than 40% AI-
-  generated shots") is a hard policy rule or a Critic guideline. Recommend:
-  Critic guideline first, promote to policy only if drift is measured.
+  generated shots") should become a hard policy rule. Current stance: keep it a
+  Critic guideline (including the run-of-3 limit above); promote to a policy
+  rule only if measured drift shows the guideline is not holding.

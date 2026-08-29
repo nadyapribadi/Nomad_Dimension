@@ -95,17 +95,16 @@ to Drive on `episode.package.exported`.
 
 ## 8. Integrity
 
-- `checksum` verified on upload and before package export.
+- `checksum` is **SHA-256**, verified on upload and before package export.
 - Orphaned assets (no shot, no episode-level role, no approved status) are
-  reported, not auto-deleted.
-<!-- TODO: checksum algorithm (sha256), orphan report tooling -->
+  reported by a `scripts/` check, never auto-deleted.
 
-## 9. Open Questions
+## 9. Resolved / Open
 
-- Drive folder naming and depth.
-- Whether `_sources` originals are copied into Nomad's Drive tree or referenced
-  in place.
-- Package manifest schema — needs validation against an actual DaVinci Resolve
-  import workflow.
-- Retention: do old non-current versions ever get archived/pruned, and by what
-  rule.
+- **`_sources` originals are copied into Nomad's Drive tree** (not referenced in
+  place) so provenance and availability do not depend on an external location.
+- **Retention:** v1 keeps every version indefinitely. No pruning rule until
+  storage cost is a measured problem.
+- **Open:** Drive folder naming and depth — confirm the §3 layout.
+- **Open:** package manifest schema — must be validated against a real DaVinci
+  Resolve import in phase P10 before it is relied on.

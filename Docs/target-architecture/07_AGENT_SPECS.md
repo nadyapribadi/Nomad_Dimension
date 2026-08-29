@@ -1,6 +1,8 @@
 # Agent Specifications
 
-Status: **Drafted**
+Status: **Drafted** · *Target architecture — not built. Current system: `../AS_BUILT.md`.*
+Whether this six-agent model is a real future goal is an open question — see
+`../AS_BUILT.md` §9.
 
 Six agents: Hermes (manager), Research, Story, Visual, Production (specialists),
 and Critic (independent gate). Each spec below uses the same template:
@@ -47,16 +49,17 @@ Each specialist takes a typed brief, does a small, defined amount of work, and
 returns a typed deliverable. Contract-first: the brief model and the deliverable
 model are defined before the prompt.
 
-| Agent | Input model | Output model | Step budget (draft) | Stopping condition |
+| Agent | Input model | Output model | Step budget (ADR-P013) | Stopping condition |
 | --- | --- | --- | --- | --- |
-| Hermes | `EpisodeGoal` | `EpisodePlan` | 1–2 model calls | plan produced |
-| Research | `ResearchBrief` | `ResearchPackage` | ≤ N search calls + 1–2 synth calls | brief covered or budget hit → return with `coverage_gaps` |
-| Story | `StoryBrief` | `StoryDeliverable` | 1–3 model calls | script produced, all claims linked |
-| Visual | `VisualBrief` | `ShotList` | 1–2 model calls per segment | every shot has medium + rationale |
-| Production | `ProductionBrief` | `PackageManifest` | ≤ M retries per asset | all approved shots have an approved asset version |
+| Hermes | `EpisodeGoal` | `EpisodePlan` | 2 model calls | plan produced |
+| Research | `ResearchBrief` | `ResearchPackage` | ≤ 8 search calls + 2 synth calls | brief covered or budget hit → return with `coverage_gaps` |
+| Story | `StoryBrief` | `StoryDeliverable` | 3 model calls | script produced, all claims linked |
+| Visual | `VisualBrief` | `ShotList` | 2 model calls per segment | every shot has medium + rationale |
+| Production | `ProductionBrief` | `PackageManifest` | ≤ 3 provider retries per asset | all approved shots have an approved asset version |
 | Critic | `ReviewBrief` | `Feedback` | 1 model call | one PASS/REWORK decision |
 
-<!-- DECISION NEEDED: N (research search cap), M (production retries per asset), per-agent model-call caps -->
+Values are the ADR-P013 draft; revisit after the P10 measurement. Enforced by the
+agent runner; a budget hit is a typed partial result, not an error.
 
 Budgets are enforced by the agent runner and recorded as events. Hitting a
 budget is a normal, typed outcome (return partial + flags), not a crash.

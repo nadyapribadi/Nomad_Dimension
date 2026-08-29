@@ -1,0 +1,5 @@
+#!/bin/sh
+# Run lint + format check before every commit.
+# Wired automatically by the "prepare" script in package.json (core.hooksPath).
+# Skip once with:  git commit --no-verify
+exec npm run --silent check

@@ -49,10 +49,10 @@ Status: **Scaffold**
 
 ## 5. CI Gates
 
-<!-- DECISION NEEDED: exact CI config -->
+CI runs on **GitHub Actions**.
 
-- Lint + format + type-check.
-- Unit + integration suites (no network) must pass.
+- `ruff` (lint + format check) + `mypy`.
+- Unit + integration suites (no network) must pass on every push/PR.
 - Conformance and e2e run on demand / nightly, not on every push.
 
 ## 6. Non-Determinism Policy
@@ -61,8 +61,9 @@ Status: **Scaffold**
   policy outcomes, state, and events.
 - Flaky model-touching test → move it behind a fixture or delete it.
 
-## 7. Open Questions
+## 7. Resolved
 
-- CI provider (GitHub Actions assumed).
-- Whether e2e uses live providers or recorded responses by default.
-- Coverage target, if any (recommend: cover the §3 list, don't chase a number).
+- CI provider: GitHub Actions.
+- e2e uses **recorded provider responses by default**; a live-provider run is
+  opt-in for the P10 milestone and periodic checks.
+- No coverage-percentage target — the bar is "everything in §3 has a test".

@@ -4,21 +4,24 @@ Status: **Scaffold**
 
 ## 1. Prerequisites
 
-- Python [3.11+ — DECISION NEEDED]
+- Python 3.12 (ADR-P012)
+- `uv` (dependency + venv manager)
 - Git
-- A Google account with Drive API access (service account or OAuth client)
+- A Google Cloud **service account** with Drive API access (JSON key)
 - DaVinci Resolve installed (for validating package import)
 - API keys for the providers you enable
 
 ## 2. Tooling
 
-<!-- DECISION NEEDED: uv / poetry / pip-tools; ruff+mypy / pyright -->
+Toolchain (ADR-P012): `uv`, `ruff` (lint + format), `mypy` (type check),
+`pytest`. A pre-commit hook runs `ruff` and `mypy`.
 
 ```bash
 git clone <repo>
 cd NomadDimension
-<install command>            # e.g. uv sync
-cp .env.example .env         # fill in provider keys + Drive credentials
+uv sync                      # install deps into .venv
+cp .env.example .env         # fill in provider keys + Drive service-account JSON path
+uv run pre-commit install
 ```
 
 ## 3. Repository Layout
@@ -84,9 +87,9 @@ runtime agent inside Nomad — not a dev tool. Keep module boundaries, schemas,
 prompts, and tests clean enough that an assistant (or a new person) can navigate
 the codebase from the docs.
 
-## 9. Open Questions
+## 9. Resolved
 
-- Python version floor.
-- Dependency + lint/type toolchain.
-- Drive auth method (service account vs OAuth).
-- Whether there is a `nomad` console entrypoint in v1 or just `python -m nomad`.
+- Python 3.12; `uv` + `ruff` + `mypy` + `pytest` (ADR-P012).
+- Drive auth: Google Cloud **service account** (JSON key path in `.env`).
+- Console entrypoint: **`nomad`** (defined in `pyproject.toml`), also runnable as
+  `uv run nomad`.

@@ -1,6 +1,6 @@
 # Nomad Dimension Architecture
 
-Status: **Drafted**
+Status: **Drafted** · *Target architecture — not built. Current system: `../AS_BUILT.md`.*
 
 ## 1. Architecture Summary
 

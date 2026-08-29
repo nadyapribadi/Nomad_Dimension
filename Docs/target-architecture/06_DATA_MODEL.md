@@ -31,8 +31,10 @@ Channel
 ## 3. Principles
 
 - **Stable IDs.** Every major entity (Channel, Episode, Segment, Scene, Shot,
-  Asset, AssetVersion, ResearchClaim, Feedback) gets an immutable ID at creation.
-  <!-- DECISION NEEDED: ID format. Recommend ULID (sortable, no coordination). Options: ULID / UUIDv7 / prefixed short IDs like ep_01H... -->
+  Asset, AssetVersion, ResearchClaim, Feedback) gets an immutable **ULID** at
+  creation (ADR-P005), wrapped in a distinct branded type per entity
+  (`EpisodeId`, `ShotId`, ...) so one ID type cannot be passed where another is
+  expected (ADR-015).
 - **Versions, never overwrites.** An asset revision creates a new `AssetVersion`
   row. The previous version is retained. A "current" pointer selects the active
   version.
@@ -198,7 +200,8 @@ to SQLite tables.
 | type | str | dotted event name (`05_ARCHITECTURE.md` §8) |
 | payload | JSON | |
 | created_at | datetime | |
-<!-- DECISION NEEDED: events in nomad.sqlite table vs. JSONL files vs. both -->
+
+Events live in this `events` table in `nomad.sqlite` (ADR-P006).
 
 ### EpisodeRetrospective
 
@@ -250,15 +253,15 @@ erDiagram
 
 ## 7. Migrations
 
-- Forward-only, versioned.
+- Forward-only, versioned, run by a hand-rolled runner: `migrations/NNNN_name.sql`
+  applied in order against a `schema_version` table (ADR-P008).
 - The first migration creates the full schema above.
-<!-- DECISION NEEDED: alembic vs. a small hand-rolled runner (see 04_TRD.md TRD-011) -->
 
-## 8. Open Questions
+## 8. Resolved Design Choices
 
-- ID scheme (ULID recommended).
-- Events storage location.
-- Whether `Scene` is always required or can be skipped for simple segments
-  (recommend: always present, may be a single default scene).
-- Whether `constraints` and `license` deserve their own tables later rather than
-  JSON columns (defer until a query needs it).
+- **ID scheme:** ULID + branded types (ADR-P005, ADR-015).
+- **Events storage:** `events` table in `nomad.sqlite` (ADR-P006).
+- **`Scene` is always present** — a simple segment gets one default scene rather
+  than allowing shots to hang off a segment directly. Keeps the tree uniform.
+- **`constraints` and `license` stay JSON columns** for v1; promote to their own
+  tables only when a query actually needs to filter on their fields.

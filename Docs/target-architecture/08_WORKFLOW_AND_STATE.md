@@ -86,8 +86,7 @@ Human review -> (approve -> handed_off | notes -> targeted stage rework)
 
 - **Threshold:** `revision_count >= 3` on a single stage -> Critic escalates to
   the Creative Director via Hermes; episode moves to `blocked` until the human
-  gives direction.
-  <!-- DECISION NEEDED: confirm threshold value (draft: 3) -->
+  gives direction. Value is `config/policy.yaml: revision_ceiling` (ADR-P010).
 - A human can override a Critic REWORK ("ship it as is") — recorded as an
   `Approval` with rationale.
 
@@ -140,11 +139,9 @@ can continue without losing an already-produced, already-registered asset.
 - `next_actions(episode_id)` -> the set of legal next transitions.
 - `resumable_episodes()` -> episodes with in-flight work after a restart.
 
-## 9. Open Questions
+## 9. Resolved Design Choices
 
-- Revision ceiling value (draft 3).
-- Whether human review after `production PASS` is a formal stage in the machine
-  or an approval gate on `package_ready -> handed_off` (current design: the
-  latter).
-- Whether `blocked` needs sub-reasons or the linked `Approval.trigger` is enough
-  (current design: the linked Approval is enough).
+- Revision ceiling = 3 (ADR-P010), config-tunable.
+- Human review after `production PASS` is an **approval gate** on
+  `package_ready -> handed_off`, not a formal stage in the machine.
+- `blocked` carries no sub-reasons; the linked `Approval.trigger` is the reason.

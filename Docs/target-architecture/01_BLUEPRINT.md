@@ -1,6 +1,6 @@
 # Nomad Dimension Blueprint
 
-Status: **Drafted**
+Status: **Drafted** · *Target architecture — not built. Current system: `../AS_BUILT.md`.*
 
 ## Purpose
 

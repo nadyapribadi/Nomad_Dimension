@@ -1,6 +1,6 @@
 # Nomad Dimension Project Charter
 
-Status: **Drafted**
+Status: **Drafted** · *Target architecture — not built. Current system: `../AS_BUILT.md`.*
 
 ## Document Control
 

@@ -2,21 +2,21 @@
 
 **Odyssey of Discovery** — an AI-powered documentary production pipeline for YouTube.
 
-Nomad Dimension is a local-first, provider-agnostic, hierarchical AI production system that supports pre-production, production, and post-production workflows for a documentary-style YouTube channel covering history, culture, travel, and geography.
+Nomad Dimension is a web app that walks one operator through producing a documentary-style YouTube episode — from inspiration browsing to a production handoff — with Claude assisting at each step and Notion as the cross-device state store. The channel covers history, culture, travel, and geography.
 
 ## Architecture
 
 The system follows a **6-stage pipeline**:
 
-| Stage | Name | Description |
-|-------|------|-------------|
-| 0 | Settings | Notion connection, API keys, model config, Channel DNA |
-| 1 | YouTube Browser | Browse source channels, discover inspiration videos |
-| 2 | Episode Builder | Theme generation, episode creation, content calendar, gap analysis |
-| 3 | Transcript | SRT upload, language detection, outline extraction, places review |
-| 4 | Script Builder | Kai & Mia dialogue generation, section-by-section scripting |
-| 5 | Audio TTS | Neural voice synthesis (Kai & Mia), full episode playback |
-| 6 | Production Handoff | CapCut guide, Canva brief, thumbnail brief, YouTube metadata |
+| Stage | Name               | Description                                                        |
+| ----- | ------------------ | ------------------------------------------------------------------ |
+| 0     | Settings           | Notion connection, API keys, model config, Channel DNA             |
+| 1     | YouTube Browser    | Browse source channels, discover inspiration videos                |
+| 2     | Episode Builder    | Theme generation, episode creation, content calendar, gap analysis |
+| 3     | Transcript         | SRT upload, language detection, outline extraction, places review  |
+| 4     | Script Builder     | Kai & Mia dialogue generation, section-by-section scripting        |
+| 5     | Audio TTS          | Neural voice synthesis (Kai & Mia), full episode playback          |
+| 6     | Production Handoff | CapCut guide, Canva brief, thumbnail brief, YouTube metadata       |
 
 **Characters:** Kai (host, 55%) and Mia (co-host, 45%) — dual-presenter documentary format.
 
@@ -24,37 +24,30 @@ The system follows a **6-stage pipeline**:
 
 ```
 Nomad_Dimension/
-├── index.html              # Single-page pipeline app (Netlify-deployed)
-├── netlify.toml            # Netlify configuration
-├── functions/              # Netlify serverless functions
-│   ├── anthropic-proxy.js  # Claude API proxy
-│   ├── notion-proxy.js     # Notion API proxy
-│   ├── tts-proxy.js        # Text-to-speech proxy
-│   └── youtube-proxy.js    # YouTube Data API proxy
-└── Docs/                   # Architecture & planning documents
-    ├── 00_PROJECT_CHARTER.md
-    ├── 01_BLUEPRINT.md
-    ├── 02_PRD.md
-    ├── 05_ARCHITECTURE.md
-    ├── 06_DATA_MODEL.md
-    ├── 07_AGENT_SPECS.md
-    ├── 16_IMPLEMENTATION_PLAN.md
-    └── ... (29 documents total)
+├── index.html                # Single-page pipeline app (Netlify-deployed)
+├── netlify.toml              # Netlify configuration
+├── package.json              # tooling: eslint, prettier
+├── eslint.config.js
+├── functions/                # Netlify serverless functions (provider proxies)
+│   ├── README.md             # the proxy request/response contract
+│   ├── anthropic-proxy.js
+│   ├── notion-proxy.js
+│   ├── tts-proxy.js
+│   └── youtube-proxy.js
+└── Docs/
+    ├── AS_BUILT.md           # ← how the current system actually works
+    ├── README.md
+    └── target-architecture/  # aspirational future design (not built)
 ```
 
 ## Documentation
 
-The `Docs/` folder contains the full architecture and planning documentation. Read in order:
-
-1. **[Project Charter](Docs/00_PROJECT_CHARTER.md)** — Mission, principles, goals, success criteria
-2. **[Blueprint](Docs/01_BLUEPRINT.md)** — Living executive decisions, layer model, guardrails
-3. **[PRD](Docs/02_PRD.md)** — Personas, journeys, MVP scope, product requirements
-4. **[Architecture](Docs/05_ARCHITECTURE.md)** — System structure, layers, flows, boundaries
-5. **[Data Model](Docs/06_DATA_MODEL.md)** — Content hierarchy, SQLite schema, versioning
-6. **[Agent Specs](Docs/07_AGENT_SPECS.md)** — The six agent job descriptions
-7. **[Implementation Plan](Docs/16_IMPLEMENTATION_PLAN.md)** — Phased build plan with exit criteria
-
-The frozen source of record is `Nomad_Dimension_Master_Architecture_and_Operating_Blueprint.docx`. When Markdown docs disagree with the `.docx`, the Markdown wins.
+- **[`Docs/AS_BUILT.md`](Docs/AS_BUILT.md)** — how the deployed system works:
+  stages, Notion databases, the four proxies, known gaps. **Start here.**
+- **[`functions/README.md`](functions/README.md)** — the proxy/API contract.
+- **[`Docs/target-architecture/`](Docs/target-architecture/)** — a much more
+  ambitious design (Python, local-first, autonomous agents, an independent
+  Critic). **Not built**; kept as reference for a possible future version.
 
 ## Tech Stack
 
@@ -65,14 +58,20 @@ The frozen source of record is `Nomad_Dimension_Master_Architecture_and_Operatin
 - **TTS:** Google Cloud Neural Voices (en-US-Neural2-D for Kai, en-US-Neural2-F for Mia)
 - **Video:** YouTube Data API v3
 
-## Deployment
-
-This app is deployed on Netlify. Push to `main` to deploy.
+## Development
 
 ```bash
-# Local development
-npx netlify-cli dev
+npm install        # also wires the pre-commit hook (lint + format)
+npm run dev         # netlify dev — local server + functions
+npm run check       # eslint + prettier --check (what CI runs)
+npm run format      # apply prettier
 ```
+
+Node 22 (`.nvmrc`). CI runs `npm run check` on every push and PR.
+
+## Deployment
+
+Deployed on Netlify; push to `main` to deploy.
 
 ## License
 

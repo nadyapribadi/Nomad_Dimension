@@ -115,8 +115,8 @@ Reason (Anthropic, *Building Effective Agents*): predictable cost, debuggable
 failures, testable transitions. Reserve open-ended agent loops for steps where a
 single structured call plus tools demonstrably fails (Research search,
 Production retry).
-Consequence: `07_AGENT_SPECS.md` §A–B; per-agent step budgets are a
-`DECISION NEEDED` to finalize before P4.
+Consequence: `07_AGENT_SPECS.md` §A–B; per-agent step budgets are set in
+ADR-P013 (draft values, revisit after P10).
 
 ### ADR-014 — No agent framework; provider SDKs directly behind the `models` capability
 
@@ -181,32 +181,102 @@ Recommendation: choose one at P7 that supports static-image export of styled
 maps, routes, and satellite/context views. Google Maps Static fits the existing
 Google account; Mapbox/MapTiler give more styling control.
 
-### ADR-P005 — ID scheme
+### ADR-P005 — ID scheme — DECIDED
 
-Options: ULID / UUIDv7 / prefixed short IDs.
-Recommendation: ULID (sortable, no coordination, URL-safe).
+Decision: **ULID** (26-char, lexicographically sortable, no coordination,
+URL-safe). Distinct branded types per entity (ADR-015).
 
-### ADR-P006 — Events storage
+### ADR-P006 — Events storage — DECIDED
 
-Options: JSONL files / SQLite events table / both.
-Recommendation: SQLite events table for queryability; optional JSONL export.
+Decision: **SQLite `events` table** (queryable, joins to episodes). A JSONL
+export helper is a later convenience, not the store.
 
-### ADR-P007 — Local interface
+### ADR-P007 — Local interface — DECIDED
 
-Options: CLI only / CLI + FastAPI.
-Recommendation: CLI only for v1; add FastAPI when a second surface actually
-needs it.
+Decision: **CLI only for v1.** No FastAPI until a second surface (web review UI,
+remote trigger) actually needs it. Console entrypoint: `nomad`.
 
-### ADR-P008 — Migration tooling
+### ADR-P008 — Migration tooling — DECIDED
 
-Options: Alembic / hand-rolled forward-only runner.
-Recommendation: hand-rolled runner for v1 (schema is small); Alembic if it grows.
+Decision: **Hand-rolled forward-only runner** — a `migrations/NNNN_name.sql` +
+`schema_version` table. Schema is small. Revisit Alembic only if migrations get
+complex.
 
-### ADR-P009 — Budget defaults
+### ADR-P010 — Revision ceiling — DECIDED
 
-Per-episode budget and per-call cap values — set after the first episode's
-measured cost.
+Decision: **3** REWORK cycles per stage, then Critic escalates and the episode
+is `blocked`. Tunable in `config/policy.yaml`; revisit after real rework data.
 
-### ADR-P010 — Revision ceiling value
+### ADR-P012 — Toolchain — DECIDED
 
-Draft: 3. Confirm after observing real rework behavior.
+Decision: **Python 3.12**; **uv** for dependencies/venv; **ruff** (lint and
+format) plus **mypy** (type check); **pytest**. Pre-commit hook runs ruff and
+mypy only. Commit messages: plain imperative. CI: GitHub Actions.
+
+### ADR-P013 — Step budgets (agent runner) — DECIDED (draft values)
+
+Decision: enforce these per-agent ceilings in the agent runner; a hit returns a
+typed partial result, not an error.
+
+| Agent | Model calls | Other |
+| --- | --- | --- |
+| Hermes | 2 | — |
+| Research | 2 synthesis | ≤ 8 `research` search calls |
+| Story | 3 | — |
+| Visual | 2 per segment | — |
+| Production | 1 per asset | ≤ 3 provider retries per asset |
+| Critic | 1 | — |
+
+Revisit after P10 measurement.
+
+### ADR-P002 — First `research` provider — DECIDED
+
+Decision: **Tavily** to start. Agent-shaped structured results with publish
+dates, minimal integration code, free tier covers early episodes (~<$0.10/episode
+after). Results are untrusted data regardless (`09` §8); synthesis is done by
+the Research/Story agents so claims trace to sources — which is why an
+answer-in-a-box API (Perplexity) was rejected. Fallback if index coverage or
+cost bites: **Brave Search API** (config swap).
+
+### ADR-P003b — First `image` / `video` provider — DECIDED
+
+Decision: **Replicate** for both `image` and `video`. No subscription, pay per
+run, and one adapter covers dozens of models selectable by config string —
+literally the lowest-commitment way to A/B cheap vs. good. Start: Flux-schnell /
+Flux-dev for stills; a low-cost video model (Kling standard / Wan / LTX) for
+clips. Measure cost and quality on episode 1, then decide whether Runway's motion
+quality justifies its price and subscription. `design` stays code-generated SVG.
+
+### ADR-P011 — Maps provider — DECIDED
+
+Decision: **Google Maps Static API**. Reuses the existing Google account and
+billing (Drive), the recurring Maps Platform monthly credit makes it effectively
+free at this volume (~10–50 maps/month), satellite/context views included.
+Tradeoff: weaker custom styling and stricter caching/ToS rules. If a distinctive
+branded map style is wanted later: **MapTiler** (cheaper) or **Mapbox** (best
+styling) — the `maps` adapter is kept thin so this is a config swap.
+
+### ADR-P009 — Budget numbers — DECIDED
+
+Decision: **$25 default per episode** (`episode_default_cents: 2500`),
+**$3 per-call cap** (`per_call_cap_cents: 300`), warn at 80% ($20). Rationale:
+the operator's stated ceiling is $20–30; the per-call cap catches a single
+runaway image/video generation before it spends the budget. Tune both after the
+first measured episode. At this budget the binding constraint is AI-video
+seconds — see `15_EFFICIENCY_AND_COST.md` §1.
+
+> Provider pricing figures behind P002/P003b/P011 are ballpark (knowledge cutoff
+> Jan 2026); verify current rates before committing spend. The choices are
+> structural (no lock-in / existing account), so they stand regardless of price
+> drift.
+
+## Still Need Your Call
+
+Nothing blocking. Remaining items are set-after-measurement:
+
+- Exact model ids for the `models` tiers and the Replicate video model (pick at
+  P7 against current availability).
+- Metric targets in `02_PRD.md` §10 / `14_EVALUATION_METRICS.md` §3 (after the
+  first end-to-end episode).
+- Drive folder layout and the DaVinci package manifest schema (confirm against a
+  real Resolve import at P10).
