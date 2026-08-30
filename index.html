@@ -1040,8 +1040,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   <!-- PLACES TAB (folded in from old Stage 3B) -->
   <div id="ep-tab-places" style="display:none">
     <div class="card">
-      <div class="card-title"><span class="icon">📍</span> Places from the Breakdowns</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Reads the <code style="font-family:var(--font-mono)">places</code> list straight out of each Prep breakdown (no AI call) and cross-references your Places DB for duplicates. Run <strong>Prep → Run breakdown</strong> first. Prefecture is the breakdown's <em>AI guess</em> from the place name (marked "check it") — halal you set per row.</p>
+      <div class="card-title"><span class="icon">📍</span> Places → Notion library</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Pulls the <code style="font-family:var(--font-mono)">places</code> list out of each Prep breakdown, enriches each via Google Maps, and <strong>pushes them to your Places DB</strong> (or <strong>refreshes</strong> ones already there — Maps data drifts). This tab is only about the library; whether a place goes <em>in the episode</em> is decided in Assemble. Sorted A–Z. Run <strong>Prep → Run breakdown</strong> first.</p>
       <button class="btn btn-primary" onclick="extractPlaces()">Collect Places →</button>
       <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Reading breakdowns…</div>
       <div id="places-error" class="info-box error" style="display:none;margin-top:12px"></div>
@@ -1052,9 +1052,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         <div id="places-list"></div>
       </div>
       <div class="card">
-        <div class="card-title"><span class="icon">📥</span> Confirmed</div>
-        <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Push these to your Places database (the reusable location library). The <em>order they appear in the episode</em> is decided next, in Assemble.</p>
-        <div id="confirmed-list" style="font-size:12px;color:var(--text2);margin-bottom:10px">Nothing confirmed yet — hit <strong>✓ Include</strong> above.</div>
+        <div class="card-title"><span class="icon">📥</span> Queued for Notion</div>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:10px">These get written to the Places DB. New rows are created; ones already in the DB have their Maps facts (rating, address, price, coordinates…) refreshed and <strong>Last Verified</strong> stamped — your Halal / Notes are never overwritten.</p>
+        <div id="confirmed-list" style="font-size:12px;color:var(--text2);margin-bottom:10px">Nothing queued yet — hit <strong>✓ Push</strong> / <strong>↻ Update</strong> above.</div>
         <div class="btn-row">
           <button class="btn btn-primary" id="save-places-btn" onclick="saveConfirmedPlaces()">Push Confirmed Places to Notion →</button>
           <button class="btn" onclick="switchTab('ep','assemble');enterAssemble()">Next: Assemble →</button>
@@ -3551,7 +3551,7 @@ async function extractPlaces() {
         });
       }
     }
-    S.extractedPlaces = [...byKey.values()];
+    S.extractedPlaces = [...byKey.values()].sort((a, z) => a.name.localeCompare(z.name));
     S.confirmedPlaces = [];
     if (!S.extractedPlaces.length) throw new Error('the breakdowns list no places');
 
@@ -3579,7 +3579,9 @@ function setPlaceField(i, field, value) {
 // Google Places API (New) via functions/maps-proxy.js. Best-effort: no key set
 // (or no match) → the row keeps its AI prefecture guess. Returns the match count.
 async function enrichPlacesFromMaps() {
-  const targets = S.extractedPlaces.filter(p => !p.is_existing);
+  // Enrich existing rows too — that's how "Update in DB" gets fresh data
+  // (rating / address / closed status drift over the years).
+  const targets = S.extractedPlaces;
   if (!targets.length) return 0;
   let matched = 0;
   await Promise.allSettled(targets.map(async (p) => {
@@ -3656,7 +3658,7 @@ function renderPlacesReview() {
             ${['Unknown', 'Yes', 'Partial', 'No'].map(o => `<option ${p.halal === o ? 'selected' : ''}>${o}</option>`).join('')}
           </select></label>` : ''}
         <div style="flex:1"></div>
-        <button class="btn btn-sm btn-primary" onclick="confirmPlace(${i})">✓ Include</button>
+        <button class="btn btn-sm btn-primary" onclick="confirmPlace(${i})">${p.is_existing ? '↻ Update in DB' : '✓ Push to Notion'}</button>
         <button class="btn btn-sm btn-ghost" onclick="skipPlace(${i})">Skip</button>
       </div>
     </div>`;
@@ -3671,7 +3673,7 @@ function confirmPlace(i) {
   const el = document.getElementById(`place-${i}`);
   if (el) { el.style.opacity = '.5'; el.style.pointerEvents = 'none'; }
   renderConfirmedList();
-  toast(`✓ ${p.name} confirmed`);
+  toast(`${p.is_existing ? '↻' : '✓'} ${p.name} queued`);
 }
 
 function skipPlace(i) {
@@ -3682,10 +3684,12 @@ function skipPlace(i) {
 function renderConfirmedList() {
   const el = document.getElementById('confirmed-list');
   if (!el) return;
+  const nNew = S.confirmedPlaces.filter(p => !p.is_existing).length;
+  const nUpd = S.confirmedPlaces.length - nNew;
   el.innerHTML = S.confirmedPlaces.length
-    ? `${S.confirmedPlaces.length} place${S.confirmedPlaces.length === 1 ? '' : 's'}: ` +
-      S.confirmedPlaces.map(p => p.name).join(' · ')
-    : 'Nothing confirmed yet — hit <strong>✓ Include</strong> above.';
+    ? [nNew && `${nNew} new`, nUpd && `${nUpd} to update`].filter(Boolean).join(' · ') +
+      ': ' + S.confirmedPlaces.map(p => p.name).join(' · ')
+    : 'Nothing queued yet — hit <strong>✓ Push</strong> / <strong>↻ Update</strong> above.';
 }
 
 let _savingPlaces = false;
@@ -3696,51 +3700,57 @@ async function saveConfirmedPlaces() {
   const btn = document.getElementById('save-places-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
-  let saved = 0, skipped = 0;
-  try {
-    // Re-read the DB now so a re-run (or a place already added by hand) never duplicates.
-    let existing = new Set();
-    try {
-      const cur = await notionAPI(`databases/${DB_IDS.places}/query`, 'POST', { page_size: 100 });
-      existing = new Set((cur.results || []).map(
-        r => (r.properties?.Name?.title?.[0]?.plain_text || '').trim().toLowerCase()
-      ));
-    } catch (e) { console.warn('places dedupe pre-check failed:', e.message); }
+  const today = new Date().toISOString().slice(0, 10);
+  // Facts that come from Google Maps / the breakdown — refreshed on every push,
+  // including "Update in DB". Halal / Notes / Used In Episodes are the operator's
+  // and are never touched here.
+  const machineProps = (p) => ({
+    'Type': { select: { name: normPlaceType(p.type) } },
+    'Prefecture': { select: { name: p.prefecture || 'Unknown' } },
+    'Country': { select: { name: 'Japan' } },
+    'Google Maps URL': { url: p.google_maps_url || null },
+    'B-Roll Description': { rich_text: [{ text: { content: p.what_happens_here || '' } }] },
+    'Price Range': { select: { name:
+      priceRange(p.price_if_spoken) !== 'Unknown' ? priceRange(p.price_if_spoken) : (p.maps_price || 'Unknown') } },
+    'Price Note': { rich_text: [{ text: { content: p.price_if_spoken || '' } }] },
+    'Food': { rich_text: [{ text: { content: p.food_here || '' } }] },
+    'Address': { rich_text: [{ text: { content: p.address || '' } }] },
+    'Coordinates': { rich_text: [{ text: { content: (typeof p.lat === 'number') ? `${p.lat},${p.lng}` : '' } }] },
+    'Website': { url: p.website || null },
+    'Summary': { rich_text: [{ text: { content: (p.maps_summary || '').slice(0, 1900) } }] },
+    ...(typeof p.rating === 'number' ? { 'Rating': { number: p.rating } } : {}),
+    ...(p.ratingCount ? { 'Review Count': { number: p.ratingCount } } : {}),
+    'Source Video': { rich_text: [{ text: { content: (p.from || []).join(' · ').slice(0, 1900) } }] },
+    'Last Verified': { date: { start: today } },
+  });
 
+  let added = 0, updated = 0, failed = 0;
+  try {
     for (const p of S.confirmedPlaces) {
-      const key = (p.name || '').trim().toLowerCase();
-      if (p.is_existing || p._saved || existing.has(key)) { skipped++; continue; }
+      if (p._saved) continue;
       try {
-        await notionAPI('pages', 'POST', {
-          parent: { database_id: DB_IDS.places },
-          properties: {
-            'Name': { title: [{ text: { content: p.name } }] },
-            'Type': { select: { name: normPlaceType(p.type) } },
-            'Prefecture': { select: { name: p.prefecture || 'Unknown' } },
-            'Country': { select: { name: 'Japan' } },
-            'Google Maps URL': { url: p.google_maps_url || null },
-            'B-Roll Description': { rich_text: [{ text: { content: p.what_happens_here || '' } }] },
-            'Halal': { select: { name: p.halal || 'Unknown' } },
-            'Price Range': { select: { name:
-              priceRange(p.price_if_spoken) !== 'Unknown' ? priceRange(p.price_if_spoken) : (p.maps_price || 'Unknown') } },
-            'Price Note': { rich_text: [{ text: { content: p.price_if_spoken || '' } }] },
-            'Food': { rich_text: [{ text: { content: p.food_here || '' } }] },
-            'Address': { rich_text: [{ text: { content: p.address || '' } }] },
-            'Coordinates': { rich_text: [{ text: { content: (typeof p.lat === 'number') ? `${p.lat},${p.lng}` : '' } }] },
-            'Website': { url: p.website || null },
-            'Summary': { rich_text: [{ text: { content: (p.maps_summary || '').slice(0, 1900) } }] },
-            ...(typeof p.rating === 'number' ? { 'Rating': { number: p.rating } } : {}),
-            ...(p.ratingCount ? { 'Review Count': { number: p.ratingCount } } : {}),
-            'Source Video': { rich_text: [{ text: { content: (p.from || []).join(' · ').slice(0, 1900) } }] },
-            // Notes is left empty — it's the operator's own scratch field, not a dump.
-          }
-        });
+        if (p.is_existing && p.existing_id) {
+          await notionAPI(`pages/${p.existing_id}`, 'PATCH', { properties: machineProps(p) });
+          updated++;
+        } else {
+          await notionAPI('pages', 'POST', {
+            parent: { database_id: DB_IDS.places },
+            properties: {
+              'Name': { title: [{ text: { content: p.name } }] },
+              'Halal': { select: { name: p.halal || 'Unknown' } },
+              ...machineProps(p),
+            },
+          });
+          added++;
+        }
         p._saved = true;
-        existing.add(key);
-        saved++;
-      } catch (err) { console.error('Place save error', p.name, err); }
+      } catch (err) { failed++; console.error('Place save error', p.name, err); }
     }
-    toast(`Saved ${saved} new place${saved === 1 ? '' : 's'}${skipped ? `, skipped ${skipped} already in Notion` : ''}`, 'success');
+    toast(
+      [added && `${added} added`, updated && `${updated} refreshed`, failed && `${failed} failed`]
+        .filter(Boolean).join(' · ') || 'Nothing to push',
+      failed ? 'error' : 'success'
+    );
   } finally {
     _savingPlaces = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Push Confirmed Places to Notion →'; }
