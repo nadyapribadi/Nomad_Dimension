@@ -1500,16 +1500,21 @@ const S = {
 // ─── PROXY HELPERS ──────────────────────────────────────────────────────────
 // Keys/tokens live only in Netlify env vars — the browser never sends them.
 async function notionAPI(endpoint, method = 'GET', body = null) {
-  const res = await fetch('/.netlify/functions/notion-proxy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ endpoint, method, body }),
-  });
-  if (!res.ok) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch('/.netlify/functions/notion-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint, method, body }),
+    });
+    if (res.ok) return res.json();
+    // Notion allows ~3 req/s — back off and retry a rate-limited call twice.
+    if (res.status === 429 && attempt < 2) {
+      await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+      continue;
+    }
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || `Notion API error ${res.status}`);
   }
-  return res.json();
 }
 
 async function ytAPI(path, params = {}) {
@@ -2267,7 +2272,7 @@ async function fetchYouTube() {
         duration: v.contentDetails?.duration || '',
         durationMin: iso8601Minutes(v.contentDetails?.duration || ''),
         viewsNum: parseInt(v.statistics?.viewCount || 0, 10),
-        views: parseInt(v.statistics?.viewCount || 0).toLocaleString(),
+        views: parseInt(v.statistics?.viewCount || 0, 10).toLocaleString('en-US'),
         url: `https://youtube.com/watch?v=${v.id}`,
         angle: '', // filled by the 'angle' route in openReviewModal
         contentType: [],
@@ -2470,6 +2475,7 @@ async function pushToNotion() {
         'Country': { select: { name: v.country || 'Japan' } },
         'B-Roll Status': { select: { name: 'Available' } },
       };
+      props['Date Logged'] = { date: { start: new Date().toISOString().slice(0, 10) } };
       const ctype = (v.contentType || []).filter(Boolean);
       if (ctype.length) props['Content Type'] = { multi_select: ctype.map(name => ({ name })) };
       if (v.region) props['Region / Prefecture'] = { rich_text: [{ text: { content: v.region } }] };
