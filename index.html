@@ -2611,12 +2611,27 @@ function renderPrepList() {
         <span class="badge ${v.outline ? 'badge-green' : ''}">📋 outline ${v.outline ? '✓' : '—'}</span>
       </div>
       <div class="row" style="flex-wrap:wrap;gap:8px">
-        <button class="btn btn-sm" onclick="prepFetchTranscript(${i})" id="prep-tx-btn-${i}">Fetch transcript</button>
-        <button class="btn btn-sm" onclick="prepRunOutline(${i})" id="prep-ol-btn-${i}" ${v.transcript ? '' : 'disabled'}>Run outline</button>
+        <button class="btn btn-sm" onclick="prepFetchTranscript(${i})" id="prep-tx-btn-${i}">${v.transcript ? 'Re-fetch transcript' : 'Fetch transcript'}</button>
+        <button class="btn btn-sm" onclick="prepRunOutline(${i})" id="prep-ol-btn-${i}" ${v.transcript ? '' : 'disabled'}>${v.outline ? 'Re-run outline' : 'Run outline'}</button>
+        ${v.transcript ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'tx')">view transcript</button>` : ''}
+        ${v.outline ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'ol')">view outline</button>` : ''}
         <a class="btn btn-sm btn-ghost" href="${v.url || '#'}" target="_blank" rel="noopener">▶ open video</a>
       </div>
       <div id="prep-status-${i}" style="font-size:11px;color:var(--text3);margin-top:6px"></div>
+      <pre id="prep-view-${i}" style="display:none;white-space:pre-wrap;font-size:11px;color:var(--text2);background:var(--surface2);border-radius:var(--radius);padding:10px;margin-top:8px;max-height:320px;overflow:auto"></pre>
     </div>`).join('');
+}
+
+function prepToggle(i, kind) {
+  const pre = document.getElementById(`prep-view-${i}`);
+  const txt = kind === 'ol' ? S.epQueue[i].outline : S.epQueue[i].transcript;
+  if (pre.style.display === 'none' || pre.dataset.kind !== kind) {
+    pre.textContent = txt || '(empty)';
+    pre.dataset.kind = kind;
+    pre.style.display = '';
+  } else {
+    pre.style.display = 'none';
+  }
 }
 
 // Set the per-video status line (survives a renderPrepList() re-render).
@@ -2660,10 +2675,11 @@ async function prepRunOutline(i) {
   const btn = document.getElementById(`prep-ol-btn-${i}`);
   btn.disabled = true; btn.textContent = 'Running…';
   let msg = '';
-  const isJa = /[぀-ヿ一-龯]/.test(v.transcript.slice(0, 200));
   try {
     const prompt = `Analyse this video transcript for the Nomad Dimension channel.
-${isJa ? 'The transcript is Japanese — translate the key content culturally for a Western audience, then analyse.' : ''}
+The transcript may be in any language (or a rough machine translation). Work out the
+actual meaning, translate/interpret it into natural English, then analyse. Keep place
+names in their correct local romanisation.
 
 <transcript>
 ${v.transcript.slice(0, 8000)}
@@ -2678,15 +2694,15 @@ Use clear headers.`;
     const out = (await aiRun('outline', { system: buildDNASystem(), messages: [{ role: 'user', content: prompt }] })).text;
     v.outline = out;
     rebuildCombinedOutline();
-    st.textContent = 'Outline extracted. Saving to Notion…';
     await notionAPI(`pages/${v.id}`, 'PATCH', {
       properties: { 'Content Outline': { rich_text: codeBlockRichText(out.slice(0, 190000)) } },
     }).catch(() => {});
-    st.textContent = 'Outline saved.';
+    msg = 'Outline saved to the video’s Notion row (Content Outline).';
   } catch (e) {
-    st.textContent = `Outline failed: ${e.message}`;
+    msg = `Outline failed: ${e.message}`;
   } finally {
     renderPrepList();
+    prepStatus(i, msg);
   }
 }
 
