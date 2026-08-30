@@ -1649,8 +1649,9 @@ function parseAndApplySettings(blocks) {
         if (currentSection.includes('api key')) keysRaw[key] = val;
       }
     }
-    // Machine-read code blocks: routing ({dialogue:...}) and Channel DNA
-    // ({identity:..., voice:...}). Keep each block id so the UI can PATCH it back.
+    // Machine-read code blocks: routing ({dialogue:{provider…}}), Channel DNA
+    // ({identity, voice}), and Lookup Tables ({section_types, tone_styles,
+    // voice_configs}). Keep each block id so the UI can PATCH it back.
     if (block.type === 'code') {
       const txt = block.code?.rich_text?.map(r => r.plain_text).join('') || '';
       try {
@@ -1659,6 +1660,13 @@ function parseAndApplySettings(blocks) {
           S.routing = parsed; S.routingBlockId = block.id;
         } else if (parsed && parsed.identity && parsed.voice) {
           S.dna = parsed; S.dnaBlockId = block.id;
+        } else if (parsed && parsed.section_types && parsed.tone_styles) {
+          S.lookups = {
+            sections: parsed.section_types || [],
+            tones: parsed.tone_styles || [],
+            voices: parsed.voice_configs || [],
+          };
+          S.lookupsBlockId = block.id;
         }
       } catch { /* not a machine-read block */ }
     }
@@ -1666,13 +1674,6 @@ function parseAndApplySettings(blocks) {
     if (block.type === 'paragraph') {
       const txt = block.paragraph?.rich_text?.map(r => r.plain_text).join('') || '';
       if (txt.startsWith('Active Episode:')) S.activeEpisode = txt.split('Active Episode:')[1]?.trim() || '';
-    }
-    // Lookup tables — bulleted lists
-    if (block.type === 'bulleted_list_item') {
-      const txt = block.bulleted_list_item?.rich_text?.map(r => r.plain_text).join('') || '';
-      if (currentSection.includes('section type')) S.lookups.sections.push(txt);
-      else if (currentSection.includes('tone')) S.lookups.tones.push(txt);
-      else if (currentSection.includes('voice')) S.lookups.voices.push(txt);
     }
   }
 
@@ -1770,13 +1771,30 @@ function removeLookupItem(type, idx) {
   renderLookupList(type, S.lookups[type]);
 }
 
-function saveLookups() {
-  // Read current values from inputs
+async function saveLookups() {
   ['sections','tones','voices'].forEach(type => {
     const inputs = document.querySelectorAll(`[data-lookup="${type}"]`);
-    S.lookups[type] = Array.from(inputs).map(i => i.value).filter(Boolean);
+    S.lookups[type] = Array.from(inputs).map(i => i.value.trim()).filter(Boolean);
   });
-  toast('Lookup tables saved locally. Notion write coming soon.', 'success');
+  const payload = {
+    section_types: S.lookups.sections,
+    tone_styles: S.lookups.tones,
+    voice_configs: S.lookups.voices,
+  };
+  const json = JSON.stringify(payload, null, 2);
+  if (!S.lookupsBlockId) {
+    navigator.clipboard?.writeText(json);
+    toast('No "📋 Lookup Tables" JSON block on the Notion page yet. JSON copied to clipboard — paste it into a code block there.', 'warning');
+    return;
+  }
+  try {
+    await notionAPI(`blocks/${S.lookupsBlockId}`, 'PATCH', {
+      code: { language: 'json', rich_text: codeBlockRichText(json) },
+    });
+    toast('Lookup tables saved to Notion.', 'success');
+  } catch (e) {
+    toast(`Could not save lookup tables: ${e.message}`, 'error');
+  }
 }
 
 // --- Model routing (edits the Notion "🔀 Active Routing" JSON block) ---------
