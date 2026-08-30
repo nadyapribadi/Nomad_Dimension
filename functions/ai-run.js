@@ -5,7 +5,9 @@
 // cost to the Production Costs DB, and returns the normalized result.
 // Phase 2 of the evolution plan — see Docs/AS_BUILT.md.
 
-const { callModel } = require('./_shared/models');
+const { callModel, DEFAULT_ROUTING } = require('./_shared/models');
+
+const APP_SETTINGS_PAGE_ID = '33c9ba2b-3900-8132-b172-f136389ac2e2';
 
 const STAGE_BY_TASK = {
   angle: 'Stage 1 - YouTube',
@@ -18,6 +20,7 @@ const STAGE_BY_TASK = {
   critic: 'Stage 4 - Script',
   thumbnail: 'Stage 6 - Handoff',
   metadata: 'Stage 6 - Handoff',
+  handoff: 'Stage 6 - Handoff',
 };
 
 const PROVIDER_SELECT = { anthropic: 'Anthropic', gemini: 'Google', openai: 'OpenAI' };
@@ -45,9 +48,27 @@ exports.handler = async (event) => {
 
   const { task, provider, model, system, messages, maxTokens, temperature, episode } = payload;
 
+  // Resolve provider+model: explicit override > Notion "Active Routing" > DEFAULT_ROUTING.
+  let p = provider;
+  let m = model;
+  if ((!p || !m) && task) {
+    const routing = await getRouting().catch(() => null);
+    const r = (routing && routing[task]) || DEFAULT_ROUTING[task] || {};
+    p = p || r.provider;
+    m = m || r.model;
+  }
+
   let result;
   try {
-    result = await callModel({ task, provider, model, system, messages, maxTokens, temperature });
+    result = await callModel({
+      task,
+      provider: p,
+      model: m,
+      system,
+      messages,
+      maxTokens,
+      temperature,
+    });
   } catch (err) {
     return respond(STATUS_BY_CODE[err.code] || 500, {
       error: err.message,
@@ -67,6 +88,40 @@ exports.handler = async (event) => {
     costUsd: result.costUsd,
   });
 };
+
+// Reads task -> { provider, model } from the JSON code block under the
+// "🔀 Active Routing" heading on the Notion App Settings page. Cached ~60s so
+// the operator can change a model with no deploy. Any failure -> null (caller
+// falls back to DEFAULT_ROUTING in _shared/models.js).
+let _routingCache = { at: 0, value: null };
+async function getRouting() {
+  const token = process.env.NOTION_TOKEN;
+  if (!token) return null;
+  if (Date.now() - _routingCache.at < 60_000) return _routingCache.value;
+
+  const res = await fetch(
+    `https://api.notion.com/v1/blocks/${APP_SETTINGS_PAGE_ID}/children?page_size=100`,
+    { headers: { Authorization: `Bearer ${token}`, 'Notion-Version': '2022-06-28' } }
+  );
+  if (!res.ok) throw new Error(`Notion ${res.status}`);
+  const data = await res.json();
+  let value = null;
+  for (const block of data.results || []) {
+    if (block.type !== 'code') continue;
+    const text = (block.code.rich_text || []).map((r) => r.plain_text).join('');
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === 'object' && parsed.dialogue) {
+        value = parsed;
+        break;
+      }
+    } catch {
+      /* not the routing block */
+    }
+  }
+  _routingCache = { at: Date.now(), value };
+  return value;
+}
 
 // Fire-and-forget. Never blocks or fails the response.
 async function logCost({ result, task, episode, token }) {

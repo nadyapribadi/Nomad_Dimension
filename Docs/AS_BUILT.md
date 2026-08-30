@@ -21,9 +21,12 @@ map, where the **code diverges from the spec**, and the **forward plan**
 | Path | |
 | --- | --- |
 | `index.html` | The whole app — inline `<style>` + `<script>`, ~3,300 lines, no build step |
-| `functions/*.js` | 4 Netlify proxies — see `../functions/README.md` |
+| `functions/notion-proxy.js` `youtube-proxy.js` `tts-proxy.js` | thin CORS proxies; keys from Netlify env only — see `../functions/README.md` |
+| `functions/ai-run.js` | LLM entry point: routes via `_shared/models.js`, logs cost to the Costs DB |
+| `functions/_shared/models.js` | `callModel()` — provider-agnostic router (Anthropic / Gemini / OpenAI) + `PRICING`; `_shared` is not deployed as a function |
+| `functions/**/*.test.js` | `node --test` (mocked fetch); run by `npm test` + CI + pre-commit |
 | `netlify.toml` | `publish = "."`, `functions = "functions"`; push to `main` deploys |
-| `package.json` etc. | ESLint + Prettier + CI + pre-commit (lint/format only) |
+| `package.json` etc. | ESLint + Prettier + `node --test` in CI + pre-commit |
 
 ## Identifiers hard-coded in `index.html`
 
@@ -55,17 +58,21 @@ reads or writes it. (App Settings is a page, handled via `APP_SETTINGS_PAGE_ID`.
 | 4 Script Builder | `loadSections` · `renderSections` · `renderSectionCard` · `generateDialogue` · `lockSection` · `saveSection` · `applyTemplate` · `parseDialogue` · **`runScriptCheck`** (deterministic QA, added) |
 | 5 Audio TTS | `renderAllAudio` · `playSegment` · `playFullEpisode` · `exportAudio` |
 | 6 Handoff | `generateHandoff` · `renderHandoffDoc` · `saveHandoffToNotion` · `regenerateHandoff` |
-| shared | `notionAPI` · `ytAPI` · `claudeAPI` · `ttsAPI` · `buildDNASystem` · `showStage` · `toast` |
+| shared | `notionAPI` · `ytAPI` · `ttsAPI` · `aiRun(task, {system, messages})` · `buildDNASystem` · `showStage` · `toast` |
 
-Model routing keys read from settings: `S.models.{angle, pass, places, theme, dialogue, thumbnail, gap}`.
+Every AI stage calls `aiRun(task, …)` → `functions/ai-run.js` → `callModel()`.
+Tasks: `angle · theme · outline · translate · places · dialogue · gap · handoff ·
+thumbnail · metadata · critic`. Provider + model per task come from the
+**"🔀 Active Routing"** JSON block on the App Settings Notion page (cached ~60s,
+edit = no deploy), falling back to `DEFAULT_ROUTING` in `_shared/models.js`.
 
 ## Code vs. spec — open gaps
 
 | Spec (Notion doc) | Code today |
 | --- | --- |
-| "Every API call logged to **Production Costs** DB with episode link; Total Cost USD rollup on Episodes" | `costs` ID is declared; **nothing writes cost rows**, no rollup |
+| "Every API call logged to **Production Costs** DB" | `ai-run.js` logs every LLM call (provider, model, tokens, cost, stage, episode). TTS/YouTube calls not yet logged; no Total-Cost rollup on Episodes. |
 | **Performance** DB — post-publish metrics at 3 checkpoints | not referenced in code |
-| App Settings is the source of truth for model config / lookup tables | `saveModels()` / `saveLookups()` only update memory ("Notion write coming soon") |
+| App Settings is the source of truth for lookup tables | `saveLookups()` only updates memory. Model routing *is* now Notion-read (the "🔀 Active Routing" block). |
 | Two-pass transcript: Pass 2 uses "only the relevant **outline chunk** + place details + brief" | `generateDialogue` passes brief + route order + matched place b-roll — **not the outline chunk** |
 | "Each dialogue line gets an estimated timestamp" | `generateDialogue` output is `KAI:` / `MIA:` lines only; no timestamps produced |
 | Dialogue version history — "last 5 versions stored" | `Dialogue Version` number increments; prior text is overwritten, not kept |
@@ -97,12 +104,12 @@ one video per month.
 
 Each phase ships something; decide at the gate before moving on.
 
-| # | Phase | Delivers | Key work | Exit |
+| # | Phase | Delivers | Key work | Status |
 | --- | --- | --- | --- | --- |
-| 0 | Foundations | tooling, keys→env, docs, Script Check | *(≈ done)* | proxies verified on live site; request-body key fallback removed |
-| 1 | Capability layer | tested model router | `functions/lib/models.js` + `providers/{anthropic,gemini,openai}.js` + `cost.js` + `*.test.js` + `ai-run.js` endpoint | `callModel` passes tests for all three providers; error taxonomy tested |
-| 2 | Migrate pipeline | **models are agnostic**; **cost visible** | route every AI stage through `ai-run.js`; prompts → `functions/lib/prompts/`; `callModel` writes Costs DB rows; delete hard-coded model IDs; model choice read from the Notion model table | every stage runs through the layer; swapping a model is a Notion edit; Costs DB fills |
-| 3 | Critic layer | **independent quality gate** | `functions/lib/critic.js` — `review()` on a *different* provider than the writer — + stage rubrics + per-stage "Review" button (PASS / REWORK notes) | weak dialogue/outline reliably flagged; optional auto-revise-once |
+| 0 | Foundations | tooling, keys → Netlify env (browser sends none), docs, Script Check | 4 proxies env-only; `claudeAPI` + `anthropic-proxy.js` deleted; `connectNotion` uses server-side token | **✅ done** |
+| 1 | Capability layer | tested model router | `functions/_shared/models.js` (`callModel`, Anthropic/Gemini/OpenAI adapters, `PRICING`) + `models.test.js` + `ai-run.js` | **✅ done** (17 tests) |
+| 2 | Migrate pipeline | **models are agnostic**; **cost visible** | all 11 AI stages call `aiRun(task,…)`; provider+model from the Notion "🔀 Active Routing" block (no deploy) → `DEFAULT_ROUTING` fallback; `ai-run.js` logs each call to the Costs DB | **✅ done** — verify live: dialogue still generates, Costs DB fills |
+| 3 | Critic layer | **independent quality gate** | `functions/_shared/critic.js` — `review()` on a *different* provider than the writer — + stage rubrics + per-stage "Review" button (PASS / REWORK notes) | next |
 | 4 | Light orchestration | **machine runs a stage** | `run-stage.js` background function: generate → critic → revise-once → result; UI fires and polls; progress in Notion App State | one click → critic-reviewed stage output; survives a closed tab |
 | 5 | Real state + event log *(only if Phase 4's gate says "chain stages")* | recoverable multi-stage runs; per-episode timeline | Netlify Blobs (or a small hosted SQLite) + `lib/events.js` append-only log + `run-episode.js` with checkpoints | an interrupted multi-stage run resumes from the last checkpoint |
 | 6 | Genuine autonomy *(probably never)* | a planner decides which stages an episode needs | — | only if the fixed pipeline proves too rigid |
@@ -113,14 +120,13 @@ here.
 
 ## Security notes (not in the Notion doc)
 
-- **API keys** have been rotated. Each proxy reads its key from a Netlify
-  environment variable (`ANTHROPIC_API_KEY`, `GOOGLE_TTS_API_KEY`,
-  `YOUTUBE_API_KEY`, `NOTION_TOKEN`), falling back to a key in the request body
-  only while the env vars are being configured. Follow-up: remove that fallback,
-  stop `index.html` sending keys, and remove the plaintext key table from the
-  Notion App Settings page.
-- Netlify functions do **no schema validation** on upstream responses.
-- No rate-limit handling or retry in any proxy (addressed in evolution Phase 1).
+- **Keys/tokens are Netlify env vars only** — the browser sends none. Required:
+  `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_TTS_API_KEY`,
+  `YOUTUBE_API_KEY`, `NOTION_TOKEN`. Each proxy returns `500` if its var is unset.
+  The App Settings "🔐 API Keys" table holds status text, not secrets.
+- `_shared/models.js` maps errors to a taxonomy and retries `rate_limited` /
+  `provider_error` / `network` once. The remaining proxies still do no schema
+  validation on upstream responses.
 
 ## Pointers
 

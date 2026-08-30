@@ -1486,18 +1486,6 @@ async function ytAPI(path, params = {}) {
   return res.json();
 }
 
-async function claudeAPI(messages, model, system = '') {
-  const modelStr = S.models[model] || model;
-  const res = await fetch('/.netlify/functions/anthropic-proxy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: modelStr, max_tokens: 2000, system, messages, apiKey: S.keys.anthropic }),
-  });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message || data.error);
-  return data.content?.[0]?.text || '';
-}
-
 // Provider-agnostic model call. Routes via functions/_shared/models.js by `task`
 // (or an explicit provider+model override). Returns { text, provider, model,
 // usage, costUsd }. Every AI stage goes through this.
@@ -1869,14 +1857,12 @@ async function runHealthCheck() {
     results.push({ label: 'YouTube API', ok: false, note: 'Key missing' });
   }
 
-  // Check Anthropic
-  if (S.keys.anthropic) {
-    try {
-      await claudeAPI([{ role: 'user', content: 'ping' }], 'claude-haiku-4-5-20251001');
-      results.push({ label: 'Anthropic API', ok: true });
-    } catch { results.push({ label: 'Anthropic API', ok: false }); }
-  } else {
-    results.push({ label: 'Anthropic API', ok: false, note: 'Key missing' });
+  // Check the model router (ai-run)
+  try {
+    await aiRun('gap', { messages: [{ role: 'user', content: 'ping' }] });
+    results.push({ label: 'AI model router', ok: true });
+  } catch (e) {
+    results.push({ label: 'AI model router', ok: false, note: e.message });
   }
 
   // Check TTS
@@ -2090,11 +2076,7 @@ Generate a short content angle (1-2 sentences) explaining what this video is abo
 
 Respond in JSON: {"angle":"...","content_type":"...","region":"...","country":"..."}`;
 
-      const raw = await claudeAPI(
-        [{ role: 'user', content: prompt }],
-        S.models.angle || 'claude-haiku-4-5-20251001',
-        system
-      );
+      const raw = (await aiRun('angle', { system, messages: [{ role: 'user', content: prompt }] })).text;
 
       let parsed = {};
 try {
@@ -2250,7 +2232,7 @@ async function generateThemes() {
   ).join('\n');
 
   try {
-    const raw = await claudeAPI([{
+    const raw = (await aiRun('theme', { system, messages: [{
       role: 'user',
       content: `You are a YouTube episode strategist for the Nomad Dimension channel. Here are ${selected.length} source videos:
 
@@ -2259,7 +2241,7 @@ ${videoList}
 Suggest 3 distinct episode concepts that connect these videos into a compelling narrative. Each concept should feel like a real YouTube episode title and hook.
 
 Respond ONLY in JSON (no markdown): {"themes":[{"title":"...","concept":"...","hook":"...","tone":"..."},...]}`
-    }], S.models.theme || 'claude-sonnet-4-6', system);
+    }] })).text;
 
     let parsed;
     try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
@@ -2306,7 +2288,7 @@ function selectTheme(i) {
 async function suggestEpisodeTitles(theme) {
   const system = buildDNASystem();
   try {
-    const raw = await claudeAPI([{
+    const raw = (await aiRun('theme', { system, messages: [{
       role: 'user',
       content: `Suggest 3 episode title options for the Nomad Dimension channel based on this theme:
 Theme: ${theme.title}
@@ -2315,7 +2297,7 @@ Format: [Series] · EP## · [Theme]
 Examples: "Japan Unfiltered · EP01 · Kyushu in the Rain"
 
 Respond ONLY in JSON: {"titles":["...","...","..."]}`
-    }], S.models.angle, system);
+    }] })).text;
     const parsed = JSON.parse(raw.replace(/```json|```/g,'').trim());
     const optArea = document.getElementById('ep-title-options');
     optArea.innerHTML = (parsed.titles || []).map((t,i) =>
@@ -2460,7 +2442,7 @@ async function runGapAnalysis() {
     }));
 
     const system = buildDNASystem();
-    const raw = await claudeAPI([{
+    const raw = (await aiRun('gap', { system, messages: [{
       role: 'user',
       content: `You are a content strategist for the Nomad Dimension YouTube channel.
 
@@ -2471,7 +2453,7 @@ Logged places (${places.length}): ${places.slice(0,30).map(p=>`${p.name} (${p.pr
 Suggest 5 specific content opportunities based on gaps — uncovered prefectures, underrepresented content types, seasonal opportunities for the coming months, unused logged places. Be specific and actionable.
 
 Format as a bulleted list with context.`
-    }], S.models.gap, system);
+    }] })).text;
 
     resultsEl.innerHTML = `<div class="card"><div class="card-title"><span class="icon">💡</span> Content Opportunities</div><div class="code-block" style="white-space:pre-wrap">${raw}</div></div>`;
     resultsEl.style.display = '';
@@ -2547,11 +2529,8 @@ Be specific and extract actual place names. Format clearly with headers.`
 Active episode: ${S.activeEpisode || 'Unknown'}
 Generate a content outline based on what a video on this topic would typically cover for the Nomad Dimension channel format. Clearly mark this as METADATA-ONLY OUTLINE.`;
 
-    const result = await claudeAPI(
-      [{ role: 'user', content: prompt }],
-      S.models.pass1 || 'claude-haiku-4-5-20251001',
-      system
-    );
+    const result = (await aiRun('outline', { system, messages: [{ role: 'user', content: prompt }] }))
+      .text;
 
     S.currentTranscriptOutline = result;
     document.getElementById('pass1-output').textContent = result;
@@ -2596,7 +2575,7 @@ async function extractPlaces() {
     }));
 
     const system = buildDNASystem();
-    const raw = await claudeAPI([{
+    const raw = (await aiRun('places', { system, messages: [{
       role: 'user',
       content: `Extract ALL places mentioned in this content outline. For each place, check against the existing places database and classify as existing or new.
 
@@ -2623,7 +2602,7 @@ For each extracted place, generate:
 
 Respond ONLY in JSON: {"places":[{...},...]}
 `
-    }], S.models.places || 'claude-sonnet-4-6', system);
+    }] })).text;
 
     let parsed;
     try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
@@ -3170,7 +3149,7 @@ async function generateHandoff() {
   ).join('\n\n');
 
   try {
-    const raw = await claudeAPI([{
+    const raw = (await aiRun('handoff', { system, messages: [{
       role: 'user',
       content: `Generate a complete production handoff document for the Nomad Dimension episode: "${S.activeEpisode || 'Untitled Episode'}"
 
@@ -3195,7 +3174,7 @@ Generate the following sections in this exact JSON structure:
 }
 
 Respond ONLY in valid JSON.`
-    }], S.models.thumbnail || 'claude-haiku-4-5-20251001', system);
+    }] })).text;
 
     let parsed;
     try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }

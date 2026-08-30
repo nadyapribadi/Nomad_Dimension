@@ -19,11 +19,11 @@
   status = 200
 
 [[redirects]]
-  from = "/api/anthropic"
-  to = "/.netlify/functions/anthropic-proxy"
+  from = "/api/tts"
+  to = "/.netlify/functions/tts-proxy"
   status = 200
 
 [[redirects]]
-  from = "/api/tts"
-  to = "/.netlify/functions/tts-proxy"
+  from = "/api/ai-run"
+  to = "/.netlify/functions/ai-run"
   status = 200
