@@ -27,6 +27,13 @@ Human-readable, updated per milestone. Format loosely follows
   unrelated source trips made no sense. Places just confirms + pushes now; the
   running order is set in Assemble's Include list — default = on-camera order
   (`breakdown.route`), with a ✨ "Suggest order" button for narrative flow.
+- **Places DB: one column per fact, Notes left blank.** Added Price Note / Food /
+  Summary / Review Count columns (+ the earlier Address / Coordinates / Website /
+  Rating / Source Video). `saveConfirmedPlaces` no longer concatenates anything
+  into Notes.
+- **Assemble Include list grouped by source video** + a `FROM:` toggle row to
+  include/exclude a whole breakdown from the episode; per-group "include all /
+  clear all". `S.includeSourceOff`.
 - **Assemble tab** merges the old Theme + Create tabs into one author-driven
   form: you write title/angle/hook/tone/notes, AI only behind two ✨ buttons.
   An **Include checklist** (places + beats + food from the breakdowns, tick +
