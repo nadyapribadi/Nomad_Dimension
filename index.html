@@ -2437,27 +2437,41 @@ async function pushToNotion() {
   });
 
   let pushed = 0;
+  let firstErr = '';
   for (const v of S._reviewVideos) {
     try {
-      await notionAPI(`pages`, 'POST', {
-  parent: { database_id: DB_IDS.sourceVideos },
-  properties: {
-    'Video Title': { title: [{ text: { content: v.title } }] },
-    'userDefined:YouTube URL': { url: v.url },
-    'Source Channel': { rich_text: [{ text: { content: v.channelName } }] },
-    'Content Angle': { rich_text: [{ text: { content: v.angle } }] },
-    'Country': { select: { name: v.country || 'Japan' } },
-    'B-Roll Status': { select: { name: 'Available' } },
-        },
-      });
+      const props = {
+        'Video Title': { title: [{ text: { content: v.title } }] },
+        // Notion property is "YouTube URL" (the MCP renders it "userDefined:…").
+        'YouTube URL': { url: v.url || null },
+        'Source Channel': { rich_text: [{ text: { content: v.channelName } }] },
+        'Content Angle': { rich_text: [{ text: { content: v.angle } }] },
+        'Country': { select: { name: v.country || 'Japan' } },
+        'B-Roll Status': { select: { name: 'Available' } },
+      };
+      const ctype = (v.contentType || []).filter(Boolean);
+      if (ctype.length) props['Content Type'] = { multi_select: ctype.map(name => ({ name })) };
+      if (v.region) props['Region / Prefecture'] = { rich_text: [{ text: { content: v.region } }] };
+      if (v.views) props['Views'] = { rich_text: [{ text: { content: String(v.views) } }] };
+      if (v.duration) props['Duration'] = { rich_text: [{ text: { content: formatISO8601Duration(v.duration) } }] };
+      if (v.publishedAt) props['Published Date'] = { rich_text: [{ text: { content: v.publishedAt.slice(0, 10) } }] };
+
+      await notionAPI(`pages`, 'POST', { parent: { database_id: DB_IDS.sourceVideos }, properties: props });
       pushed++;
     } catch (err) {
       console.error('Push error for', v.title, err);
+      if (!firstErr) firstErr = err.message;
     }
   }
 
-  toast(`Pushed ${pushed}/${S._reviewVideos.length} videos to Notion`, 'success');
-  closeModal('modal-review');
+  const total = S._reviewVideos.length;
+  toast(
+    pushed === total
+      ? `Pushed ${pushed}/${total} videos to Notion`
+      : `Pushed ${pushed}/${total} — ${firstErr || 'see console'}`,
+    pushed === total ? 'success' : 'error'
+  );
+  if (pushed) closeModal('modal-review');
   btn.disabled = false;
   btn.textContent = 'Push All to Notion →';
 }
@@ -2480,7 +2494,7 @@ async function loadSourceQueue() {
   channel: p.properties?.['Source Channel']?.rich_text?.[0]?.plain_text || '',
   angle: p.properties?.['Content Angle']?.rich_text?.[0]?.plain_text || '',
   country: p.properties?.Country?.select?.name || '',
-  url: p.properties?.['userDefined:YouTube URL']?.url || '',
+  url: p.properties?.['YouTube URL']?.url || '',
     }));
 
     if (!S.epQueue.length) {
@@ -2703,7 +2717,7 @@ async function loadCalendar() {
       page_size: 30,
     });
     const eps = (data.results || []).map(p => ({
-      name: p.properties?.Name?.title?.[0]?.plain_text || 'Untitled',
+      name: p.properties?.['Episode Title']?.title?.[0]?.plain_text || 'Untitled',
       status: p.properties?.Status?.select?.name || '—',
       date: p.properties?.['Target Publish Date']?.date?.start || null,
     }));
@@ -2747,7 +2761,7 @@ async function runGapAnalysis() {
       notionAPI(`databases/${DB_IDS.places}/query`, 'POST', { page_size: 100 }),
     ]);
 
-    const eps = (epsData.results || []).map(p => p.properties?.Name?.title?.[0]?.plain_text || '');
+    const eps = (epsData.results || []).map(p => p.properties?.['Episode Title']?.title?.[0]?.plain_text || '');
     const places = (placesData.results || []).map(p => ({
       name: p.properties?.Name?.title?.[0]?.plain_text || '',
       prefecture: p.properties?.Prefecture?.select?.name || '',
@@ -2783,16 +2797,28 @@ async function loadTranscriptVideos() {
   const sel = document.getElementById('transcript-video-select');
   sel.innerHTML = '<option value="">Loading…</option>';
   try {
+    // Promoted source videos (Stage 2 sets them to "Partially Used").
     const data = await notionAPI(`databases/${DB_IDS.sourceVideos}/query`, 'POST', {
-      filter: { property: 'B-Roll Status', select: { equals: 'Partially Used' } },
+      filter: {
+        or: [
+          { property: 'B-Roll Status', select: { equals: 'Partially Used' } },
+          { property: 'B-Roll Status', select: { equals: 'Fully Used' } },
+        ],
+      },
       page_size: 50,
     });
-    const vids = (data.results || []);
+    const vids = data.results || [];
+    S.transcriptVideos = {};
+    for (const p of vids) {
+      const pr = p.properties || {};
+      S.transcriptVideos[p.id] = {
+        title: pr['Video Title']?.title?.[0]?.plain_text || 'Untitled',
+        url: pr['YouTube URL']?.url || '',
+        transcript: pr['Transcript']?.rich_text?.map(r => r.plain_text).join('') || '',
+      };
+    }
     sel.innerHTML = '<option value="">— select a source video —</option>' +
-      vids.map(p => {
-        const title = p.properties?.Name?.title?.[0]?.plain_text || 'Untitled';
-        return `<option value="${p.id}">${title}</option>`;
-      }).join('');
+      vids.map(p => `<option value="${p.id}">${S.transcriptVideos[p.id].title}</option>`).join('');
     toast(`Loaded ${vids.length} promoted videos`, 'success');
   } catch (err) {
     sel.innerHTML = '<option>Failed to load</option>';
@@ -2804,6 +2830,16 @@ function onTranscriptVideoSelect() {
   const val = document.getElementById('transcript-video-select').value;
   document.getElementById('transcript-work-area').style.display = val ? '' : 'none';
   document.getElementById('pass1-result-card').style.display = 'none';
+  const v = (S.transcriptVideos || {})[val];
+  if (!v) return;
+  document.getElementById('yt-transcript-url').value = v.url || '';
+  const box = document.getElementById('transcript-input');
+  if (v.transcript) {
+    box.value = v.transcript;
+    toast('Loaded saved transcript from Notion', 'success');
+  } else {
+    box.value = '';
+  }
 }
 
 async function fetchTranscript() {
@@ -2822,6 +2858,20 @@ async function fetchTranscript() {
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     document.getElementById('transcript-input').value = data.text;
     toast(`Transcript loaded (${data.text.length.toLocaleString()} chars, via ${data.source})`, 'success');
+
+    // Write-through cache: save onto the selected Source Video row so it's
+    // fetched once, ever. Fire-and-forget.
+    const vid = document.getElementById('transcript-video-select').value;
+    if (vid) {
+      notionAPI(`pages/${vid}`, 'PATCH', {
+        properties: {
+          'Transcript': { rich_text: codeBlockRichText(data.text.slice(0, 190000)) },
+          'Has Subtitles': { select: { name: 'Yes - Auto' } },
+        },
+      }).then(() => {
+        if (S.transcriptVideos?.[vid]) S.transcriptVideos[vid].transcript = data.text;
+      }).catch(() => {});
+    }
   } catch (e) {
     toast(`Transcript fetch failed: ${e.message}`, 'error');
   } finally {
@@ -2886,7 +2936,7 @@ async function saveOutlineToNotion() {
   try {
     await notionAPI(`pages/${videoId}`, 'PATCH', {
       properties: {
-        'Content Outline': { rich_text: [{ text: { content: S.currentTranscriptOutline.substring(0, 2000) } }] }
+        'Content Outline': { rich_text: codeBlockRichText(S.currentTranscriptOutline.slice(0, 190000)) }
       }
     });
     toast('Outline saved to Notion', 'success');
@@ -3047,22 +3097,30 @@ async function loadSections() {
   area.innerHTML = '<div class="loading-row"><div class="spinner"></div> Loading sections…</div>';
 
   try {
-    const data = await notionAPI(`databases/${DB_IDS.scripts}/query`, 'POST', {
-      page_size: 20,
-    });
+    // Scripts DB has no relation to Episodes — sections carry the episode name
+    // in a text field. Filter to the active episode when there is one.
+    const query = { page_size: 50, sorts: [{ property: 'Section Order', direction: 'ascending' }] };
+    if (S.activeEpisode) {
+      query.filter = { property: 'Episode', rich_text: { equals: S.activeEpisode } };
+    }
+    const data = await notionAPI(`databases/${DB_IDS.scripts}/query`, 'POST', query);
 
-    S.sections = (data.results || []).map(p => ({
-      id: p.id,
-      title: p.properties?.Name?.title?.[0]?.plain_text || 'Section',
-      type: p.properties?.Type?.select?.name || '',
-      duration: p.properties?.['Target Duration']?.number || 2,
-      tone: p.properties?.Tone?.select?.name || '',
-      voiceConfig: p.properties?.['Voice Config']?.select?.name || 'Both alternating (default)',
-      brief: p.properties?.Brief?.rich_text?.[0]?.plain_text || '',
-      dialogue: p.properties?.['Dialogue Content']?.rich_text?.[0]?.plain_text || '',
-      version: p.properties?.['Dialogue Version']?.number || 0,
-      locked: p.properties?.Locked?.checkbox || false,
-    }));
+    S.sections = (data.results || []).map(p => {
+      const pr = p.properties || {};
+      return {
+        id: p.id,
+        title: pr['Section Title']?.title?.[0]?.plain_text || 'Section',
+        type: pr['Section Type']?.select?.name || '',
+        duration: parseFloat(pr['Estimated Duration']?.rich_text?.[0]?.plain_text) || 2,
+        // Tone / Voice Config are not columns in the Scripts DB — kept in memory only.
+        tone: '',
+        voiceConfig: 'Both alternating (default)',
+        brief: pr['Section Brief']?.rich_text?.[0]?.plain_text || '',
+        dialogue: pr['Dialogue Content']?.rich_text?.[0]?.plain_text || '',
+        version: pr['Dialogue Version']?.number || 0,
+        locked: pr['Script Status']?.select?.name === '✅ Approved',
+      };
+    });
 
     if (S.activeEpisode) {
       document.getElementById('script-ep-display').innerHTML =
@@ -3303,7 +3361,7 @@ Write the dialogue only. No preamble.`;
     // Save to Notion
     await notionAPI(`pages/${sec.id}`, 'PATCH', {
       properties: {
-        'Dialogue Content': { rich_text: [{ text: { content: result.substring(0, 2000) } }] },
+        'Dialogue Content': { rich_text: codeBlockRichText(result.slice(0, 190000)) },
         'Dialogue Version': { number: (sec.version || 0) + 1 },
       }
     });
@@ -3333,9 +3391,11 @@ async function lockSection(i) {
   S.sections[i].locked = true;
   try {
     await notionAPI(`pages/${S.sections[i].id}`, 'PATCH', {
-      properties: { 'Locked': { checkbox: true } }
+      properties: { 'Script Status': { select: { name: '✅ Approved' } } }
     });
-  } catch {}
+  } catch (e) {
+    toast(`Lock not saved to Notion: ${e.message}`, 'error');
+  }
   renderSections();
   toast(`Section "${S.sections[i].title}" locked`, 'success');
 }
@@ -3366,6 +3426,8 @@ async function saveSection() {
     'Estimated Duration': { rich_text: [{ text: { content: String(dur) } }] },
     'Section Brief': { rich_text: [{ text: { content: brief } }] },
     'Dialogue Version': { number: 0 },
+    'Section Order': { number: S.sections.length + 1 },
+    ...(S.activeEpisode ? { 'Episode': { rich_text: [{ text: { content: S.activeEpisode } }] } } : {}),
       }
     });
     S.sections.push({ id: res.id, title, type, duration: dur, tone, voiceConfig: voice, brief, dialogue: '', version: 0, locked: false });
@@ -3405,10 +3467,12 @@ async function applyTemplate(t) {
   'Estimated Duration': { rich_text: [{ text: { content: String(sec.duration) } }] },
   'Section Brief': { rich_text: [{ text: { content: '' } }] },
   'Dialogue Version': { number: 0 },
+  'Section Order': { number: S.sections.length + 1 },
+  ...(S.activeEpisode ? { 'Episode': { rich_text: [{ text: { content: S.activeEpisode } }] } } : {}),
         }
       });
       S.sections.push({ id: res.id, ...sec, brief: '', dialogue: '', version: 0, locked: false });
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error(err); toast(`Section "${sec.title}" not saved: ${err.message}`, 'error'); }
   }
   renderSections();
   toast(`Template ${t} applied (${secs.length} sections)`, 'success');
@@ -3554,21 +3618,24 @@ async function saveHandoffToNotion() {
     // Save as a child page of the active episode
     // First find episode page ID
     const epsData = await notionAPI(`databases/${DB_IDS.episodes}/query`, 'POST', {
-      filter: { property: 'Name', title: { equals: S.activeEpisode } }
+      filter: { property: 'Episode Title', title: { equals: S.activeEpisode } }
     });
     const epPage = epsData.results?.[0];
     if (!epPage) { toast('Episode page not found in Notion', 'error'); return; }
 
-    await notionAPI('pages', 'POST', {
+    const child = await notionAPI('pages', 'POST', {
       parent: { page_id: epPage.id },
       properties: {
         'title': { title: [{ text: { content: `Handoff Doc — ${S.activeEpisode}` } }] }
       }
     });
 
-    // Update episode status
+    // Link + advance status on the episode
     await notionAPI(`pages/${epPage.id}`, 'PATCH', {
-      properties: { 'Status': { select: { name: '🖼️ Thumbnail' } } }
+      properties: {
+        'Status': { select: { name: '🖼️ Thumbnail' } },
+        ...(child?.url ? { 'Handoff Doc URL': { url: child.url } } : {}),
+      }
     });
 
     document.getElementById('handoff-saved-notice').style.display = '';

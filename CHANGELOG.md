@@ -24,6 +24,24 @@ episode }` to the Production Costs DB.
   block (no deploy). Replaces the dead `S.models` panel / `saveModels`.
   Routing block updated to a multi-provider spread (OpenAI `gpt-4o` /
   `gpt-4o-mini`, Gemini `gemini-2.0-flash`, Claude Haiku/Sonnet) + fallbacks.
+- **Notion property-name fixes** (audit against live schemas). Several reads
+  used `.Name` where the real title is `Video Title` / `Episode Title` /
+  `Section Title` — `loadSections`, `loadCalendar`, `loadTranscriptVideos`,
+  `saveHandoffToNotion`, `runGapAnalysis` were pulling blanks or failing.
+  `lockSection` wrote a nonexistent `Locked` checkbox → now `Script Status =
+✅ Approved`. `addSection` / `applyTemplate` now set `Episode` + `Section
+Order` so sections belong to the active episode (and `loadSections` filters
+  by it). `pushToNotion` writes `YouTube URL` (not the MCP-rendered
+  `userDefined:` name), adds Content Type / Region / Views / Duration /
+  Published Date, and toasts an **error** with the first failure when a push
+  is partial (was always "success"). Long fields (`Content Outline`,
+  `Dialogue Content`, cached `Transcript`) chunk to ≤2000-char `rich_text`
+  instead of truncating at 2000.
+- **Transcript write-through.** Selecting a promoted source video in Stage 3A
+  auto-fills its YouTube URL and pre-loads any saved `Transcript`; a fetch
+  writes the transcript back to that row, so it's fetched once.
+- `ai-run.js` `PROVIDER_SELECT`: DeepSeek/Qwen/Mistral/xAI/OpenRouter/Groq →
+  `Other` so the cost log's Provider column is set for them.
 - **Auto-transcript** (`functions/yt-transcript.js`). Stage 3A gets a "Fetch
   transcript" button — paste a YouTube URL, it fills the transcript box. Free
   watch-page caption scrape first (no key, no quota); falls back to

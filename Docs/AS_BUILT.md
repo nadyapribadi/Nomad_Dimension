@@ -76,6 +76,13 @@ providers need their `<PROVIDER>_API_KEY` in Netlify env (`DEEPSEEK_API_KEY`,
 `DASHSCOPE_API_KEY` for Qwen, `MISTRAL_API_KEY`, `XAI_API_KEY`,
 `OPENROUTER_API_KEY`, `GROQ_API_KEY`).
 
+## Notion access
+
+Every DB read/write goes through `notion-proxy` with the `NOTION_TOKEN`
+integration. **Each database must be connected to that integration**
+(database → `•••` → Connections → NomadDimension) — page-sharing does not
+cascade. If a stage reports "Could not find database …", that's the cause.
+
 ## Code vs. spec — open gaps
 
 | Spec (Notion doc) | Code today |
