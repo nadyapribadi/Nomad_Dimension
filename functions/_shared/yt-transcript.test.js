@@ -55,7 +55,27 @@ test('parseJson3: joins segs, one line per event', () => {
   assert.equal(parseJson3({}), '');
 });
 
-test('digTranscriptText: flat string, and array of segments', () => {
+test('digTranscriptText: youtube-transcript.io tracks[].transcript shape', () => {
+  const resp = [
+    {
+      text: 'flat fallback text',
+      id: 'abc',
+      tracks: [
+        {
+          language: 'en',
+          transcript: [
+            { start: '0', dur: '1', text: 'hello' },
+            { start: '1', dur: '1', text: 'world' },
+          ],
+        },
+      ],
+    },
+  ];
+  assert.equal(digTranscriptText(resp), 'hello world');
+});
+
+test('digTranscriptText: flat string, bare array, and null', () => {
+  assert.equal(digTranscriptText([{ text: '  hi there  ' }]), 'hi there');
   assert.equal(digTranscriptText([{ transcript: '  hi there  ' }]), 'hi there');
   assert.equal(
     digTranscriptText([{ transcript: [{ text: 'a' }, { text: 'b' }, { text: 'c' }] }]),

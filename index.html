@@ -2528,16 +2528,12 @@ async function loadSourceQueue() {
   S.epSelected.clear();
 
   try {
+    // Show every source video except ones fully consumed — you may reuse
+    // footage across episodes, and Prep runs before an episode exists.
     const data = await notionAPI(`databases/${DB_IDS.sourceVideos}/query`, 'POST', {
-      // "Available" or not-yet-triaged (blank) — a video you added but didn't
-      // touch the status on still belongs in the queue.
-      filter: {
-        or: [
-          { property: 'B-Roll Status', select: { equals: 'Available' } },
-          { property: 'B-Roll Status', select: { is_empty: true } },
-        ],
-      },
-      page_size: 50,
+      filter: { property: 'B-Roll Status', select: { does_not_equal: 'Fully Used' } },
+      sorts: [{ timestamp: 'created_time', direction: 'descending' }],
+      page_size: 100,
     });
 
     S.epQueue = (data.results || []).map(p => {
@@ -2548,6 +2544,7 @@ async function loadSourceQueue() {
         channel: pr['Source Channel']?.rich_text?.[0]?.plain_text || '',
         angle: pr['Content Angle']?.rich_text?.[0]?.plain_text || '',
         country: pr['Country']?.select?.name || '',
+        status: pr['B-Roll Status']?.select?.name || 'Available',
         url: pr['userDefined:YouTube URL']?.url || '',
         // carried so Prep shows what's already done
         transcript: pr['Transcript']?.rich_text?.map(r => r.plain_text).join('') || '',
@@ -2560,17 +2557,18 @@ async function loadSourceQueue() {
       return;
     }
 
+    const statusBadge = { 'Available': 'badge-green', 'Partially Used': 'badge-amber', 'Fully Used': 'badge' };
     area.innerHTML = `
       <table class="data-table">
-        <thead><tr><th></th><th>Title</th><th>Channel</th><th>Angle</th><th>Country</th></tr></thead>
+        <thead><tr><th></th><th>Title</th><th>Channel</th><th>Prep</th><th>Status</th></tr></thead>
         <tbody>
           ${S.epQueue.map((v, i) => `
             <tr onclick="toggleEpVideo(${i})" style="cursor:pointer" id="ep-row-${i}">
               <td><input type="checkbox" id="ep-cb-${i}" ${S.epSelected.has(i)?'checked':''}></td>
-              <td style="font-weight:500">${v.title}</td>
+              <td style="font-weight:500">${v.title}<div style="font-size:11px;color:var(--text3);font-weight:400">${v.angle}</div></td>
               <td style="font-size:12px;color:var(--text2)">${v.channel}</td>
-              <td style="font-size:12px;color:var(--text3)">${v.angle}</td>
-              <td><span class="badge">${v.country}</span></td>
+              <td style="font-size:11px;color:var(--text3)">${v.transcript ? '📄' : '·'} ${v.outline ? '📋' : '·'}</td>
+              <td><span class="badge ${statusBadge[v.status] || 'badge'}">${v.status}</span></td>
             </tr>`).join('')}
         </tbody>
       </table>`;
@@ -2621,12 +2619,18 @@ function renderPrepList() {
     </div>`).join('');
 }
 
+// Set the per-video status line (survives a renderPrepList() re-render).
+function prepStatus(i, msg) {
+  const el = document.getElementById(`prep-status-${i}`);
+  if (el) el.textContent = msg;
+}
+
 async function prepFetchTranscript(i) {
   const v = S.epQueue[i];
-  const st = document.getElementById(`prep-status-${i}`);
+  if (!v.url) { prepStatus(i, 'No YouTube URL on this row — paste the transcript in Stage 3A instead.'); return; }
   const btn = document.getElementById(`prep-tx-btn-${i}`);
-  if (!v.url) { st.textContent = 'No YouTube URL on this row — paste the transcript in Stage 3A instead.'; return; }
   btn.disabled = true; btn.textContent = 'Fetching…';
+  let msg = '';
   try {
     const res = await fetch('/.netlify/functions/yt-transcript', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2634,28 +2638,28 @@ async function prepFetchTranscript(i) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (!data.text) throw new Error('empty transcript returned');
     v.transcript = data.text;
-    st.textContent = `Transcript loaded (${data.text.length.toLocaleString()} chars, via ${data.source}). Saving to Notion…`;
     await notionAPI(`pages/${v.id}`, 'PATCH', {
       properties: {
         'Transcript': { rich_text: codeBlockRichText(data.text.slice(0, 190000)) },
         'Has Subtitles': { select: { name: 'Yes - Auto' } },
       },
     }).catch(() => {});
-    st.textContent = `Transcript saved (${data.text.length.toLocaleString()} chars, via ${data.source}).`;
+    msg = `Transcript saved — ${data.text.length.toLocaleString()} chars, via ${data.source}.`;
   } catch (e) {
-    st.textContent = `Fetch failed: ${e.message}`;
-  } finally {
-    renderPrepList();
+    msg = `Fetch failed: ${e.message}`;
   }
+  renderPrepList();      // flips the pill
+  prepStatus(i, msg);    // then restore the message on the fresh node
 }
 
 async function prepRunOutline(i) {
   const v = S.epQueue[i];
-  const st = document.getElementById(`prep-status-${i}`);
+  if (!v.transcript) { prepStatus(i, 'Fetch the transcript first.'); return; }
   const btn = document.getElementById(`prep-ol-btn-${i}`);
-  if (!v.transcript) { st.textContent = 'Fetch the transcript first.'; return; }
   btn.disabled = true; btn.textContent = 'Running…';
+  let msg = '';
   const isJa = /[぀-ヿ一-龯]/.test(v.transcript.slice(0, 200));
   try {
     const prompt = `Analyse this video transcript for the Nomad Dimension channel.
