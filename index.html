@@ -769,24 +769,16 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     <div class="nav-status" id="nav-2"></div>
   </div>
   <div class="sidebar-section" style="margin-top:8px">Per Episode</div>
-  <div class="nav-item" onclick="showStage(3)">
-    <span class="stage-num">3A</span> Transcript
-    <div class="nav-status" id="nav-3"></div>
-  </div>
-  <div class="nav-item" onclick="showStage(3.5)">
-    <span class="stage-num">3B</span> Places Review
-    <div class="nav-status" id="nav-35"></div>
-  </div>
   <div class="nav-item" onclick="showStage(4)">
-    <span class="stage-num">4</span> Script Builder
+    <span class="stage-num">3</span> Script Builder
     <div class="nav-status" id="nav-4"></div>
   </div>
   <div class="nav-item" onclick="showStage(5)">
-    <span class="stage-num">5</span> Audio TTS
+    <span class="stage-num">4</span> Audio TTS
     <div class="nav-status" id="nav-5"></div>
   </div>
   <div class="nav-item" onclick="showStage(6)">
-    <span class="stage-num">6</span> Handoff
+    <span class="stage-num">5</span> Handoff
     <div class="nav-status" id="nav-6"></div>
   </div>
 </nav>
@@ -994,12 +986,13 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 <div class="stage-panel" id="stage-2">
   <div class="stage-header">
     <h1>Episode Builder</h1>
-    <span class="subtitle">stage 2 · queue → prep ingredients → theme → create</span>
+    <span class="subtitle">stage 2 · queue → prep → places → theme → create</span>
   </div>
 
   <div class="tabs">
     <div class="tab active" onclick="switchTab('ep', 'queue')">📋 Source Queue</div>
     <div class="tab" onclick="switchTab('ep', 'prep');renderPrepList()">🧪 Prep</div>
+    <div class="tab" onclick="switchTab('ep', 'places')">📍 Places</div>
     <div class="tab" onclick="switchTab('ep', 'theme')">🧭 Theme</div>
     <div class="tab" onclick="switchTab('ep', 'create')">🎬 Create Episode</div>
     <div style="flex:1"></div>
@@ -1037,7 +1030,33 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       </p>
       <div id="ep-prep-list"></div>
       <div class="btn-row">
-        <button class="btn btn-primary" onclick="switchTab('ep','theme');generateThemes()">Next: Theme →</button>
+        <button class="btn btn-primary" onclick="switchTab('ep','places')">Next: Places →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLACES TAB (folded in from old Stage 3B) -->
+  <div id="ep-tab-places" style="display:none">
+    <div class="card">
+      <div class="card-title"><span class="icon">📍</span> Extract Places from the Outlines</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Pulls every place from the prepped outlines, cross-references the Places DB for duplicates, and drafts entries for new ones. Run <strong>Prep → Run outline</strong> first.</p>
+      <button class="btn btn-primary" onclick="extractPlaces()">Extract Places →</button>
+      <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Extracting and cross-referencing places…</div>
+      <div id="places-error" class="info-box error" style="display:none;margin-top:12px"></div>
+    </div>
+    <div id="places-review-area" style="display:none">
+      <div class="card">
+        <div class="card-title"><span class="icon">🗂️</span> Places to Review</div>
+        <div id="places-list"></div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="icon">🗺️</span> Route Order</div>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Order confirmed places into the episode route. This becomes the section structure for Script Builder.</p>
+        <div id="route-order-list"></div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="saveConfirmedPlaces()">Push Confirmed Places to Notion →</button>
+          <button class="btn" onclick="switchTab('ep','theme')">Next: Theme →</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1197,45 +1216,13 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <div id="pass1-output" class="code-block"></div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="saveOutlineToNotion()">Save Outline to Notion →</button>
-        <button class="btn" onclick="showStage(3.5)">Continue → Stage 3B Places →</button>
+        <button class="btn" onclick="showStage(2);switchTab('ep','places')">Continue → Places →</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════
-     STAGE 3B — PLACES REVIEW
-     ═══════════════════════════════════════════ -->
-<div class="stage-panel" id="stage-35">
-  <div class="stage-header">
-    <h1>Places Review</h1>
-    <span class="subtitle">stage 3B · extract, cross-reference, confirm</span>
-  </div>
-
-  <div class="card">
-    <div class="card-title"><span class="icon">📍</span> Extract Places from Transcript Outline</div>
-    <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Extracts all mentioned places, cross-references the Places Database for duplicates, and generates entries for new locations. Model per the <em>places</em> route.</p>
-    <button class="btn btn-primary" onclick="extractPlaces()">Extract Places →</button>
-    <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Extracting and cross-referencing places…</div>
-    <div id="places-error" class="info-box error" style="display:none;margin-top:12px"></div>
-  </div>
-
-  <div id="places-review-area" style="display:none">
-    <div class="card">
-      <div class="card-title"><span class="icon">🗂️</span> Places to Review</div>
-      <div id="places-list"></div>
-    </div>
-    <div class="card">
-      <div class="card-title"><span class="icon">🗺️</span> Route Order</div>
-      <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Drag confirmed places to set episode route sequence. This becomes the section structure for Stage 4.</p>
-      <div id="route-order-list"></div>
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="saveConfirmedPlaces()">Push Confirmed Places to Notion →</button>
-        <button class="btn" onclick="showStage(4)">Continue → Script Builder →</button>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- Stage 3B (Places) folded into Episode Builder → Places tab. -->
 
 <!-- ═══════════════════════════════════════════
      STAGE 4 — SCRIPT BUILDER
@@ -1641,14 +1628,15 @@ async function getPageBlocks(pageId) {
 // ─── STAGE NAVIGATION ───────────────────────────────────────────────────────
 const stageMap = {
   0: 'stage-0', 1: 'stage-1', 2: 'stage-2',
-  3: 'stage-3', 3.5: 'stage-35', 4: 'stage-4',
+  // 3 (Transcript) + 3.5 (Places) folded into Episode Builder tabs.
+  3: 'stage-2', 3.5: 'stage-2', 4: 'stage-4',
   5: 'stage-5', 6: 'stage-6',
 };
-// stage number → index of the .nav-item to highlight
-// (nav: 0 Settings, 1 YouTube, 2 Episode Builder, 3 Transcript, 4 Places,
-//  5 Script Builder, 6 Audio, 7 Handoff)
+// stage number → index of the .nav-item to highlight.
+// Nav is 6 items: 0 Settings · 1 YouTube · 2 Episode Builder · 3 Script · 4 Audio · 5 Handoff.
+// Stages 2 / 3 / 3.5 (Prep + Places live inside Episode Builder now) all light up item 2.
 const navMap = {
-  0: 0, 1: 1, 2: 2, 3: 3, 3.5: 4, 4: 5, 5: 6, 6: 7,
+  0: 0, 1: 1, 2: 2, 3: 2, 3.5: 2, 4: 3, 5: 4, 6: 5,
 };
 
 function showStage(n) {
@@ -1678,7 +1666,7 @@ function switchTab(prefix, tab) {
   if (tabBar) {
     tabBar.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     const allTabs = tabBar.querySelectorAll('.tab');
-    const tabNames = ['queue','prep','theme','create','calendar','gap'];
+    const tabNames = ['queue','prep','places','theme','create','calendar','gap'];
     const idx = tabNames.indexOf(tab);
     if (idx >= 0 && allTabs[idx]) allTabs[idx].classList.add('active');
   }
@@ -2665,17 +2653,46 @@ function renderPrepList() {
       </div>
       <div class="row" style="flex-wrap:wrap;gap:8px">
         <button class="btn btn-sm" onclick="prepFetchTranscript(${i})" id="prep-tx-btn-${i}">${v.transcript ? 'Re-fetch transcript' : 'Fetch transcript'}</button>
+        <button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'paste')">paste transcript</button>
         <button class="btn btn-sm" onclick="prepRunOutline(${i})" id="prep-ol-btn-${i}" ${v.transcript ? '' : 'disabled'}>${v.outline ? 'Re-run outline' : 'Run outline'}</button>
         ${v.transcript ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'tx')">view transcript</button>` : ''}
         ${v.outline ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'ol')">view outline</button>` : ''}
         <a class="btn btn-sm btn-ghost" href="${v.url || '#'}" target="_blank" rel="noopener">▶ open video</a>
+      </div>
+      <div id="prep-paste-${i}" style="display:none;margin-top:8px">
+        <textarea id="prep-paste-box-${i}" rows="5" placeholder="Paste the SRT / transcript here (from youtube-transcript.io or YouTube's transcript panel)…" style="font-size:11px;width:100%"></textarea>
+        <button class="btn btn-sm btn-primary" onclick="prepUsePasted(${i})" style="margin-top:6px">Save pasted transcript</button>
       </div>
       <div id="prep-status-${i}" style="font-size:11px;color:var(--text3);margin-top:6px"></div>
       <pre id="prep-view-${i}" style="display:none;white-space:pre-wrap;font-size:11px;color:var(--text2);background:var(--surface2);border-radius:var(--radius);padding:10px;margin-top:8px;max-height:320px;overflow:auto"></pre>
     </div>`).join('');
 }
 
+async function prepUsePasted(i) {
+  const box = document.getElementById(`prep-paste-box-${i}`);
+  const text = (box?.value || '').trim();
+  if (text.length < 30) { prepStatus(i, 'Paste a bit more text first.'); return; }
+  const v = S.epQueue[i];
+  v.transcript = text;
+  let saveErr = null;
+  await notionAPI(`pages/${v.id}`, 'PATCH', {
+    properties: {
+      'Transcript': { rich_text: codeBlockRichText(text.slice(0, 190000)) },
+      'Has Subtitles': { select: { name: 'Yes - Manual' } },
+    },
+  }).catch(e => { saveErr = e; });
+  renderPrepList();
+  prepStatus(i, saveErr
+    ? `⚠ Transcript kept but NOT saved to Notion: ${saveErr.message}`
+    : `Pasted transcript saved to Notion — ${text.length.toLocaleString()} chars.`);
+}
+
 function prepToggle(i, kind) {
+  if (kind === 'paste') {
+    const box = document.getElementById(`prep-paste-${i}`);
+    box.style.display = box.style.display === 'none' ? '' : 'none';
+    return;
+  }
   const pre = document.getElementById(`prep-view-${i}`);
   const txt = kind === 'ol' ? S.epQueue[i].outline : S.epQueue[i].transcript;
   if (pre.style.display === 'none' || pre.dataset.kind !== kind) {
@@ -3199,6 +3216,7 @@ async function saveOutlineToNotion() {
 async function extractPlaces() {
   const errEl = document.getElementById('places-error');
   errEl.style.display = 'none';
+  rebuildCombinedOutline(); // in case the user came straight from Prep
   if (!S.currentTranscriptOutline || !S.currentTranscriptOutline.trim()) {
     errEl.textContent = 'No content outline in memory. In Stage 2 → Prep, run "Run outline" on your source video(s) first (or paste a transcript in Stage 3A and Run Pass 1).';
     errEl.style.display = '';

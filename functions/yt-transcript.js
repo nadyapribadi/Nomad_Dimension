@@ -37,15 +37,6 @@ exports.handler = async (event) => {
     console.warn('watch-page scrape failed:', e.message);
   }
 
-  // Free path 2: InnerTube player API — more IP-tolerant, gives real language
-  // codes so we can take the ORIGINAL track (pipeline translates later).
-  try {
-    const s = await innertubeTranscript(videoId, lang);
-    if (s && s.text) return respond(200, { ...s, videoId, source: 'innertube' });
-  } catch (e) {
-    console.warn('innertube failed:', e.message);
-  }
-
   // Paid fallback: youtube-transcript.io (may return a machine-translated track).
   const key = process.env.TRANSCRIPT_API_KEY;
   if (key) {
@@ -64,44 +55,6 @@ exports.handler = async (event) => {
     code: 'not_found',
   });
 };
-
-// ─── InnerTube (YouTube's internal player API) ─────────────────────────────
-
-async function innertubeTranscript(videoId, lang) {
-  const res = await fetch(
-    'https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
-      body: JSON.stringify({
-        videoId,
-        context: {
-          client: {
-            clientName: 'ANDROID',
-            clientVersion: '19.09.37',
-            androidSdkVersion: 30,
-            hl: 'en',
-          },
-        },
-      }),
-    }
-  );
-  if (!res.ok) throw new Error(`player ${res.status}`);
-  const data = await res.json().catch(() => null);
-  const tracks =
-    data &&
-    data.captions &&
-    data.captions.playerCaptionsTracklistRenderer &&
-    data.captions.playerCaptionsTracklistRenderer.captionTracks;
-  if (!tracks || !tracks.length) return null;
-
-  const track = pickCaptionTrack(tracks, lang);
-  if (!track || !track.baseUrl) return null;
-  const capRes = await fetch(`${track.baseUrl}&fmt=json3`, { headers: { 'User-Agent': UA } });
-  if (!capRes.ok) throw new Error(`caption track ${capRes.status}`);
-  const text = parseJson3(await capRes.json().catch(() => null));
-  return text ? { text, lang: track.languageCode || lang || '' } : null;
-}
 
 // ─── free scrape ────────────────────────────────────────────────────────────
 
