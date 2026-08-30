@@ -7,20 +7,30 @@
 // Phase 2 replaces DEFAULT_ROUTING with a read of the Notion "Model
 // Configuration" table and adds functions/ai-run.js as the HTTP entry point.
 
-// task -> { provider, model }. Overridable per call.
+// task -> { provider, model, fallback?: { provider, model } }. Overridable per call.
+// These are the OFFLINE defaults — a single provider is the safest degraded mode
+// when the Notion "Active Routing" block is unreachable. The live multi-provider
+// spread lives in that Notion block; ai-run.js passes its `fallback` through.
+// `fallback` is tried once if the primary exhausts its retries with a
+// rate_limited / provider_error / network / content_filtered error.
+const HAIKU = { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' };
+const SONNET = { provider: 'anthropic', model: 'claude-sonnet-4-6' };
+const FLASH = { provider: 'gemini', model: 'gemini-2.0-flash' };
+const GPT_MINI = { provider: 'openai', model: 'gpt-4o-mini' };
+const GPT = { provider: 'openai', model: 'gpt-4o' };
 const DEFAULT_ROUTING = {
-  angle: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
-  translate: { provider: 'gemini', model: 'gemini-2.0-flash' },
-  outline: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
-  places: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
-  theme: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
-  dialogue: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
-  thumbnail: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
-  metadata: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
-  handoff: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
-  gap: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  angle: { ...HAIKU, fallback: FLASH },
+  translate: { ...FLASH, fallback: HAIKU },
+  outline: { ...HAIKU, fallback: GPT_MINI },
+  places: { ...SONNET, fallback: GPT },
+  theme: { ...SONNET, fallback: GPT },
+  dialogue: { ...SONNET, fallback: GPT },
+  thumbnail: { ...HAIKU, fallback: GPT_MINI },
+  metadata: { ...HAIKU, fallback: GPT_MINI },
+  handoff: { ...HAIKU, fallback: GPT_MINI },
+  gap: { ...HAIKU, fallback: SONNET },
   // Critic runs on a different family from the writer by default.
-  critic: { provider: 'gemini', model: 'gemini-2.0-flash' },
+  critic: { ...FLASH, fallback: SONNET },
 };
 
 // USD per 1,000,000 tokens. VERIFY against current provider pricing — these are
@@ -33,14 +43,17 @@ const PRICING = {
   'gpt-4o': { in: 2.5, out: 10.0 },
 };
 
-// Error codes an agent / caller may branch on.
+// Retried once against the SAME model.
 const RETRYABLE = new Set(['rate_limited', 'network', 'provider_error']);
+// After retries are exhausted, these trigger one failover to the task's `fallback`.
+const FAILOVER = new Set(['rate_limited', 'network', 'provider_error', 'content_filtered']);
 
 /**
  * callModel(req, deps?)
  *   req.task?       key into DEFAULT_ROUTING
  *   req.provider?   'anthropic' | 'gemini' | 'openai'   (overrides task routing)
  *   req.model?      model id                  (overrides task routing)
+ *   req.fallback?   { provider, model } tried once if the primary fails over
  *   req.system?     system prompt string
  *   req.messages    [{ role: 'user'|'assistant', content: string }]  (required)
  *   req.maxTokens?  default 2000
@@ -65,21 +78,34 @@ async function callModel(req, deps = {}) {
   if (!Array.isArray(req.messages) || req.messages.length === 0) {
     throw taxonomyError('invalid_request', 'messages is required');
   }
-  const adapter = ADAPTERS[provider];
-  if (!adapter) throw taxonomyError('invalid_request', `unknown provider "${provider}"`);
 
-  let lastErr;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await adapter({ ...req, model }, { fetch: fetchImpl, env });
-      return { ...res, costUsd: cost(model, res.usage) };
-    } catch (err) {
-      lastErr = err;
-      if (!RETRYABLE.has(err.code) || attempt === 1) throw err;
-      await sleep(500 * (attempt + 1));
+  // One provider attempt = adapter call + up to one same-model retry.
+  const runAttempts = async (prov, mdl) => {
+    const adapter = ADAPTERS[prov];
+    if (!adapter) throw taxonomyError('invalid_request', `unknown provider "${prov}"`);
+    let lastErr;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await adapter({ ...req, model: mdl }, { fetch: fetchImpl, env });
+        return { ...res, costUsd: cost(mdl, res.usage) };
+      } catch (err) {
+        lastErr = err;
+        if (!RETRYABLE.has(err.code) || attempt === 1) throw err;
+        await sleep(500 * (attempt + 1));
+      }
     }
+    throw lastErr;
+  };
+
+  try {
+    return await runAttempts(provider, model);
+  } catch (err) {
+    const fb = req.fallback || (routed && routed.fallback);
+    if (fb && fb.provider && fb.model && FAILOVER.has(err.code)) {
+      return runAttempts(fb.provider, fb.model);
+    }
+    throw err;
   }
-  throw lastErr;
 }
 
 function cost(model, usage) {

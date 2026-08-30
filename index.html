@@ -805,12 +805,19 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     </table>
   </div>
 
-  <!-- MODEL CONFIG -->
+  <!-- MODEL ROUTING (edits the Notion "🔀 Active Routing" JSON block) -->
   <div class="card" id="models-card" style="display:none">
-    <div class="card-title"><span class="icon">🤖</span> Model Configuration</div>
+    <div class="card-title"><span class="icon">🔀</span> Active Model Routing</div>
     <div id="models-table"></div>
     <div class="btn-row">
-      <button class="btn" onclick="saveModels()">Save Model Changes to Notion →</button>
+      <button class="btn btn-primary" onclick="saveRouting()">Save Routing to Notion →</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:8px">
+      Pick a model per task. Saving writes the <strong>🔀 Active Routing</strong> JSON
+      block on the Notion App Settings page; <code style="font-family:var(--font-mono)">ai-run</code>
+      picks it up within ~60s — no deploy. <em>Fallback</em> is used automatically if the
+      primary is rate-limited, errors, or is content-filtered. If no block exists yet,
+      the router uses its built-in <code style="font-family:var(--font-mono)">DEFAULT_ROUTING</code>.
     </div>
   </div>
 
@@ -1646,7 +1653,6 @@ function parseAndApplySettings(blocks) {
   // Walk blocks and extract tables
   let currentSection = '';
   const keysRaw = {};
-  const modelsRaw = {};
 
   for (const block of blocks) {
     if (block.type === 'heading_1' || block.type === 'heading_2') {
@@ -1660,12 +1666,16 @@ function parseAndApplySettings(blocks) {
         const val = cells[1].map(r => r.plain_text).join('').trim();
         if (!key) continue;
         if (currentSection.includes('api key')) keysRaw[key] = val;
-        else if (currentSection.includes('model')) {
-          // columns: Task, Provider, Model, Notes
-          const model = cells[2]?.map(r => r.plain_text).join('').trim() || '';
-          if (key && model) modelsRaw[key] = model;
-        }
       }
+    }
+    // The machine-read routing block: a code block whose JSON has a `dialogue` key.
+    // Keep its id so the UI can PATCH it back to Notion.
+    if (block.type === 'code') {
+      const txt = block.code?.rich_text?.map(r => r.plain_text).join('') || '';
+      try {
+        const parsed = JSON.parse(txt);
+        if (parsed && parsed.dialogue) { S.routing = parsed; S.routingBlockId = block.id; }
+      } catch { /* not the routing block */ }
     }
     // paragraph blocks for DNA
     if (block.type === 'paragraph') {
@@ -1697,18 +1707,8 @@ if (txt.startsWith('Active Episode:')) S.activeEpisode = txt.split('Active Episo
   S.keys = { youtube: 'env', anthropic: 'env', notion: 'env', tts: 'env', openai: 'env', gemini: 'env' };
   void keysRaw;
 
-  // Apply model config
-  S.models = {
-    angle:       modelsRaw['Content Angle Generation'] || 'claude-haiku-4-5-20251001',
-    translation: modelsRaw['Translation JP→EN'] || 'gemini-2.0-flash',
-    pass1:       modelsRaw['Transcript Structure Extraction (Pass 1)'] || 'claude-haiku-4-5-20251001',
-    places:      modelsRaw['Places Extraction'] || 'claude-sonnet-4-6',
-    theme:       modelsRaw['Episode Theme Suggestion'] || 'claude-sonnet-4-6',
-    dialogue:    modelsRaw['Dialogue Generation'] || 'claude-sonnet-4-6',
-    thumbnail:   modelsRaw['Thumbnail Brief'] || 'claude-haiku-4-5-20251001',
-    metadata:    modelsRaw['YT Metadata Generation'] || 'claude-haiku-4-5-20251001',
-    gap:         modelsRaw['Gap Analysis / What to make next'] || 'claude-haiku-4-5-20251001',
-  };
+  // Model routing is read straight from the "🔀 Active Routing" code block above
+  // (S.routing) — the same block ai-run.js reads. No per-task table parsing here.
 
   // defaults if lookups empty
   if (!S.lookups.sections.length) S.lookups.sections = ['Intro','Travel Segment','Food Stop','Place / Attraction','Cultural Note','Onsen / Wellness','Overnight Stop','Outro'];
@@ -1740,18 +1740,9 @@ function renderSettingsUI() {
     return `<tr><td>${kd.label}</td><td style="font-family:var(--font-mono);font-size:11px">${preview}</td><td>${status}</td></tr>`;
   }).join('');
 
-  // Models card
+  // Model routing card
   document.getElementById('models-card').style.display = '';
-  document.getElementById('models-table').innerHTML = `
-    <table class="data-table">
-      <thead><tr><th>Task</th><th>Model</th></tr></thead>
-      <tbody>
-        ${Object.entries(S.models).map(([k,v]) => `
-          <tr><td style="font-size:12px">${k}</td>
-          <td><input type="text" value="${v}" data-model="${k}" style="font-family:var(--font-mono);font-size:11px"></td></tr>
-        `).join('')}
-      </tbody>
-    </table>`;
+  renderRoutingTable();
 
   // DNA card
   document.getElementById('dna-card').style.display = '';
@@ -1816,11 +1807,93 @@ function saveLookups() {
   toast('Lookup tables saved locally. Notion write coming soon.', 'success');
 }
 
-function saveModels() {
-  document.querySelectorAll('[data-model]').forEach(inp => {
-    S.models[inp.dataset.model] = inp.value.trim();
+// --- Model routing (edits the Notion "🔀 Active Routing" JSON block) ---------
+
+// Tasks ai-run.js knows about, in pipeline order.
+const ROUTING_TASKS = ['angle','theme','gap','outline','translate','places','dialogue','thumbnail','metadata','handoff','critic'];
+// Selectable models. value = "provider|model"; must be a real, current model id.
+const MODEL_CHOICES = [
+  ['anthropic|claude-haiku-4-5-20251001', 'Claude Haiku 4.5  (cheap, fast)'],
+  ['anthropic|claude-sonnet-4-6',         'Claude Sonnet 4.6  (strong, creative)'],
+  ['gemini|gemini-2.0-flash',             'Gemini 2.0 Flash  (cheap, fast)'],
+  ['openai|gpt-4o-mini',                  'GPT-4o mini  (cheap, fast)'],
+  ['openai|gpt-4o',                       'GPT-4o  (strong, reasoning)'],
+];
+// Offline default if Notion has no routing block yet.
+const DEFAULT_ROUTING_UI = {
+  angle:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'gemini',model:'gemini-2.0-flash'}},
+  theme:{provider:'anthropic',model:'claude-sonnet-4-6',fallback:{provider:'openai',model:'gpt-4o'}},
+  gap:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
+  outline:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
+  translate:{provider:'gemini',model:'gemini-2.0-flash',fallback:{provider:'anthropic',model:'claude-haiku-4-5-20251001'}},
+  places:{provider:'anthropic',model:'claude-sonnet-4-6',fallback:{provider:'openai',model:'gpt-4o'}},
+  dialogue:{provider:'anthropic',model:'claude-sonnet-4-6',fallback:{provider:'openai',model:'gpt-4o'}},
+  thumbnail:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
+  metadata:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
+  handoff:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
+  critic:{provider:'gemini',model:'gemini-2.0-flash',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
+};
+
+function routingSelect(kind, task, current) {
+  const cur = current ? `${current.provider}|${current.model}` : '';
+  const opts = MODEL_CHOICES.map(([v,label]) =>
+    `<option value="${v}"${v === cur ? ' selected' : ''}>${label}</option>`).join('');
+  const blank = kind === 'fallback' ? '<option value=""' + (cur ? '' : ' selected') + '>— none —</option>' : '';
+  return `<select data-route="${kind}" data-task="${task}" style="font-size:11px">${blank}${opts}</select>`;
+}
+
+function renderRoutingTable() {
+  const r = S.routing || DEFAULT_ROUTING_UI;
+  const rows = ROUTING_TASKS.map(task => {
+    const e = r[task] || {};
+    return `<tr>
+      <td style="font-size:12px">${task}</td>
+      <td>${routingSelect('primary', task, e.provider ? e : null)}</td>
+      <td>${routingSelect('fallback', task, e.fallback || null)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('models-table').innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Task</th><th>Primary</th><th>Fallback</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function collectRouting() {
+  const out = {};
+  ROUTING_TASKS.forEach(task => {
+    const prim = document.querySelector(`[data-route="primary"][data-task="${task}"]`);
+    if (!prim || !prim.value) return;
+    const [provider, model] = prim.value.split('|');
+    const entry = { provider, model };
+    const fb = document.querySelector(`[data-route="fallback"][data-task="${task}"]`);
+    if (fb && fb.value) {
+      const [fp, fm] = fb.value.split('|');
+      entry.fallback = { provider: fp, model: fm };
+    }
+    out[task] = entry;
   });
-  toast('Model config saved locally. Notion write coming soon.', 'success');
+  return out;
+}
+
+async function saveRouting() {
+  const routing = collectRouting();
+  const json = JSON.stringify(routing, null, 2);
+  if (!S.routingBlockId) {
+    S.routing = routing;
+    navigator.clipboard?.writeText(json);
+    toast('No "🔀 Active Routing" block found on the Notion page. JSON copied to clipboard — paste it into a code block there.', 'warning');
+    return;
+  }
+  try {
+    await notionAPI(`blocks/${S.routingBlockId}`, 'PATCH', {
+      code: { language: 'json', rich_text: [{ type: 'text', text: { content: json } }] },
+    });
+    S.routing = routing;
+    toast('Routing saved to Notion. ai-run picks it up within ~60s.', 'success');
+  } catch (e) {
+    toast(`Could not save routing: ${e.message}`, 'error');
+  }
 }
 
 function saveDNA() {
