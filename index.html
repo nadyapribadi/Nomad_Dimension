@@ -1216,7 +1216,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     <div class="card-title"><span class="icon">📍</span> Extract Places from Transcript Outline</div>
     <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Extracts all mentioned places, cross-references the Places Database for duplicates, and generates entries for new locations. Model per the <em>places</em> route.</p>
     <button class="btn btn-primary" onclick="extractPlaces()">Extract Places →</button>
-    <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Sonnet extracting and cross-referencing places…</div>
+    <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Extracting and cross-referencing places…</div>
+    <div id="places-error" class="info-box error" style="display:none;margin-top:12px"></div>
   </div>
 
   <div id="places-review-area" style="display:none">
@@ -1550,18 +1551,32 @@ async function ytAPI(path, params = {}) {
 // Provider-agnostic model call. Routes via functions/_shared/models.js by `task`
 // (or an explicit provider+model override). Returns { text, provider, model,
 // usage, costUsd }. Every AI stage goes through this.
-async function aiRun(task, { system = '', messages, provider, model } = {}) {
+async function aiRun(task, { system = '', messages, provider, model, maxTokens } = {}) {
   const res = await fetch('/.netlify/functions/ai-run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      task, system, messages, provider, model,
+      task, system, messages, provider, model, maxTokens,
       episode: S.activeEpisode || null,
     }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `ai-run ${res.status}`);
   return data;
+}
+
+// Parse JSON out of a model reply that may have fences / preamble / trailing prose.
+function parseJsonLoose(raw) {
+  const s = String(raw).replace(/```json|```/g, '').trim();
+  try { return JSON.parse(s); } catch { /* keep digging */ }
+  const first = Math.min(...['{', '['].map(c => { const i = s.indexOf(c); return i < 0 ? Infinity : i; }));
+  const last = Math.max(s.lastIndexOf('}'), s.lastIndexOf(']'));
+  if (first !== Infinity && last > first) {
+    const slice = s.slice(first, last + 1);
+    try { return JSON.parse(slice); } catch { /* try to repair */ }
+    try { return JSON.parse(slice.replace(/,\s*([}\]])/g, '$1')); } catch { /* give up */ }
+  }
+  throw new Error('could not parse JSON from the model reply');
 }
 
 async function ttsAPI(text, voice, speed) {
@@ -1629,8 +1644,11 @@ const stageMap = {
   3: 'stage-3', 3.5: 'stage-35', 4: 'stage-4',
   5: 'stage-5', 6: 'stage-6',
 };
+// stage number → index of the .nav-item to highlight
+// (nav: 0 Settings, 1 YouTube, 2 Episode Builder, 3 Transcript, 4 Places,
+//  5 Script Builder, 6 Audio, 7 Handoff)
 const navMap = {
-  0: 0, 1: 1, 2: 2, 3: 3, 3.5: 3, 4: 4, 5: 5, 6: 6,
+  0: 0, 1: 1, 2: 2, 3: 3, 3.5: 4, 4: 5, 5: 6, 6: 7,
 };
 
 function showStage(n) {
@@ -1642,8 +1660,9 @@ function showStage(n) {
   if (panel) panel.classList.add('active');
   // highlight nav
   const navItems = document.querySelectorAll('.nav-item');
+  const activeIdx = navMap[n] ?? Math.floor(n);
   navItems.forEach((item, idx) => {
-    if (idx === Math.floor(n)) item.classList.add('active');
+    if (idx === activeIdx) item.classList.add('active');
   });
   // save current stage
   if (S.notionToken) writeAppState({ 'Current Stage': `Stage ${n}` });
@@ -2473,10 +2492,7 @@ Respond in JSON: {"angle":"...","content_type":"...","region":"...","country":".
       const raw = (await aiRun('angle', { system, messages: [{ role: 'user', content: prompt }] })).text;
 
       let parsed = {};
-try {
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
-} catch {}
+      try { parsed = parseJsonLoose(raw); } catch { parsed = {}; }
       v.angle = parsed.angle || '';
       v.contentType = [parsed.content_type || ''];
       v.region = parsed.region || '';
@@ -2797,7 +2813,7 @@ Respond ONLY in JSON (no markdown): {"themes":[{"title":"<short theme phrase, no
     }] })).text;
 
     let parsed;
-    try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
+    try { parsed = parseJsonLoose(raw); }
     catch { throw new Error('The model returned invalid JSON'); }
 
     S._suggestedThemes = parsed.themes || [];
@@ -2850,7 +2866,7 @@ Examples: "Kyushu in the Rain", "The People Who Live in Their Cars", "3,000 km, 
 
 Respond ONLY in JSON: {"titles":["...","...","..."]}`
     }] })).text;
-    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    const parsed = parseJsonLoose(raw);
     // Strip any accidental "Series · EP## · " prefix the model still adds.
     const clean = (parsed.titles || []).map(t => String(t).replace(/^.*·\s*EP\d+\s*·\s*/i, '').trim());
     const optArea = document.getElementById('ep-title-options');
@@ -3181,7 +3197,13 @@ async function saveOutlineToNotion() {
 
 // ─── STAGE 3B — PLACES ────────────────────────────────────────────────────────
 async function extractPlaces() {
-  if (!S.currentTranscriptOutline) { toast('Run Pass 1 transcript analysis first', 'error'); return; }
+  const errEl = document.getElementById('places-error');
+  errEl.style.display = 'none';
+  if (!S.currentTranscriptOutline || !S.currentTranscriptOutline.trim()) {
+    errEl.textContent = 'No content outline in memory. In Stage 2 → Prep, run "Run outline" on your source video(s) first (or paste a transcript in Stage 3A and Run Pass 1).';
+    errEl.style.display = '';
+    return;
+  }
   const loadEl = document.getElementById('places-loading');
   loadEl.style.display = 'flex';
 
@@ -3196,7 +3218,7 @@ async function extractPlaces() {
     }));
 
     const system = buildDNASystem();
-    const raw = (await aiRun('places', { system, messages: [{
+    const raw = (await aiRun('places', { system, maxTokens: 8000, messages: [{
       role: 'user',
       content: `Extract ALL places mentioned in this content outline. For each place, check against the existing places database and classify as existing or new.
 
@@ -3226,16 +3248,21 @@ Respond ONLY in JSON: {"places":[{...},...]}
     }] })).text;
 
     let parsed;
-    try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
-    catch { throw new Error('The model returned invalid JSON for places'); }
+    try { parsed = parseJsonLoose(raw); }
+    catch {
+      console.error('places raw reply:', raw);
+      throw new Error('The model’s places reply was not valid JSON — try again (check the console for the raw reply).');
+    }
 
     S.extractedPlaces = parsed.places || [];
     S.confirmedPlaces = [];
+    if (!S.extractedPlaces.length) throw new Error('No places found in the outline.');
     renderPlacesReview();
     document.getElementById('places-review-area').style.display = '';
     toast(`Extracted ${S.extractedPlaces.length} places`, 'success');
   } catch (err) {
-    toast(`Places extraction failed: ${err.message}`, 'error');
+    errEl.textContent = `Places extraction failed: ${err.message}`;
+    errEl.style.display = '';
     console.error(err);
   } finally {
     loadEl.style.display = 'none';
@@ -3812,7 +3839,7 @@ Respond ONLY in valid JSON.`
     }] })).text;
 
     let parsed;
-    try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
+    try { parsed = parseJsonLoose(raw); }
     catch { throw new Error('Invalid JSON from the model'); }
 
     S.handoffDoc = parsed;
