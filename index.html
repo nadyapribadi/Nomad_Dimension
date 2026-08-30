@@ -1500,6 +1500,24 @@ async function claudeAPI(messages, model, system = '') {
   return data.content?.[0]?.text || '';
 }
 
+// Provider-agnostic model call. Routes via functions/_shared/models.js by `task`.
+// Returns { text, provider, model, usage, costUsd }. Stages migrate to this from
+// claudeAPI one at a time (evolution plan Phase 2).
+async function aiRun(task, { system = '', messages, provider, model } = {}) {
+  const res = await fetch('/.netlify/functions/ai-run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      task, system, messages, provider, model,
+      episode: S.activeEpisode || null,
+      notionToken: S.notionToken || null,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `ai-run ${res.status}`);
+  return data;
+}
+
 async function ttsAPI(text, voice, speed) {
   const res = await fetch('/.netlify/functions/tts-proxy', {
     method: 'POST',
@@ -2972,11 +2990,10 @@ Rules:
 
 Write the dialogue only. No preamble.`;
 
-    const result = await claudeAPI(
-      [{ role: 'user', content: prompt }],
-      S.models.dialogue || 'claude-sonnet-4-6',
-      system
-    );
+    const { text: result } = await aiRun('dialogue', {
+      system,
+      messages: [{ role: 'user', content: prompt }],
+    });
 
     // Save to Notion
     await notionAPI(`pages/${sec.id}`, 'PATCH', {
