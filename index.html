@@ -3201,6 +3201,7 @@ const RESEARCH_STORES = {
 };
 
 // Flatten one array from a source (Prep breakdowns or the Web result), dedup by name.
+S._pushed = S._pushed || new Set();
 function poolFor(key, src) {
   const rows = src === 'web'
     ? ((S.webExtract && S.webExtract[key]) || [])
@@ -3210,7 +3211,9 @@ function poolFor(key, src) {
     const nm = String(RESEARCH_STORES[key].name(it) || '').trim();
     if (!nm || seen.has(nm.toLowerCase())) continue;
     seen.add(nm.toLowerCase());
-    out.push({ ...it, _key: `${src}:${key}:${nm.toLowerCase()}` });
+    const _key = `${src}:${key}:${nm.toLowerCase()}`;
+    if (S._pushed.has(_key)) continue;           // already written this session — gone from review
+    out.push({ ...it, _key });
   }
   return out;
 }
@@ -3264,10 +3267,13 @@ function toggleReview(key, src) {
   renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
 }
 
+let _pushingStore = false;
 async function pushStore(key, btn, src) {
+  if (_pushingStore) return;                         // re-entry guard (double-click / tab-switch)
   const cfg = RESEARCH_STORES[key];
   const items = poolFor(key, src).filter(it => !_skipSet(src).has(it._key));
   if (!items.length) { toast('Nothing ticked', 'error'); return; }
+  _pushingStore = true;
   if (btn) { btn.disabled = true; btn.textContent = 'Pushing…'; }
   let added = 0, skipped = 0, failed = 0;
   try {
@@ -3279,16 +3285,18 @@ async function pushStore(key, btn, src) {
     } catch (e) { console.warn(`${key} dedupe pre-check failed:`, e.message); }
     for (const it of items) {
       const nm = String(cfg.name(it) || '').trim().toLowerCase();
-      if (!nm || existing.has(nm)) { skipped++; continue; }
+      if (!nm || existing.has(nm)) { S._pushed.add(it._key); skipped++; continue; }
       try {
         await notionAPI('pages', 'POST', { parent: { database_id: cfg.db() }, properties: cfg.props(it) });
-        existing.add(nm); added++;
+        existing.add(nm); S._pushed.add(it._key); added++;   // mark done — it drops out of review
       } catch (e) { failed++; console.error(`${key} push error`, cfg.name(it), e); }
     }
     toast([added && `${added} added`, skipped && `${skipped} skipped`, failed && `${failed} failed`]
       .filter(Boolean).join(' · ') || 'nothing to push', failed ? 'error' : 'success');
   } finally {
+    _pushingStore = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Push ticked →'; }
+    renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
   }
 }
 
