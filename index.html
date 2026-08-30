@@ -1553,7 +1553,18 @@ async function aiRun(task, { system = '', messages, provider, model, maxTokens }
       episode: S.activeEpisode || null,
     }),
   });
-  const data = await res.json();
+  // ai-run can return a non-JSON body on a platform timeout / crash — read text
+  // first so the caller gets a real message, not "JSON.parse: unexpected character".
+  const body = await res.text();
+  let data;
+  try { data = JSON.parse(body); }
+  catch {
+    throw new Error(
+      res.ok
+        ? `ai-run returned a non-JSON response (${body.slice(0, 120)})`
+        : `ai-run ${res.status} — ${(body || 'no response body').slice(0, 200)}${res.status === 504 || res.status === 502 ? ' (likely a timeout — try a smaller input or a faster model)' : ''}`
+    );
+  }
   if (!res.ok) throw new Error(data.error || `ai-run ${res.status}`);
   return data;
 }
@@ -2832,14 +2843,16 @@ Record ONLY what the transcript actually supports. Use "" or [] wherever it is
 silent — never invent a price, a location, or an event that isn't there.
 
 <transcript>
-${v.transcript.slice(0, 12000)}
+${v.transcript.slice(0, 9000)}
 </transcript>
 
 Return ONLY this JSON shape, no markdown:
 ${BREAKDOWN_SHAPE}`;
+    // Small system prompt on purpose — extraction doesn't need the full brand DNA,
+    // and a lighter request is far less likely to hit the function timeout.
     const raw = (await aiRun('outline', {
-      system: buildDNASystem(),
-      maxTokens: 6000,
+      system: 'You extract structured data from travel-video transcripts. Output only valid JSON matching the requested shape.',
+      maxTokens: 3500,
       messages: [{ role: 'user', content: prompt }],
     })).text;
 
