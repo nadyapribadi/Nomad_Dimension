@@ -1,0 +1,202 @@
+'use strict';
+
+// Provider-agnostic LLM router. Every model call in Nomad should go through
+// callModel(). Phase 1 of the evolution plan — see Docs/AS_BUILT.md.
+// The `_shared` dir (underscore prefix) is not deployed by Netlify as a function.
+//
+// Phase 2 replaces DEFAULT_ROUTING with a read of the Notion "Model
+// Configuration" table and adds functions/ai-run.js as the HTTP entry point.
+
+// task -> { provider, model }. Overridable per call.
+const DEFAULT_ROUTING = {
+  angle: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  translate: { provider: 'gemini', model: 'gemini-2.0-flash' },
+  outline: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  places: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+  theme: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+  dialogue: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+  thumbnail: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  metadata: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  gap: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  // Critic runs on a different family from the writer by default.
+  critic: { provider: 'gemini', model: 'gemini-2.0-flash' },
+};
+
+// USD per 1,000,000 tokens. VERIFY against current provider pricing — these are
+// placeholders and should be tuned once real Costs DB data exists.
+const PRICING = {
+  'claude-haiku-4-5-20251001': { in: 1.0, out: 5.0 },
+  'claude-sonnet-4-6': { in: 3.0, out: 15.0 },
+  'gemini-2.0-flash': { in: 0.1, out: 0.4 },
+};
+
+// Error codes an agent / caller may branch on.
+const RETRYABLE = new Set(['rate_limited', 'network', 'provider_error']);
+
+/**
+ * callModel(req, deps?)
+ *   req.task?       key into DEFAULT_ROUTING
+ *   req.provider?   'anthropic' | 'gemini'   (overrides task routing)
+ *   req.model?      model id                  (overrides task routing)
+ *   req.system?     system prompt string
+ *   req.messages    [{ role: 'user'|'assistant', content: string }]  (required)
+ *   req.maxTokens?  default 2000
+ *   req.temperature?
+ *   deps.fetch?     injectable for tests; defaults to global fetch
+ *   deps.env?       injectable for tests; defaults to process.env
+ *
+ * returns { text, provider, model, usage:{inputTokens,outputTokens}, costUsd, raw }
+ * throws  { code, message, status? } from the taxonomy:
+ *   invalid_request | rate_limited | content_filtered | provider_error | network
+ */
+async function callModel(req, deps = {}) {
+  const fetchImpl = deps.fetch || globalThis.fetch;
+  const env = deps.env || process.env;
+
+  const routed = req.task ? DEFAULT_ROUTING[req.task] : null;
+  const provider = req.provider || (routed && routed.provider);
+  const model = req.model || (routed && routed.model);
+  if (!provider || !model) {
+    throw taxonomyError('invalid_request', `no provider/model for task "${req.task}"`);
+  }
+  if (!Array.isArray(req.messages) || req.messages.length === 0) {
+    throw taxonomyError('invalid_request', 'messages is required');
+  }
+  const adapter = ADAPTERS[provider];
+  if (!adapter) throw taxonomyError('invalid_request', `unknown provider "${provider}"`);
+
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await adapter({ ...req, model }, { fetch: fetchImpl, env });
+      return { ...res, costUsd: cost(model, res.usage) };
+    } catch (err) {
+      lastErr = err;
+      if (!RETRYABLE.has(err.code) || attempt === 1) throw err;
+      await sleep(500 * (attempt + 1));
+    }
+  }
+  throw lastErr;
+}
+
+function cost(model, usage) {
+  const p = PRICING[model];
+  if (!p || !usage) return null;
+  const i = ((usage.inputTokens || 0) / 1e6) * p.in;
+  const o = ((usage.outputTokens || 0) / 1e6) * p.out;
+  return Math.round((i + o) * 1e6) / 1e6;
+}
+
+async function anthropicAdapter(req, { fetch, env }) {
+  const key = env.ANTHROPIC_API_KEY;
+  if (!key) throw taxonomyError('invalid_request', 'ANTHROPIC_API_KEY not set');
+
+  const body = {
+    model: req.model,
+    max_tokens: req.maxTokens || 2000,
+    messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
+  };
+  if (req.system) body.system = req.system;
+  if (typeof req.temperature === 'number') body.temperature = req.temperature;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  }).catch((e) => {
+    throw taxonomyError('network', e.message);
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw mapHttp(res.status, data && data.error && data.error.message);
+
+  const text = (data.content || [])
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('');
+  const u = data.usage || {};
+  return {
+    text,
+    provider: 'anthropic',
+    model: req.model,
+    usage: { inputTokens: u.input_tokens || 0, outputTokens: u.output_tokens || 0 },
+    raw: data,
+  };
+}
+
+async function geminiAdapter(req, { fetch, env }) {
+  const key = env.GEMINI_API_KEY;
+  if (!key) throw taxonomyError('invalid_request', 'GEMINI_API_KEY not set');
+
+  const body = {
+    contents: req.messages.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    })),
+    generationConfig: {},
+  };
+  if (req.system) body.systemInstruction = { parts: [{ text: req.system }] };
+  if (req.maxTokens) body.generationConfig.maxOutputTokens = req.maxTokens;
+  if (typeof req.temperature === 'number') body.generationConfig.temperature = req.temperature;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${req.model}:generateContent?key=${key}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }).catch((e) => {
+    throw taxonomyError('network', e.message);
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw mapHttp(res.status, data && data.error && data.error.message);
+
+  const cand = (data.candidates || [])[0];
+  if (cand && cand.finishReason === 'SAFETY') {
+    throw taxonomyError('content_filtered', 'Gemini blocked the response (safety)');
+  }
+  const text =
+    (cand && cand.content && (cand.content.parts || []).map((p) => p.text || '').join('')) || '';
+  const um = data.usageMetadata || {};
+  return {
+    text,
+    provider: 'gemini',
+    model: req.model,
+    usage: {
+      inputTokens: um.promptTokenCount || 0,
+      outputTokens: um.candidatesTokenCount || 0,
+    },
+    raw: data,
+  };
+}
+
+const ADAPTERS = { anthropic: anthropicAdapter, gemini: geminiAdapter };
+
+function taxonomyError(code, message, status) {
+  const e = new Error(message || code);
+  e.code = code;
+  if (status) e.status = status;
+  return e;
+}
+
+function mapHttp(status, message) {
+  if (status === 429) return taxonomyError('rate_limited', message || 'rate limited', 429);
+  if (status === 401 || status === 403) {
+    return taxonomyError('invalid_request', message || 'auth failed', status);
+  }
+  if (status === 400 || status === 404 || status === 422) {
+    return taxonomyError('invalid_request', message || 'invalid request', status);
+  }
+  if (status >= 500) return taxonomyError('provider_error', message || 'provider error', status);
+  return taxonomyError('provider_error', message || `http ${status}`, status);
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+module.exports = { callModel, cost, DEFAULT_ROUTING, PRICING };
