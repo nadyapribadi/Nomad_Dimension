@@ -1,8 +1,8 @@
 # Pipeline redesign — Step 1 Research + Step 2 Episode Builder
 
-Status: **designed, not implemented.** Target for restructuring the current
-Stage 1 (YouTube Browser) + Stage 2 (Queue / Prep / Places / Assemble) into two
-clean steps:
+Status: **built** (R1–R4, E1–E3 landed 2026-08-31; verify-mode Web, refresh-stale
+and angle-first-from-Plan still deferred). Restructured Stage 1 (YouTube Browser)
++ Stage 2 (Queue / Prep / Places / Assemble) into two clean steps:
 
 - **Step 1 — Research**: fill Notion with reusable, one-fact-per-column material.
 - **Step 2 — Episode Builder**: query that material, assign it into typed
@@ -176,8 +176,8 @@ with a web-search tool and the prior claim as context.
 | --- | --- | --- |
 | R1 | **✅ 2026-08-31** — `#stage-1` is now **Research** with tabs YouTube · Prep · Places · Web(stub); `#stage-2` **Episode Builder** trimmed to the single **Assemble** tab. Prep = "1 · Pick source videos" (`loadSourceQueue`) + "2 · Break down each" in one tab. `switchTab` rewritten to scope per active panel. | done |
 | R2 | Notion stores exist | **✅ 2026-08-31** — Activities / Research / Prices / Data / Glossary / Food / Transport DBs created, ids in `DB_IDS`; Source Videos got a `Platform` col (title not yet renamed). **Each new DB must be connected to the NomadDimension integration.** Per-DB push paths still to write. |
-| R3 | 2-pass extract on the new schema (replaces the single breakdown) | pass-1 / pass-2 prompts; per-type review + dedup + push |
-| R4 | **Web** tab: entry-B question + Verify & Enrich pass | `functions/web-research.js` (Gemini grounding); Review #2 UI |
+| R3 | 2-pass extract → the stores | **✅ 2026-08-31** — EXTRACT_SHAPE_1/_2 (gemini-flash×2), `RESEARCH_STORES` + generic `poolFor`/`renderReviewInto`/`pushStore` in Prep's "3 · Review & push" card. Places decoupled: own `PLACES_SHAPE` pass in the Places tab. |
+| R4 | Web research tab | **✅ 2026-08-31** — `functions/web-research.js` (Gemini `google_search` grounding), `/api/web-research`. Web tab: question+focus → `runWebResearch` → `S.webExtract` → same review engine (`src='web'`) → push, with source links. |
 
 ---
 
@@ -262,8 +262,8 @@ S.ep = {
 
 | # | Delivers |
 | --- | --- |
-| E1 | Identity form + blank/template section list + Places/Food/Knowledge browsers (filter engine) + manual assign + Commit (Episode row + plan + seeded sections) |
-| E2 | Activities + Transport browsers; `✨ auto-distribute`; `✨ suggest order` |
-| E3 | Prices/Data/Glossary panels; "refresh stale" (re-verify assigned rows); angle-first entry from a Plan idea; episode-level gap-check ("no verified fact for the central claim — go research it") |
+| E1 | **✅ 2026-08-31** — Assemble replaced: Identity form + typed **Sections** (blank / Template A / B, ↑↓, type dropdown from `S.lookups.sections`) + **Material** browser (`EP_MAT` per-category Notion query: Places/Activities/Food/Knowledge/Transport, search + prefecture + unused filters, assign-to-section dropdown). `createEpisode` → Episode row + running-order brief in the page body + one seeded Script section per typed section + `Used In Episode` stamped on assigned rows. |
+| E2 | **✅** — `✨ Order` (`suggestSectionOrder`) + `✨ Distribute` (`autoDistribute`, deterministic: category → first matching section type). |
+| E3 | **✅ (partial)** — `✨ Gap check` (`epGapCheck`) against the central question. Refresh-stale + angle-first-from-Plan deferred. |
 
 Each phase ships something; the app stays live. Decide at each gate.

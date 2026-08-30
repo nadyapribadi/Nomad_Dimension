@@ -5,15 +5,27 @@ Human-readable, updated per milestone. Format loosely follows
 
 ## Unreleased
 
-### Planned
+### Added — Step 1 / Step 2 restructure (`Docs/PIPELINE.md`)
 
-- **Step 1 / Step 2 restructure** — `Docs/PIPELINE.md`. Stage 1 + Stage 2's
-  gathering tabs become **Research** (source-agnostic ingest → 2-pass extract →
-  web verify → one-fact-per-column Notion stores: Sources, Places, Activities,
-  Research, Prices, Data, Glossary, Food, Transport). **Episode Builder** then
-  queries those stores via a per-category filter engine and assigns material
-  into typed sections (`section_types` stays in Settings), committing a seeded
-  Script Builder structure. Phases R1–R4 / E1–E3.
+- **R1** — `#stage-1` → **Research** (tabs YouTube · Prep · Places · Web);
+  `#stage-2` **Episode Builder** = one Assemble tab. Prep works on any Source
+  Video. `switchTab` rescoped per active panel.
+- **R2** — 7 new Notion DBs (Activities · Research · Prices · Data · Glossary ·
+  Food · Transport) + `Platform` col on Source Videos.
+- **R3** — 2-pass transcript extraction (`EXTRACT_SHAPE_1/_2`, gemini-flash),
+  generic `RESEARCH_STORES` review-and-push in Prep. Places decoupled into its
+  own per-transcript pass.
+- **R4** — `functions/web-research.js` (Gemini Google-Search grounding) + the
+  **Web** tab; results flow through the same review engine.
+- **E1** — Assemble rebuilt: typed **Sections** (blank / Template A·B) +
+  per-category **Material** browser (Notion query + search/prefecture/unused
+  filters + assign-to-section). `createEpisode` seeds one Script section per
+  typed section and stamps `Used In Episode`.
+- **E2/E3** — `✨ Order` (`suggestSectionOrder`), `✨ Distribute`
+  (`autoDistribute`), `✨ Gap check` (`epGapCheck`).
+
+Deferred: Sources DB rename, relations (cross-refs are text), Web verify-mode,
+refresh-stale, angle-first-from-Plan, TikTok/IG fetchers.
 
 ### Added
 
