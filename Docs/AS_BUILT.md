@@ -39,16 +39,17 @@ DB_IDS = {
   sourceVideos:   '54e269ed-6c2e-4e05-9211-82f9b274c2a6',
   episodes:       '93de54dc-6e36-459f-b2d0-0b9f02a1594b',
   scripts:        '81917620-d890-4383-9288-3b5136d0d438',
-  places:         '9b03bb34-9d44-4eba-9744-5073bc881656', // stale — DB not yet connected
-  sourceChannels: 'ad90cd8a-276c-4cf6-9414-697401380388', // unused (JSON block)
+  places:         '3cc9ba2b-3900-81e6-a1ee-cb4f2a65e0be', // recreated 2026-08-30
+  sourceChannels: 'ad90cd8a-276c-4cf6-9414-697401380388', // decommissioned (JSON block)
   costs:          '36962616-b115-4398-850d-40582b092973',
 }
 ```
 
 `ai-run.js` has its own `COSTS_DB_ID` (same value). The **Performance** DB is
-not referenced by any stage. **Places** and **Source Channels** are not yet
-connected to the `NomadDimension` integration — their reads/writes 404 until
-they are (then `places` needs its real database id here).
+not referenced by any stage. The old **📍 Places** DB never existed for the
+integration; a fresh one was created (schema matches `saveConfirmedPlaces`).
+**Source Channels** was never a real DB — channels come from the App Settings
+JSON block.
 
 ## Function map (by stage)
 
