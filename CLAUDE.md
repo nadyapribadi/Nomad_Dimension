@@ -39,16 +39,21 @@ Node 22 (`.nvmrc`).
 ### Deploy flow (auto-deploy is OFF)
 
 Netlify auto-builds are **stopped**. Pushing to `main` no longer deploys.
+`git push` costs **nothing** — push freely; commits pile up until a deploy.
+Netlify's credit plan charges **per production deploy** (~13–15 credits), so
+**batch** — don't deploy per commit. Balance + reset date: Netlify → Billing.
 
-Agents: your job ends at step 3. Step 4 is the operator's, or something you do
-**only** when the operator explicitly says "deploy" in that moment — see
-Boundaries.
+Agents: your job ends at step 3. Steps 4–5 are the operator's, or something you
+do **only** when the operator explicitly says "deploy"/"promote" in that
+message — see Boundaries.
 
 1. Make the change; `npm run check` must pass (also runs on pre-commit + CI).
 2. `npm run dev` and click through the affected stage(s) locally.
 3. Commit + push (history only — no deploy).
-4. **Operator only:** `netlify deploy --prod` (folder is linked to
-   `adorable-granita-954de2`).
+4. **Draft preview** (when the operator asks): `netlify deploy` (no `--prod`)
+   → returns a `Draft URL` to test. No build step in this repo, so a draft is
+   cheap/near-free — but watch the credit balance; drop this step if it dents.
+5. **Promote** (operator only): `netlify deploy --prod`.
 
 `netlify.toml` still carries a `build.ignore` guard in case auto-deploy is ever
 re-enabled.
