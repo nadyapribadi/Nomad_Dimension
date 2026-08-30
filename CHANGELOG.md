@@ -24,6 +24,15 @@ episode }` to the Production Costs DB.
   block (no deploy). Replaces the dead `S.models` panel / `saveModels`.
   Routing block updated to a multi-provider spread (OpenAI `gpt-4o` /
   `gpt-4o-mini`, Gemini `gemini-2.0-flash`, Claude Haiku/Sonnet) + fallbacks.
+- **Stage 1 filtering + Notion source channels.**
+  - Source channels are now a machine-read **"📺 Source Channels"** JSON block
+    (`{ channels: [...] }`); parsed into `S.channels`, _Save to Notion_ button
+    `PATCH`es it. Was a hardcoded array.
+  - Fetch controls: **Sort** (`date` / `viewCount` / `rating` → YouTube API
+    `order`) + **from / to date** (`publishedAfter` / `publishedBefore`).
+  - Post-fetch filter bar (instant, no API calls): keyword over
+    title/description/tags/channel, min views, min/max duration, per-channel,
+    sort by views / newest / oldest / longest. Cards also show publish date.
 - **Lookup Tables** (Section Types / Tone Styles / Voice Configs) are now a
   machine-read **"📋 Lookup Tables"** JSON block (`section_types` /
   `tone_styles` / `voice_configs`). `saveLookups` `PATCH`es it — previously it

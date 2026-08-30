@@ -51,7 +51,7 @@ reads or writes it. (App Settings is a page, handled via `APP_SETTINGS_PAGE_ID`.
 | Stage | Functions |
 | --- | --- |
 | 0 Settings | `connectNotion` · `loadSettingsFromNotion` · `parseAndApplySettings` · `parseSettingsPage` · `getPageBlocks` (paginated) · `renderSettingsUI` · `renderRoutingTable` · `saveRouting` · `renderDNAForm` · `saveDNA` · `runHealthCheck` · `resumeSession` · `writeAppState` · `saveLookups` |
-| 1 YouTube Browser | `fetchYouTube` · `renderYTVideos` · `openReviewModal` · `pushToNotion` |
+| 1 YouTube Browser | `renderChannelChips` · `addChannel` · `saveChannels` · `fetchYouTube` (order + `publishedAfter/Before`) · `filteredYTVideos` · `renderYTVideos` · `resetYTFilters` · `openReviewModal` · `pushToNotion` |
 | 2 Episode Builder | `loadSourceQueue` · `generateThemes` · `selectTheme` · `suggestEpisodeTitles` · `createEpisode` · `loadCalendar` · `runGapAnalysis` |
 | 3A Transcript | `loadTranscriptVideos` · `runPass1` · `saveOutlineToNotion` |
 | 3B Places | `extractPlaces` · `renderPlacesReview` · `confirmPlace` · `skipPlace` · `renderRouteOrder` · `movePlaceUp/Down` · `saveConfirmedPlaces` |
@@ -81,7 +81,7 @@ providers need their `<PROVIDER>_API_KEY` in Netlify env (`DEEPSEEK_API_KEY`,
 | --- | --- |
 | "Every API call logged to **Production Costs** DB" | `ai-run.js` logs every LLM call (provider, model, tokens, cost, stage, episode). TTS/YouTube calls not yet logged; no Total-Cost rollup on Episodes. |
 | **Performance** DB — post-publish metrics at 3 checkpoints | not referenced in code |
-| App Settings is the source of truth for lookup tables | **Done.** Model routing (**"🔀 Active Routing"**), Channel DNA (**"📺 Channel DNA"**), and Lookup Tables (**"📋 Lookup Tables"** → `section_types` / `tone_styles` / `voice_configs`) are all Notion-read JSON code blocks — parsed into `S.routing` / `S.dna` / `S.lookups`, edited in Stage 0, saved back with `PATCH` (chunked to ≤2000-char `rich_text`). `getPageBlocks` pages through `next_cursor` so the blocks are found however long the page grows. |
+| App Settings is the source of truth for config | **Done.** Four Notion-read JSON code blocks on the App Settings page, each parsed on load and `PATCH`ed back (chunked to ≤2000-char `rich_text`), editable in-app: **"🔀 Active Routing"** → `S.routing` (Stage 0), **"📺 Channel DNA"** → `S.dna` (Stage 0), **"📋 Lookup Tables"** (`section_types`/`tone_styles`/`voice_configs`) → `S.lookups` (Stage 0), **"📺 Source Channels"** (`channels`) → `S.channels` (Stage 1). `getPageBlocks` pages through `next_cursor` so they're found however long the page grows. The 📺 Source Channels *database* (`ad90cd8a…`) is unused by code — the JSON block is the app's source. |
 | Two-pass transcript: Pass 2 uses "only the relevant **outline chunk** + place details + brief" | `generateDialogue` passes brief + route order + matched place b-roll — **not the outline chunk** |
 | "Each dialogue line gets an estimated timestamp" | `generateDialogue` output is `KAI:` / `MIA:` lines only; no timestamps produced |
 | Dialogue version history — "last 5 versions stored" | `Dialogue Version` number increments; prior text is overwritten, not kept |
