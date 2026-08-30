@@ -997,8 +997,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     <div class="tab active" onclick="switchTab('ep', 'queue')">📋 Source Queue</div>
     <div class="tab" onclick="switchTab('ep', 'prep');renderPrepList()">🧪 Prep</div>
     <div class="tab" onclick="switchTab('ep', 'places')">📍 Places</div>
-    <div class="tab" onclick="switchTab('ep', 'theme')">🧭 Theme</div>
-    <div class="tab" onclick="switchTab('ep', 'create')">🎬 Create Episode</div>
+    <div class="tab" onclick="switchTab('ep', 'assemble');enterAssemble()">🧩 Assemble</div>
   </div>
 
   <!-- QUEUE TAB -->
@@ -1009,7 +1008,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         <div style="flex:1"></div>
         <span id="ep-sel-count" style="font-size:12px;color:var(--text2)">0 selected</span>
         <button class="btn btn-sm btn-ghost" onclick="clearEpSelection()">Clear</button>
-        <button class="btn btn-sm btn-primary" id="ep-theme-btn" disabled onclick="switchTab('ep','prep');renderPrepList()">Next: Prep →</button>
+        <button class="btn btn-sm btn-primary" id="ep-next-btn" disabled onclick="switchTab('ep','prep');renderPrepList()">Next: Prep →</button>
       </div>
       <div id="ep-queue-area">
         <div class="empty-state">
@@ -1057,36 +1056,16 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         <div id="route-order-list"></div>
         <div class="btn-row">
           <button class="btn btn-primary" id="save-places-btn" onclick="saveConfirmedPlaces()">Push Confirmed Places to Notion →</button>
-          <button class="btn" onclick="switchTab('ep','theme')">Next: Theme →</button>
+          <button class="btn" onclick="switchTab('ep','assemble');enterAssemble()">Next: Assemble →</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- THEME TAB -->
-  <div id="ep-tab-theme" style="display:none">
+  <!-- ASSEMBLE TAB (Theme + Create merged — you author it, AI only on the ✨ buttons) -->
+  <div id="ep-tab-assemble" style="display:none">
     <div class="card">
-      <div class="card-title"><span class="icon">🧭</span> Theme Workshop</div>
-      <div id="theme-selected-videos" style="margin-bottom:14px;color:var(--text3);font-size:13px">
-        Select videos in Source Queue, then run Prep.
-      </div>
-      <button class="btn btn-primary" onclick="generateThemes()" id="gen-theme-btn">Generate Episode Themes →</button>
-      <div id="theme-loading" style="display:none" class="loading-row"><div class="spinner"></div> Reading the outlines and suggesting themes…</div>
-      <div id="theme-results" style="display:none;margin-top:16px"></div>
-    </div>
-    <div class="card" id="places-match-card" style="display:none">
-      <div class="card-title"><span class="icon">📍</span> Places from Your Database That Match</div>
-      <div id="places-match-list"></div>
-    </div>
-    <div class="btn-row">
-      <button class="btn btn-primary" id="proceed-theme-btn" style="display:none" onclick="switchTab('ep','create')">Proceed with Selected Theme →</button>
-    </div>
-  </div>
-
-  <!-- CREATE EPISODE TAB -->
-  <div id="ep-tab-create" style="display:none">
-    <div class="card">
-      <div class="card-title"><span class="icon">🎬</span> Episode Identity</div>
+      <div class="card-title"><span class="icon">🧩</span> Episode Identity</div>
       <div class="grid-2">
         <div class="field">
           <label>Series</label>
@@ -1103,12 +1082,12 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         </div>
       </div>
       <div class="field">
-        <label>Working Title Options (AI suggests — you pick)</label>
-        <div id="ep-title-options" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
-        <input type="text" id="ep-title-custom" placeholder="Or write your own title theme…">
+        <label>Working title <button class="btn btn-sm btn-ghost" onclick="suggestTitles(this)" style="margin-left:6px">✨ Suggest 5</button></label>
+        <div id="ep-title-options" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+        <input type="text" id="ep-title-custom" placeholder="Type the episode's theme phrase — or pick one above">
       </div>
       <div style="font-size:12px;color:var(--text3);font-family:var(--font-mono);padding:10px;background:var(--surface2);border-radius:var(--radius);margin-bottom:14px" id="ep-name-preview">
-        Select series + number + theme above
+        Series · EP·· · theme
       </div>
       <div class="grid-2">
         <div class="field">
@@ -1119,18 +1098,37 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
           </select>
         </div>
         <div class="field">
-          <label>Target Publish Date</label>
+          <label>Target publish date</label>
           <input type="date" id="ep-date">
         </div>
       </div>
       <div class="field">
-        <label>Episode Concept (2-3 sentences)</label>
-        <textarea id="ep-concept" rows="3" placeholder="What connects these videos…"></textarea>
+        <label>Central question / angle <button class="btn btn-sm btn-ghost" onclick="draftAngle(this)" style="margin-left:6px">✨ Draft from material</button></label>
+        <textarea id="ep-concept" rows="3" placeholder="The one question this episode answers…"></textarea>
       </div>
       <div class="field">
-        <label>Hook / Angle (one line — why should someone watch this?)</label>
-        <input type="text" id="ep-hook" placeholder="The angle that makes this unmissable…">
+        <label>One-line hook</label>
+        <input type="text" id="ep-hook" placeholder="Why is this unmissable?">
       </div>
+      <div class="field">
+        <label>Tone</label>
+        <select id="ep-tone"></select>
+      </div>
+      <div class="field">
+        <label>Notes to self (for scripting)</label>
+        <textarea id="ep-notes" rows="2" placeholder="Anything to remember when you write the script…"></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">✅</span> What's in this episode</div>
+      <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Ticked items (in this order) become the episode brief and seed your Script Builder sections. Reorder with ↑ ↓.</p>
+      <button class="btn btn-sm" onclick="buildIncludeList()">↻ Rebuild from breakdowns</button>
+      <div id="ep-include-list" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">🎬</span> Create</div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="createEpisode()">Create Episode in Notion →</button>
         <div id="ep-creating" style="display:none" class="loading-row"><div class="spinner"></div> Creating episode…</div>
@@ -1497,7 +1495,6 @@ const S = {
   ytSelected: new Set(),
   epSelected: new Set(),
   epQueue: [],
-  chosenTheme: null,
   activeEpisode: null,
   sections: [],
   audioBuffers: {},
@@ -1670,7 +1667,7 @@ function switchTab(prefix, tab) {
   if (tabBar) {
     tabBar.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     const allTabs = tabBar.querySelectorAll('.tab');
-    const tabNames = ['queue','prep','places','theme','create','calendar','gap'];
+    const tabNames = ['queue','prep','places','assemble','calendar','gap'];
     const idx = tabNames.indexOf(tab);
     if (idx >= 0 && allTabs[idx]) allTabs[idx].classList.add('active');
   }
@@ -2632,14 +2629,14 @@ function toggleEpVideo(i) {
   document.getElementById(`ep-cb-${i}`).checked = S.epSelected.has(i);
   const n = S.epSelected.size;
   document.getElementById('ep-sel-count').textContent = `${n} selected`;
-  document.getElementById('ep-theme-btn').disabled = n < 1;
+  document.getElementById('ep-next-btn').disabled = n < 1;
 }
 
 function clearEpSelection() {
   S.epSelected.clear();
   document.querySelectorAll('[id^="ep-cb-"]').forEach(cb => cb.checked = false);
   document.getElementById('ep-sel-count').textContent = '0 selected';
-  document.getElementById('ep-theme-btn').disabled = true;
+  document.getElementById('ep-next-btn').disabled = true;
 }
 
 // ─── Stage 2 · Prep (transcript + outline per selected source video) ─────────
@@ -2873,107 +2870,117 @@ function rebuildCombinedOutline() {
   S.currentTranscriptOutline = parts.length ? parts.join('\n\n') : '';
 }
 
-async function generateThemes() {
-  const selected = [...S.epSelected].map(i => S.epQueue[i]).filter(Boolean);
-  if (!selected.length) { toast('Select at least 1 video in Source Queue first', 'error'); return; }
+// ─── Stage 2 · Assemble (author-driven; AI only on the ✨ buttons) ────────────
+function enterAssemble() {
+  const toneSel = document.getElementById('ep-tone');
+  if (toneSel && !toneSel.options.length) {
+    toneSel.innerHTML = (S.lookups.tones || []).map(t => `<option>${t}</option>`).join('');
+  }
+  buildIncludeList();
+  updateEpisodePreview();
+}
+
+// Flatten the selected videos' breakdowns into a tickable list; keep prior ticks.
+function buildIncludeList() {
   rebuildCombinedOutline();
-
-  const loadEl = document.getElementById('theme-loading');
-  const resultsEl = document.getElementById('theme-results');
-  const btn = document.getElementById('gen-theme-btn');
-  loadEl.style.display = 'flex';
-  resultsEl.style.display = 'none';
-  btn.disabled = true;
-
-  const prepped = selected.filter(v => v.outline).length;
-  const sel = document.getElementById('theme-selected-videos');
-  sel.textContent = `${selected.length} video${selected.length > 1 ? 's' : ''} · ${prepped} with outline` +
-    (prepped < selected.length ? ' — run Prep for a grounded concept' : '');
-
-  const system = buildDNASystem();
-  const videoList = selected.map((v, i) => {
-    const body = v.outline
-      ? `OUTLINE:\n${v.outline.slice(0, 2500)}`
-      : `(not prepped — metadata only) angle: ${v.angle}`;
-    return `${i + 1}. "${v.title}" (${v.channel}) [${v.country}]\n${body}`;
-  }).join('\n\n');
-
-  try {
-    const raw = (await aiRun('theme', { system, messages: [{
-      role: 'user',
-      content: `You are a YouTube episode strategist for the Nomad Dimension channel. Here ${selected.length > 1 ? `are ${selected.length} source videos` : 'is 1 source video'}, with content outlines where available:
-
-${videoList}
-
-Propose 3 distinct episode concepts. Ground every concept in what the outlines actually show — do not invent events that aren't in the material. Each is a real episode: a short theme phrase, a 2-3 sentence concept, a one-line hook, a tone.
-
-Respond ONLY in JSON (no markdown): {"themes":[{"title":"<short theme phrase, no series/number>","concept":"...","hook":"...","tone":"..."},...]}`
-    }] })).text;
-
-    let parsed;
-    try { parsed = parseJsonLoose(raw); }
-    catch { throw new Error('The model returned invalid JSON'); }
-
-    S._suggestedThemes = parsed.themes || [];
-    S.chosenTheme = null;
-
-    resultsEl.innerHTML = `
-      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;font-family:var(--font-mono)">CHOOSE YOUR EPISODE DIRECTION</div>
-      ${S._suggestedThemes.map((t, i) => `
-        <div class="card" style="cursor:pointer;margin-bottom:10px;border:1px solid var(--border)" onclick="selectTheme(${i})" id="theme-opt-${i}">
-          <div style="font-weight:500;margin-bottom:6px">${t.title}</div>
-          <div style="font-size:13px;color:var(--text2);margin-bottom:6px">${t.concept}</div>
-          <div style="font-size:12px;color:var(--accent);font-family:var(--font-mono)">${t.hook}</div>
-        </div>`).join('')}`;
-
-    resultsEl.style.display = '';
-    document.getElementById('proceed-theme-btn').style.display = 'none';
-  } catch (err) {
-    resultsEl.innerHTML = `<div class="info-box error">${err.message}</div>`;
-    resultsEl.style.display = '';
-  } finally {
-    loadEl.style.display = 'none';
-    btn.disabled = false;
+  const prev = new Map(S.includeItems.map(it => [it.kind + '|' + it.label.toLowerCase(), it.checked]));
+  const raw = [];
+  for (const b of S.episodeBreakdowns) {
+    for (const p of (b.places || [])) if (p.name)
+      raw.push({ kind: 'place', label: p.name, detail: [p.type, p.what_happens_here].filter(Boolean).join(' — ') });
+    for (const x of (b.beats || [])) if (x.moment)
+      raw.push({ kind: 'beat', label: x.moment, detail: x.why_it_matters || '' });
+    for (const f of (b.food || [])) if (f.dish)
+      raw.push({ kind: 'food', label: f.dish, detail: f.where || '' });
   }
-}
-
-function selectTheme(i) {
-  S.chosenTheme = S._suggestedThemes[i];
-  document.querySelectorAll('[id^="theme-opt-"]').forEach((el,j) => {
-    el.style.borderColor = j === i ? 'var(--accent3)' : 'var(--border)';
-    el.style.background = j === i ? 'rgba(168,197,160,.06)' : '';
+  const seen = new Set();
+  S.includeItems = raw.filter(it => {
+    const k = it.kind + '|' + it.label.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    it.checked = prev.has(k) ? prev.get(k) : true;
+    return true;
   });
-  // Pre-fill episode create form
-  if (S.chosenTheme) {
-    document.getElementById('ep-concept').value = S.chosenTheme.concept;
-    document.getElementById('ep-hook').value    = S.chosenTheme.hook;
-    suggestEpisodeTitles(S.chosenTheme);
-  }
-  document.getElementById('proceed-theme-btn').style.display = '';
+  renderIncludeList();
 }
 
-async function suggestEpisodeTitles(theme) {
-  const system = buildDNASystem();
-  try {
-    const raw = (await aiRun('theme', { system, messages: [{
-      role: 'user',
-      content: `Give 3 episode "theme" phrases for the Nomad Dimension channel (3-7 words each).
-Just the theme — NO series name, NO "EP##", NO channel name.
-Concept: ${theme.concept}
-Examples: "Kyushu in the Rain", "The People Who Live in Their Cars", "3,000 km, No Highway"
+function renderIncludeList() {
+  const el = document.getElementById('ep-include-list');
+  if (!S.includeItems.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">✅</div><p>No breakdowns yet — run Prep → Run breakdown on your source videos.</p></div>';
+    return;
+  }
+  const icon = { place: '📍', beat: '🎬', food: '🍜' };
+  el.innerHTML = S.includeItems.map((it, i) => `
+    <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;opacity:${it.checked ? 1 : 0.45}">
+      <input type="checkbox" ${it.checked ? 'checked' : ''} onchange="toggleInclude(${i})" style="margin-top:3px">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:500">${icon[it.kind] || ''} ${it.label}</div>
+        ${it.detail ? `<div style="font-size:11px;color:var(--text3)">${it.detail}</div>` : ''}
+      </div>
+      <button class="btn btn-sm btn-ghost" onclick="moveInclude(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
+      <button class="btn btn-sm btn-ghost" onclick="moveInclude(${i},1)" ${i === S.includeItems.length - 1 ? 'disabled' : ''}>↓</button>
+    </div>`).join('');
+}
+function toggleInclude(i) { S.includeItems[i].checked = !S.includeItems[i].checked; renderIncludeList(); }
+function moveInclude(i, d) {
+  const j = i + d;
+  if (j < 0 || j >= S.includeItems.length) return;
+  [S.includeItems[i], S.includeItems[j]] = [S.includeItems[j], S.includeItems[i]];
+  renderIncludeList();
+}
 
-Respond ONLY in JSON: {"titles":["...","...","..."]}`
+async function suggestTitles(btn) {
+  rebuildCombinedOutline();
+  const concept = document.getElementById('ep-concept').value.trim();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const raw = (await aiRun('theme', { system: buildDNASystem(), messages: [{
+      role: 'user',
+      content: `Suggest 5 episode theme phrases (3-7 words each) for the Nomad Dimension channel.
+Just the phrase — NO series name, NO "EP##", NO channel name.
+${concept ? `Angle: ${concept}\n` : ''}Material:
+${(S.currentTranscriptOutline || '(no breakdowns yet)').slice(0, 3500)}
+
+Respond ONLY in JSON: {"titles":["...","...","...","...","..."]}`
     }] })).text;
-    const parsed = parseJsonLoose(raw);
-    // Strip any accidental "Series · EP## · " prefix the model still adds.
-    const clean = (parsed.titles || []).map(t => String(t).replace(/^.*·\s*EP\d+\s*·\s*/i, '').trim());
-    const optArea = document.getElementById('ep-title-options');
-    optArea.innerHTML = clean.map(t =>
+    const clean = (parseJsonLoose(raw).titles || [])
+      .map(t => String(t).replace(/^.*·\s*EP\d+\s*·\s*/i, '').trim()).filter(Boolean);
+    document.getElementById('ep-title-options').innerHTML = clean.map(t =>
       `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
-        <input type="radio" name="ep-title-radio" value="${t}" onchange="updateEpisodePreview()"> ${t}
-      </label>`
-    ).join('');
-  } catch {}
+        <input type="radio" name="ep-title-radio" value="${t.replace(/"/g, '&quot;')}" onchange="updateEpisodePreview()"> ${t}
+      </label>`).join('');
+  } catch (e) {
+    toast(`Suggest failed: ${e.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest 5'; }
+  }
+}
+
+async function draftAngle(btn) {
+  rebuildCombinedOutline();
+  if (!S.currentTranscriptOutline) { toast('Run Prep → Run breakdown first', 'error'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const raw = (await aiRun('theme', { system: buildDNASystem(), messages: [{
+      role: 'user',
+      content: `From this source material, propose ONE central question the episode answers
+(2-3 sentences) plus a one-line hook. Ground it in what the material shows — don't invent.
+
+Material:
+${S.currentTranscriptOutline.slice(0, 4000)}
+
+Respond ONLY in JSON: {"concept":"...","hook":"..."}`
+    }] })).text;
+    const p = parseJsonLoose(raw);
+    if (p.concept) document.getElementById('ep-concept').value = p.concept;
+    if (p.hook) document.getElementById('ep-hook').value = p.hook;
+    updateEpisodePreview();
+  } catch (e) {
+    toast(`Draft failed: ${e.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Draft from material'; }
+  }
 }
 
 // The chosen title should be a theme phrase only; strip any "Series · EP## · " the model/user pasted.
@@ -2994,6 +3001,13 @@ document.getElementById('ep-series').addEventListener('change', updateEpisodePre
 document.getElementById('ep-number').addEventListener('input', updateEpisodePreview);
 document.getElementById('ep-title-custom').addEventListener('input', updateEpisodePreview);
 
+// Notion block helpers for the episode brief written to the page body.
+const _rt = (s) => [{ type: 'text', text: { content: String(s || '').slice(0, 1900) } }];
+const _p = (s) => ({ object: 'block', type: 'paragraph', paragraph: { rich_text: _rt(s) } });
+const _h2 = (s) => ({ object: 'block', type: 'heading_2', heading_2: { rich_text: _rt(s) } });
+const _li = (s) => ({ object: 'block', type: 'bulleted_list_item', bulleted_list_item: { rich_text: _rt(s) } });
+const SECTION_TYPE_FOR = { place: 'Place / Attraction', food: 'Food Stop', beat: 'Travel Segment' };
+
 async function createEpisode() {
   const series  = document.getElementById('ep-series').value;
   const numRaw  = document.getElementById('ep-number').value;
@@ -3001,58 +3015,99 @@ async function createEpisode() {
   const theme   = episodeThemeOnly() || 'New Episode';
   const country = document.getElementById('ep-country').value;
   const date    = document.getElementById('ep-date').value;
-  const concept = document.getElementById('ep-concept').value;
-  const hook    = document.getElementById('ep-hook').value;
+  const concept = document.getElementById('ep-concept').value.trim();
+  const hook    = document.getElementById('ep-hook').value.trim();
+  const tone    = document.getElementById('ep-tone').value;
+  const notes   = document.getElementById('ep-notes').value.trim();
 
-  if (!theme || !concept) { toast('Pick a theme and fill in the concept first', 'error'); return; }
+  if (theme === 'New Episode' || !concept) { toast('Set a working title and the central question first', 'error'); return; }
 
   const epName = `${series} · EP${num} · ${theme}`;
   const sourceTitles = [...S.epSelected].map(i => S.epQueue[i]?.title).filter(Boolean);
-  document.getElementById('ep-creating').style.display = 'flex';
-  document.getElementById('ep-create-result').style.display = 'none';
+  const chosen = S.includeItems.filter(it => it.checked);
+
+  const creatingEl = document.getElementById('ep-creating');
+  const resultEl = document.getElementById('ep-create-result');
+  creatingEl.style.display = 'flex';
+  resultEl.style.display = 'none';
 
   try {
-    const props = {
-  'Episode Title': { title: [{ text: { content: epName } }] },
-  'Series': { select: { name: series } },
-  'Status': { select: { name: '🔍 Research' } },
-  'Country': { select: { name: country } },
-  'Episode Concept': { rich_text: [{ text: { content: concept } }] },
-};
-if (numRaw && !Number.isNaN(parseInt(numRaw, 10))) props['Episode Number'] = { number: parseInt(numRaw, 10) };
-if (hook) props['Hook / Angle'] = { rich_text: [{ text: { content: hook } }] };
-if (date) props['Target Publish Date'] = { date: { start: date } };
-if (sourceTitles.length) props['Source Videos List'] = { rich_text: [{ text: { content: sourceTitles.join('\n') } }] };
+    // ── the brief, written into the episode page body ──
+    const body = [_h2('Brief'), _p(concept)];
+    if (hook) body.push(_p(`Hook: ${hook}`));
+    if (tone) body.push(_p(`Tone: ${tone}`));
+    body.push(_h2('In this episode'));
+    if (chosen.length) chosen.forEach(it => body.push(_li(`${it.label}${it.detail ? ` — ${it.detail}` : ''}`)));
+    else body.push(_p('(nothing ticked in Assemble → What\'s in this episode)'));
+    if (notes) { body.push(_h2('Notes')); body.push(_p(notes)); }
+    if (sourceTitles.length) { body.push(_h2('Source videos')); sourceTitles.forEach(t => body.push(_li(t))); }
 
-    const res = await notionAPI('pages', 'POST', {
+    const props = {
+      'Episode Title': { title: [{ text: { content: epName } }] },
+      'Series': { select: { name: series } },
+      'Status': { select: { name: '🔍 Research' } },
+      'Country': { select: { name: country } },
+      'Episode Concept': { rich_text: [{ text: { content: concept } }] },
+    };
+    if (numRaw && !Number.isNaN(parseInt(numRaw, 10))) props['Episode Number'] = { number: parseInt(numRaw, 10) };
+    if (hook) props['Hook / Angle'] = { rich_text: [{ text: { content: hook } }] };
+    if (date) props['Target Publish Date'] = { date: { start: date } };
+    if (sourceTitles.length) props['Source Videos List'] = { rich_text: [{ text: { content: sourceTitles.join('\n') } }] };
+
+    await notionAPI('pages', 'POST', {
       parent: { database_id: DB_IDS.episodes },
       properties: props,
+      children: body.slice(0, 100),
     });
+
+    // ── seed Script Builder sections from the ticked items (Intro … items … Outro) ──
+    const rows = [
+      { title: 'Intro', type: 'Intro', brief: '' },
+      ...chosen.map(it => ({ title: it.label, type: SECTION_TYPE_FOR[it.kind] || 'Travel Segment', brief: it.detail || '' })),
+      { title: 'Outro', type: 'Outro', brief: '' },
+    ];
+    let seeded = 0, order = 1;
+    for (const r of rows) {
+      try {
+        await notionAPI('pages', 'POST', {
+          parent: { database_id: DB_IDS.scripts },
+          properties: {
+            'Section Title': { title: [{ text: { content: r.title } }] },
+            'Section Type': { select: { name: r.type } },
+            'Section Brief': { rich_text: [{ text: { content: r.brief } }] },
+            'Section Order': { number: order++ },
+            'Episode': { rich_text: [{ text: { content: epName } }] },
+            'Script Status': { select: { name: '⬜ Not Started' } },
+          },
+        });
+        seeded++;
+      } catch (e) { console.warn('seed section failed:', r.title, e.message); }
+    }
 
     S.activeEpisode = epName;
     document.getElementById('topbar-ep').classList.add('active');
     document.getElementById('topbar-ep-text').textContent = epName;
     document.getElementById('state-episode').textContent  = epName;
-    document.getElementById('ep-create-result').style.display = '';
-    document.getElementById('ep-create-result').innerHTML = `<div class="info-box success">✓ Episode created: <strong>${epName}</strong></div>`;
+    resultEl.style.display = '';
+    resultEl.innerHTML = `<div class="info-box success">✓ Episode created: <strong>${epName}</strong> — brief written, ${seeded} section${seeded === 1 ? '' : 's'} seeded.
+      <button class="btn btn-sm" style="margin-left:8px" onclick="showStage(4);loadSections()">Open Script Builder →</button></div>`;
 
     // Mark source videos as promoted
     for (const i of S.epSelected) {
-      const v = S.epQueue[i];
       try {
-        await notionAPI(`pages/${v.id}`, 'PATCH', {
-          properties: { 'B-Roll Status': { select: { name: 'Partially Used' } } }
+        await notionAPI(`pages/${S.epQueue[i].id}`, 'PATCH', {
+          properties: { 'B-Roll Status': { select: { name: 'Partially Used' } } },
         });
-      } catch {}
+      } catch { /* best effort */ }
     }
 
-    toast(`Episode "${epName}" created!`, 'success');
+    toast(`Episode "${epName}" created`, 'success');
     await writeAppState({ 'Active Episode': epName, 'Current Stage': 'Stage 3' });
   } catch (err) {
-    document.getElementById('ep-create-result').style.display = '';
-    document.getElementById('ep-create-result').innerHTML = `<div class="info-box error">Failed: ${err.message}</div>`;
+    resultEl.style.display = '';
+    resultEl.innerHTML = `<div class="info-box error">Failed: ${err.message}</div>`;
   } finally {
-    document.getElementById('ep-creating').style.display = 'none';
+    creatingEl.style.display = 'none';
   }
 }
 
