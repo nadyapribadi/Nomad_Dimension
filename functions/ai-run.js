@@ -23,7 +23,17 @@ const STAGE_BY_TASK = {
   handoff: 'Stage 6 - Handoff',
 };
 
-const PROVIDER_SELECT = { anthropic: 'Anthropic', gemini: 'Google', openai: 'OpenAI' };
+const PROVIDER_SELECT = {
+  anthropic: 'Anthropic',
+  gemini: 'Google',
+  openai: 'OpenAI',
+  deepseek: 'Other',
+  qwen: 'Other',
+  mistral: 'Other',
+  xai: 'Other',
+  openrouter: 'Other',
+  groq: 'Other',
+};
 
 const STATUS_BY_CODE = {
   invalid_request: 400,
