@@ -81,7 +81,7 @@ providers need their `<PROVIDER>_API_KEY` in Netlify env (`DEEPSEEK_API_KEY`,
 | --- | --- |
 | "Every API call logged to **Production Costs** DB" | `ai-run.js` logs every LLM call (provider, model, tokens, cost, stage, episode). TTS/YouTube calls not yet logged; no Total-Cost rollup on Episodes. |
 | **Performance** DB — post-publish metrics at 3 checkpoints | not referenced in code |
-| App Settings is the source of truth for lookup tables | `saveLookups()` only updates memory. Model routing (**"🔀 Active Routing"** block) and Channel DNA (**"📺 Channel DNA"** block) *are* now Notion-read machine blocks — parsed into `S.routing` / `S.dna`, edited via Stage 0, saved back with `PATCH`. `getPageBlocks` pages through `next_cursor` so the blocks are found however long the page grows. |
+| App Settings is the source of truth for lookup tables | **Done.** Model routing (**"🔀 Active Routing"**), Channel DNA (**"📺 Channel DNA"**), and Lookup Tables (**"📋 Lookup Tables"** → `section_types` / `tone_styles` / `voice_configs`) are all Notion-read JSON code blocks — parsed into `S.routing` / `S.dna` / `S.lookups`, edited in Stage 0, saved back with `PATCH` (chunked to ≤2000-char `rich_text`). `getPageBlocks` pages through `next_cursor` so the blocks are found however long the page grows. |
 | Two-pass transcript: Pass 2 uses "only the relevant **outline chunk** + place details + brief" | `generateDialogue` passes brief + route order + matched place b-roll — **not the outline chunk** |
 | "Each dialogue line gets an estimated timestamp" | `generateDialogue` output is `KAI:` / `MIA:` lines only; no timestamps produced |
 | Dialogue version history — "last 5 versions stored" | `Dialogue Version` number increments; prior text is overwritten, not kept |

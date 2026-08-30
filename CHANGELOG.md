@@ -24,6 +24,11 @@ episode }` to the Production Costs DB.
   block (no deploy). Replaces the dead `S.models` panel / `saveModels`.
   Routing block updated to a multi-provider spread (OpenAI `gpt-4o` /
   `gpt-4o-mini`, Gemini `gemini-2.0-flash`, Claude Haiku/Sonnet) + fallbacks.
+- **Lookup Tables** (Section Types / Tone Styles / Voice Configs) are now a
+  machine-read **"📋 Lookup Tables"** JSON block (`section_types` /
+  `tone_styles` / `voice_configs`). `saveLookups` `PATCH`es it — previously it
+  only updated memory ("Notion write coming soon"). Old bullet-list parsing
+  removed.
 - **Channel DNA is now a machine-read Notion block + Stage 0 form.** Restructured
   from 9 flat prose fields to a 6-group tree (Identity / Voice / Storytelling /
   Editorial / Visual / Production, ~30 fields), stored as the **"📺 Channel DNA"**
