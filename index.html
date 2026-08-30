@@ -3409,6 +3409,7 @@ async function extractPlaces() {
     return;
   }
   const loadEl = document.getElementById('places-loading');
+  loadEl.innerHTML = '<div class="spinner"></div> Reading breakdowns…';
   loadEl.style.display = 'flex';
 
   try {
@@ -3459,10 +3460,15 @@ async function extractPlaces() {
     S.extractedPlaces = [...byKey.values()];
     S.confirmedPlaces = [];
     if (!S.extractedPlaces.length) throw new Error('the breakdowns list no places');
+
+    loadEl.innerHTML = '<div class="spinner"></div> Looking up places on Google Maps…';
+    const enriched = await enrichPlacesFromMaps();
+
     renderPlacesReview();
     document.getElementById('places-review-area').style.display = '';
     const n = S.episodeBreakdowns.length;
-    toast(`${S.extractedPlaces.length} places from ${n} breakdown${n > 1 ? 's' : ''}`, 'success');
+    toast(`${S.extractedPlaces.length} places from ${n} breakdown${n > 1 ? 's' : ''}` +
+      (enriched ? ` · ${enriched} matched on Google Maps` : ''), 'success');
   } catch (err) {
     errEl.textContent = `Places failed: ${err.message}`;
     errEl.style.display = '';
@@ -3474,6 +3480,39 @@ async function extractPlaces() {
 
 function setPlaceField(i, field, value) {
   if (S.extractedPlaces[i]) S.extractedPlaces[i][field] = value;
+}
+
+// Google Places API (New) via functions/maps-proxy.js. Best-effort: no key set
+// (or no match) → the row keeps its AI prefecture guess. Returns the match count.
+async function enrichPlacesFromMaps() {
+  const targets = S.extractedPlaces.filter(p => !p.is_existing);
+  if (!targets.length) return 0;
+  let matched = 0;
+  await Promise.allSettled(targets.map(async (p) => {
+    const q = [p.name, p.area, p.prefecture !== 'Unknown' ? p.prefecture : '', 'Japan']
+      .filter(Boolean).join(' ');
+    try {
+      const res = await fetch('/.netlify/functions/maps-proxy', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!d || !d.found) return;
+      matched++;
+      if (d.prefecture && PREFECTURES.includes(d.prefecture)) {
+        p.prefecture = d.prefecture;
+        p.prefFromGuess = false;
+        p.prefFromMaps = true;
+      }
+      if (d.area) p.area = d.area;
+      if (d.address) p.address = d.address;
+      if (d.mapsUri) p.google_maps_url = d.mapsUri;
+      if (typeof d.lat === 'number') { p.lat = d.lat; p.lng = d.lng; }
+      if (d.priceRange) p.maps_price = d.priceRange;      // DB "Price Range" fallback
+      if (d.priceLabel && !p.price_if_spoken) p.price_display = d.priceLabel;
+    } catch { /* keep the AI guess */ }
+  }));
+  return matched;
 }
 
 function renderPlacesReview() {
@@ -3496,13 +3535,16 @@ function renderPlacesReview() {
         </div>
       </div>
       <div>
-        <select onchange="setPlaceField(${i},'prefecture',this.value);setPlaceField(${i},'prefFromGuess',false)" style="font-size:11px;padding:3px 4px" title="Prefecture — check the AI guess, or set it yourself">
+        <select onchange="setPlaceField(${i},'prefecture',this.value);setPlaceField(${i},'prefFromGuess',false);setPlaceField(${i},'prefFromMaps',false)" style="font-size:11px;padding:3px 4px" title="Prefecture — Google Maps match, AI guess, or set it yourself">
           ${PREFECTURES.map(o => `<option ${p.prefecture === o ? 'selected' : ''}>${o}</option>`).join('')}
         </select>
-        ${p.prefFromGuess ? '<div style="font-size:9px;color:var(--accent2)">AI guess — check it</div>' : ''}
+        ${p.prefFromMaps
+          ? '<div style="font-size:9px;color:var(--accent3)">✓ Google Maps</div>'
+          : p.prefFromGuess ? '<div style="font-size:9px;color:var(--accent2)">AI guess — check it</div>' : ''}
         ${p.area ? `<div style="font-size:10px;color:var(--text3)">${p.area}</div>` : ''}
+        ${p.address ? `<div style="font-size:9px;color:var(--text3);opacity:.8">${p.address}</div>` : ''}
       </div>
-      <div style="font-size:11px;font-family:var(--font-mono);color:var(--text2)">${p.price_if_spoken || '—'}</div>
+      <div style="font-size:11px;font-family:var(--font-mono);color:var(--text2)">${p.price_if_spoken || p.price_display || '—'}</div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-sm btn-primary" onclick="confirmPlace(${i})">✓</button>
         <button class="btn btn-sm btn-ghost" onclick="skipPlace(${i})">Skip</button>
@@ -3582,11 +3624,14 @@ async function saveConfirmedPlaces() {
             'Google Maps URL': { url: p.google_maps_url || null },
             'B-Roll Description': { rich_text: [{ text: { content: p.what_happens_here || '' } }] },
             'Halal': { select: { name: p.halal || 'Unknown' } },
-            'Price Range': { select: { name: priceRange(p.price_if_spoken) } },
+            'Price Range': { select: { name:
+              priceRange(p.price_if_spoken) !== 'Unknown' ? priceRange(p.price_if_spoken) : (p.maps_price || 'Unknown') } },
             'Notes': { rich_text: [{ text: { content: [
+              p.address && `address: ${p.address}`,
+              (typeof p.lat === 'number') && `pin: ${p.lat},${p.lng}`,
               p.price_if_spoken && `price mentioned: ${p.price_if_spoken}`,
               p.food_here && `food: ${p.food_here}`,
-            ].filter(Boolean).join(' · ') } }] },
+            ].filter(Boolean).join(' · ').slice(0, 1900) } }] },
           }
         });
         p._saved = true;

@@ -43,3 +43,8 @@
   from = "/api/yt-transcript"
   to = "/.netlify/functions/yt-transcript"
   status = 200
+
+[[redirects]]
+  from = "/api/maps"
+  to = "/.netlify/functions/maps-proxy"
+  status = 200
