@@ -15,6 +15,8 @@ configured.
 | `youtube-proxy.js`   | `YOUTUBE_API_KEY`                                                                  |
 | `notion-proxy.js`    | `NOTION_TOKEN`                                                                     |
 | `ai-run.js`          | `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `NOTION_TOKEN` (cost log) |
+| `yt-transcript.js`   | none required; `TRANSCRIPT_API_KEY` optional (youtube-transcript.io fallback)      |
+| `maps-proxy.js`      | `GOOGLE_MAPS_API_KEY` optional — no key → `{ found:false, reason:'no_key' }`       |
 
 Set these in the Netlify dashboard (Site settings → Environment variables) and,
 for local `netlify dev`, in a gitignored `.env` (see `.env.example`).
@@ -108,6 +110,23 @@ back to `POST https://www.youtube-transcript.io/api/transcripts`.
 
 No env var is required (free path only); `TRANSCRIPT_API_KEY` just enables the
 fallback.
+
+## `maps-proxy.js`
+
+`POST { "query": "<place name> <area> Japan" }` → Google **Places API (New)**
+Text Search (`places:searchText`, `maxResultCount: 1`, `regionCode: JP`).
+
+```jsonc
+// 200 — match
+{ "found": true, "name": "…", "prefecture": "Shizuoka", "area": "Fujinomiya",
+  "address": "…", "lat": 35.4, "lng": 138.6, "mapsUri": "https://maps.google.com/…",
+  "primaryType": "campground", "priceLabel": "¥¥", "priceRange": "¥¥" }
+// 200 — no key / no result
+{ "found": false, "reason": "no_key" }   // or just { "found": false }
+```
+
+`prefecture` = the `administrative_area_level_1` component, trimmed of a trailing
+"Prefecture". Used by Stage 2 → Places to override the AI's prefecture guess.
 
 ## Contract stability
 

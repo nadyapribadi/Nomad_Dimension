@@ -16,6 +16,10 @@ Human-readable, updated per milestone. Format loosely follows
 - **Places tab** reads `breakdown.places` directly (deterministic, no AI call,
   was re-parsing a lossy prose outline). Per-row Prefecture `<select>` (47 + Unknown)
   and, for food types, Halal `<select>` — the fields transcripts can't give.
+  Prefecture starts as the breakdown's AI guess ("check it"); if
+  `GOOGLE_MAPS_API_KEY` is set, **`functions/maps-proxy.js`** (Google Places API
+  (New) Text Search) overrides it with the real `administrative_area_level_1`
+  plus lat/lng, address, Maps URL and price tier ("✓ Google Maps").
 - **Assemble tab** merges the old Theme + Create tabs into one author-driven
   form: you write title/angle/hook/tone/notes, AI only behind two ✨ buttons.
   An **Include checklist** (places + beats + food from the breakdowns, tick +
