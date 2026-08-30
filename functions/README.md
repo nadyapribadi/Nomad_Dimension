@@ -17,6 +17,7 @@ configured.
 | `ai-run.js`          | `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `NOTION_TOKEN` (cost log) |
 | `yt-transcript.js`   | none required; `TRANSCRIPT_API_KEY` optional (youtube-transcript.io fallback)      |
 | `maps-proxy.js`      | `GOOGLE_MAPS_API_KEY` optional — no key → `{ found:false, reason:'no_key' }`       |
+| `web-research.js`    | `GEMINI_API_KEY` — Gemini + Google Search grounding; `500` if unset                |
 
 Set these in the Netlify dashboard (Site settings → Environment variables) and,
 for local `netlify dev`, in a gitignored `.env` (see `.env.example`).
