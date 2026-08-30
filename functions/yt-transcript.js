@@ -29,14 +29,24 @@ exports.handler = async (event) => {
     });
   const lang = (body.lang || '').trim();
 
+  // Free path 1: watch-page scrape (often IP-blocked on serverless).
   try {
-    const scraped = await scrapeTranscript(videoId, lang);
-    if (scraped && scraped.text) return respond(200, { ...scraped, videoId, source: 'scrape' });
+    const s = await scrapeTranscript(videoId, lang);
+    if (s && s.text) return respond(200, { ...s, videoId, source: 'scrape' });
   } catch (e) {
-    // fall through to the API fallback
-    console.warn('scrape failed:', e.message);
+    console.warn('watch-page scrape failed:', e.message);
   }
 
+  // Free path 2: InnerTube player API — more IP-tolerant, gives real language
+  // codes so we can take the ORIGINAL track (pipeline translates later).
+  try {
+    const s = await innertubeTranscript(videoId, lang);
+    if (s && s.text) return respond(200, { ...s, videoId, source: 'innertube' });
+  } catch (e) {
+    console.warn('innertube failed:', e.message);
+  }
+
+  // Paid fallback: youtube-transcript.io (may return a machine-translated track).
   const key = process.env.TRANSCRIPT_API_KEY;
   if (key) {
     try {
@@ -50,10 +60,48 @@ exports.handler = async (event) => {
 
   return respond(404, {
     error:
-      'No transcript found. The video may have no captions, or the scrape path is blocked and no TRANSCRIPT_API_KEY is set.',
+      'No transcript found. The video may have no captions, or all fetch paths are blocked and no TRANSCRIPT_API_KEY is set.',
     code: 'not_found',
   });
 };
+
+// ─── InnerTube (YouTube's internal player API) ─────────────────────────────
+
+async function innertubeTranscript(videoId, lang) {
+  const res = await fetch(
+    'https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': UA },
+      body: JSON.stringify({
+        videoId,
+        context: {
+          client: {
+            clientName: 'ANDROID',
+            clientVersion: '19.09.37',
+            androidSdkVersion: 30,
+            hl: 'en',
+          },
+        },
+      }),
+    }
+  );
+  if (!res.ok) throw new Error(`player ${res.status}`);
+  const data = await res.json().catch(() => null);
+  const tracks =
+    data &&
+    data.captions &&
+    data.captions.playerCaptionsTracklistRenderer &&
+    data.captions.playerCaptionsTracklistRenderer.captionTracks;
+  if (!tracks || !tracks.length) return null;
+
+  const track = pickCaptionTrack(tracks, lang);
+  if (!track || !track.baseUrl) return null;
+  const capRes = await fetch(`${track.baseUrl}&fmt=json3`, { headers: { 'User-Agent': UA } });
+  if (!capRes.ok) throw new Error(`caption track ${capRes.status}`);
+  const text = parseJson3(await capRes.json().catch(() => null));
+  return text ? { text, lang: track.languageCode || lang || '' } : null;
+}
 
 // ─── free scrape ────────────────────────────────────────────────────────────
 
@@ -128,14 +176,18 @@ function sliceBalancedJson(str, start) {
   return null;
 }
 
-// Prefer: exact lang match → manual (non-ASR) → English → first.
+// Prefer an ORIGINAL (non-machine-translated) track — YouTube marks translated
+// tracks with &tlang= in the baseUrl. The pipeline translates later, so the
+// faithful source beats an auto-translation. Then: lang match → manual → en → first.
 function pickCaptionTrack(tracks, lang) {
-  const byLang = lang && tracks.find((t) => (t.languageCode || '').startsWith(lang));
+  const originals = tracks.filter((t) => !/[?&]tlang=/.test(t.baseUrl || ''));
+  const pool = originals.length ? originals : tracks;
+  const byLang = lang && pool.find((t) => (t.languageCode || '').startsWith(lang));
   if (byLang) return byLang;
-  const manual = tracks.find((t) => t.kind !== 'asr');
+  const manual = pool.find((t) => t.kind !== 'asr');
   if (manual) return manual;
-  const en = tracks.find((t) => (t.languageCode || '').startsWith('en'));
-  return en || tracks[0];
+  const en = pool.find((t) => (t.languageCode || '').startsWith('en'));
+  return en || pool[0];
 }
 
 // json3 caption format → plain text.
