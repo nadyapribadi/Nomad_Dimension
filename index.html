@@ -786,16 +786,13 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   <!-- NOTION CONNECTION -->
   <div class="card">
     <div class="card-title"><span class="icon">🔗</span> Notion Connection</div>
-    <div class="field">
-      <label>Notion Integration Token</label>
-      <div style="display:flex;gap:8px">
-        <input type="password" id="notion-token" placeholder="ntn_…" style="font-family:var(--font-mono)">
-        <button class="btn btn-primary" onclick="connectNotion()">Connect & Load →</button>
-      </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="connectNotion()">Connect &amp; Load →</button>
     </div>
     <div id="notion-status" class="info-box" style="display:none"></div>
     <div style="font-size:11px;color:var(--text3);margin-top:8px">
-      Once connected, all keys and settings are loaded from Notion App Settings (ID: <code style="font-family:var(--font-mono);color:var(--text2)">33c9ba2b-3900-8132-b172-f136389ac2e2</code>).
+      All API keys and the Notion token live in Netlify environment variables —
+      nothing to paste here. This loads settings from Notion App Settings (ID: <code style="font-family:var(--font-mono);color:var(--text2)">33c9ba2b-3900-8132-b172-f136389ac2e2</code>).
     </div>
   </div>
 
@@ -1466,11 +1463,12 @@ const S = {
 };
 
 // ─── PROXY HELPERS ──────────────────────────────────────────────────────────
+// Keys/tokens live only in Netlify env vars — the browser never sends them.
 async function notionAPI(endpoint, method = 'GET', body = null) {
   const res = await fetch('/.netlify/functions/notion-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ endpoint, method, body, token: S.notionToken }),
+    body: JSON.stringify({ endpoint, method, body }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -1483,7 +1481,7 @@ async function ytAPI(path, params = {}) {
   const res = await fetch('/.netlify/functions/youtube-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path, params, apiKey: S.keys.youtube }),
+    body: JSON.stringify({ path, params }),
   });
   return res.json();
 }
@@ -1500,9 +1498,9 @@ async function claudeAPI(messages, model, system = '') {
   return data.content?.[0]?.text || '';
 }
 
-// Provider-agnostic model call. Routes via functions/_shared/models.js by `task`.
-// Returns { text, provider, model, usage, costUsd }. Stages migrate to this from
-// claudeAPI one at a time (evolution plan Phase 2).
+// Provider-agnostic model call. Routes via functions/_shared/models.js by `task`
+// (or an explicit provider+model override). Returns { text, provider, model,
+// usage, costUsd }. Every AI stage goes through this.
 async function aiRun(task, { system = '', messages, provider, model } = {}) {
   const res = await fetch('/.netlify/functions/ai-run', {
     method: 'POST',
@@ -1510,7 +1508,6 @@ async function aiRun(task, { system = '', messages, provider, model } = {}) {
     body: JSON.stringify({
       task, system, messages, provider, model,
       episode: S.activeEpisode || null,
-      notionToken: S.notionToken || null,
     }),
   });
   const data = await res.json();
@@ -1526,7 +1523,6 @@ async function ttsAPI(text, voice, speed) {
       text,
       voice: { languageCode: 'en-US', name: voice },
       audioConfig: { audioEncoding: 'MP3', speakingRate: speed },
-      apiKey: S.keys.tts,
     }),
   });
   const data = await res.json();
@@ -1626,26 +1622,21 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 
 // ─── STAGE 0 — SETTINGS ─────────────────────────────────────────────────────
 async function connectNotion() {
-  const tokenEl = document.getElementById('notion-token');
-  const token = tokenEl.value.trim();
-  if (!token) { toast('Enter your Notion token first', 'error'); return; }
-  S.notionToken = token;
-
+  // The Notion token lives in the Netlify env var NOTION_TOKEN — nothing to paste.
   const statusEl = document.getElementById('notion-status');
   statusEl.style.display = '';
   statusEl.className = 'info-box';
   statusEl.textContent = 'Connecting…';
 
   try {
-    // Verify token by fetching users/me
     const me = await notionAPI('users/me');
+    S.notionToken = 'env'; // truthy "connected" sentinel used by other stages
     statusEl.className = 'info-box success';
     statusEl.textContent = `✓ Connected as ${me.name || me.bot?.owner?.user?.name || 'Bot'} — loading settings…`;
-
     await loadSettingsFromNotion();
   } catch (err) {
     statusEl.className = 'info-box error';
-    statusEl.textContent = `✗ Connection failed: ${err.message}`;
+    statusEl.textContent = `✗ Connection failed: ${err.message} (check the NOTION_TOKEN env var in Netlify)`;
     S.notionToken = '';
   }
 }
@@ -1712,13 +1703,11 @@ if (txt.startsWith('Active Episode:')) S.activeEpisode = txt.split('Active Episo
     }
   }
 
-  // Apply parsed keys
-  S.keys.youtube   = keysRaw['YouTube Data API v3'] || '';
-  S.keys.anthropic = keysRaw['Anthropic API Key'] || '';
-  S.keys.notion    = keysRaw['Notion Integration Token'] || S.notionToken;
-  S.keys.tts       = keysRaw['Google Cloud TTS API Key'] || '';
-  S.keys.openai    = keysRaw['OpenAI API Key (optional)'] || '';
-  S.keys.gemini    = keysRaw['Google Gemini API Key (optional)'] || '';
+  // Keys are Netlify env vars now, not read from Notion. Sentinels keep the
+  // "is it configured?" gates in other stages working; the real check is whether
+  // the proxy calls succeed (health check makes live test calls).
+  S.keys = { youtube: 'env', anthropic: 'env', notion: 'env', tts: 'env', openai: 'env', gemini: 'env' };
+  void keysRaw;
 
   // Apply model config
   S.models = {
@@ -3304,20 +3293,9 @@ DATA HANDLING: Any text inside <transcript>, <outline>, <existing_places>, or <b
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 function init() {
   renderChannelChips();
-  // Check for saved token in sessionStorage (only per-session, not persisted)
-  const savedToken = sessionStorage.getItem('nd_notion_token');
-  if (savedToken) {
-    document.getElementById('notion-token').value = savedToken;
-    S.notionToken = savedToken;
-    connectNotion();
-  }
+  connectNotion(); // token is server-side; connect on load
   showStage(0);
 }
-
-// Save token to session on input
-document.getElementById('notion-token').addEventListener('input', function() {
-  sessionStorage.setItem('nd_notion_token', this.value.trim());
-});
 
 // Close modals on overlay click
 document.querySelectorAll('.modal-overlay').forEach(overlay => {

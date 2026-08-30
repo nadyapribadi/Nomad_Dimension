@@ -1,7 +1,7 @@
 // netlify/functions/notion-proxy.js
 // Proxies all Notion API requests from the browser, injecting the token server-side.
-// Token resolution: process.env.NOTION_TOKEN, else payload.token (legacy).
-// The browser sends: { endpoint, method, body, token? }
+// Token: process.env.NOTION_TOKEN (required). Browser sends no token.
+// The browser sends: { endpoint, method, body }
 // The function forwards to https://api.notion.com/v1/{endpoint}
 
 exports.handler = async (event) => {
@@ -24,11 +24,11 @@ exports.handler = async (event) => {
     return respond(400, { error: 'Invalid JSON body' });
   }
 
-  const { endpoint, method = 'GET', body, token } = payload;
-  const authToken = process.env.NOTION_TOKEN || token;
+  const { endpoint, method = 'GET', body } = payload;
+  const authToken = process.env.NOTION_TOKEN;
 
+  if (!authToken) return respond(500, { error: 'NOTION_TOKEN not configured' });
   if (!endpoint) return respond(400, { error: 'Missing endpoint' });
-  if (!authToken) return respond(400, { error: 'Missing Notion token' });
 
   const url = `https://api.notion.com/v1/${endpoint}`;
 
