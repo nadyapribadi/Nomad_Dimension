@@ -46,6 +46,8 @@ Node 22 (`.nvmrc`). **Push to `main` deploys to production** — don't push casu
   hand-formatted to match.
 - Deterministic checks over AI calls where a rule can be expressed in code
   (see `runScriptCheck`).
+- When a change alters behaviour, update the relevant Notion page or
+  `Docs/AS_BUILT.md`, and `CHANGELOG.md`, in the same commit.
 
 ## Boundaries
 
