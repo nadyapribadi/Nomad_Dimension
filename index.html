@@ -1041,7 +1041,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   <div id="ep-tab-places" style="display:none">
     <div class="card">
       <div class="card-title"><span class="icon">📍</span> Places from the Breakdowns</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Reads the <code style="font-family:var(--font-mono)">places</code> list straight out of each Prep breakdown (no AI call) and cross-references your Places DB for duplicates. Run <strong>Prep → Run breakdown</strong> first. Prefecture and halal aren't in the transcript — set them per row here.</p>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Reads the <code style="font-family:var(--font-mono)">places</code> list straight out of each Prep breakdown (no AI call) and cross-references your Places DB for duplicates. Run <strong>Prep → Run breakdown</strong> first. Prefecture is the breakdown's <em>AI guess</em> from the place name (marked "check it") — halal you set per row.</p>
       <button class="btn btn-primary" onclick="extractPlaces()">Collect Places →</button>
       <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Reading breakdowns…</div>
       <div id="places-error" class="info-box error" style="display:none;margin-top:12px"></div>
@@ -2774,7 +2774,9 @@ const BREAKDOWN_SHAPE = `{
       "type": "Restaurant | Food Stall | Onsen / Wellness | Michi-no-eki | Nature / Landscape | Cultural / Historic | Accommodation | Viewpoint | Attraction | Shop | Other",
       "what_happens_here": "1-2 sentences",
       "food_here": "dishes eaten here, or \\"\\"",
-      "price_if_spoken": "e.g. ¥500 / free — \\"\\" if not stated on camera"
+      "price_if_spoken": "e.g. ¥500 / free — \\"\\" if not stated on camera",
+      "prefecture_guess": "your best guess of the Japanese prefecture from the place name / context — \\"\\" if you genuinely can't tell (this ONE field may be inferred)",
+      "area_guess": "city / town / area if you can infer it, else \\"\\""
     }
   ],
   "route": ["place name in visit order", "..."],
@@ -2808,6 +2810,7 @@ function renderBreakdownText(b) {
     L.push('PLACES:');
     for (const p of b.places) {
       L.push(`• ${p.name}${p.name_local ? ` (${p.name_local})` : ''} — ${p.type || 'Other'}` +
+        `${[p.area_guess, p.prefecture_guess].filter(Boolean).join(', ') ? ` · ${[p.area_guess, p.prefecture_guess].filter(Boolean).join(', ')}?` : ''}` +
         `${p.price_if_spoken ? ` · ${p.price_if_spoken}` : ''}`);
       if (p.what_happens_here) L.push(`  ${p.what_happens_here}`);
       if (p.food_here) L.push(`  food: ${p.food_here}`);
@@ -2852,7 +2855,9 @@ async function prepRunBreakdown(i) {
 The transcript may be in any language or a rough machine translation — work out the
 real meaning and render everything in natural English. Romanise place names.
 Record ONLY what the transcript actually supports. Use "" or [] wherever it is
-silent — never invent a price, a location, or an event that isn't there.
+silent — never invent a price, an event, or a place that isn't there. The only
+exception: "prefecture_guess" / "area_guess" may be your own inference from the
+place name (leave "" if you truly can't tell).
 
 <transcript>
 ${v.transcript.slice(0, 9000)}
@@ -3426,10 +3431,12 @@ async function extractPlaces() {
           if (!e.what_happens_here && p.what_happens_here) e.what_happens_here = p.what_happens_here;
           if (!e.food_here && p.food_here) e.food_here = p.food_here;
           if (!e.price_if_spoken && p.price_if_spoken) e.price_if_spoken = p.price_if_spoken;
+          if (!e.area && p.area_guess) e.area = p.area_guess;
           if (!e.from.includes(b.title)) e.from.push(b.title);
           continue;
         }
         const hit = existingByName.get(key);
+        const guessPref = PREFECTURES.includes(p.prefecture_guess) ? p.prefecture_guess : '';
         byKey.set(key, {
           name,
           name_local: p.name_local || '',
@@ -3437,9 +3444,12 @@ async function extractPlaces() {
           what_happens_here: p.what_happens_here || '',
           food_here: p.food_here || '',
           price_if_spoken: p.price_if_spoken || '',
-          prefecture: (hit && hit.prefecture) || 'Unknown',
+          area: p.area_guess || '',
+          prefecture: (hit && hit.prefecture) || guessPref || 'Unknown',
+          prefFromGuess: !(hit && hit.prefecture) && !!guessPref,
           halal: 'Unknown',
-          google_maps_url: 'https://www.google.com/maps/search/' + encodeURIComponent(name + ' Japan'),
+          google_maps_url: 'https://www.google.com/maps/search/' +
+            encodeURIComponent([name, p.area_guess, p.prefecture_guess, 'Japan'].filter(Boolean).join(' ')),
           is_existing: !!hit,
           existing_id: hit ? hit.id : '',
           from: [b.title],
@@ -3485,9 +3495,13 @@ function renderPlacesReview() {
             </select></label>` : ''}
         </div>
       </div>
-      <select onchange="setPlaceField(${i},'prefecture',this.value)" style="font-size:11px;padding:3px 4px" title="Set the prefecture — the transcript usually doesn't say it">
-        ${PREFECTURES.map(o => `<option ${p.prefecture === o ? 'selected' : ''}>${o}</option>`).join('')}
-      </select>
+      <div>
+        <select onchange="setPlaceField(${i},'prefecture',this.value);setPlaceField(${i},'prefFromGuess',false)" style="font-size:11px;padding:3px 4px" title="Prefecture — check the AI guess, or set it yourself">
+          ${PREFECTURES.map(o => `<option ${p.prefecture === o ? 'selected' : ''}>${o}</option>`).join('')}
+        </select>
+        ${p.prefFromGuess ? '<div style="font-size:9px;color:var(--accent2)">AI guess — check it</div>' : ''}
+        ${p.area ? `<div style="font-size:10px;color:var(--text3)">${p.area}</div>` : ''}
+      </div>
       <div style="font-size:11px;font-family:var(--font-mono);color:var(--text2)">${p.price_if_spoken || '—'}</div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-sm btn-primary" onclick="confirmPlace(${i})">✓</button>
