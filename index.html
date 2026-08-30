@@ -520,7 +520,7 @@ label {
 /* ─── PLACE ROW ─── */
 .place-row {
   display: grid;
-  grid-template-columns: 1fr 100px 80px 80px auto;
+  grid-template-columns: 1fr 140px 90px auto;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
@@ -1040,10 +1040,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   <!-- PLACES TAB (folded in from old Stage 3B) -->
   <div id="ep-tab-places" style="display:none">
     <div class="card">
-      <div class="card-title"><span class="icon">📍</span> Extract Places from the Outlines</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Pulls every place from the prepped outlines, cross-references the Places DB for duplicates, and drafts entries for new ones. Run <strong>Prep → Run outline</strong> first.</p>
-      <button class="btn btn-primary" onclick="extractPlaces()">Extract Places →</button>
-      <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Extracting and cross-referencing places…</div>
+      <div class="card-title"><span class="icon">📍</span> Places from the Breakdowns</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Reads the <code style="font-family:var(--font-mono)">places</code> list straight out of each Prep breakdown (no AI call) and cross-references your Places DB for duplicates. Run <strong>Prep → Run breakdown</strong> first. Prefecture and halal aren't in the transcript — set them per row here.</p>
+      <button class="btn btn-primary" onclick="extractPlaces()">Collect Places →</button>
+      <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Reading breakdowns…</div>
       <div id="places-error" class="info-box error" style="display:none;margin-top:12px"></div>
     </div>
     <div id="places-review-area" style="display:none">
@@ -3293,13 +3293,31 @@ async function saveOutlineToNotion() {
   }
 }
 
-// ─── STAGE 3B — PLACES ────────────────────────────────────────────────────────
+// ─── STAGE 2 · PLACES (reads the Prep breakdowns — no AI call) ────────────────
+const PLACE_TYPES = ['Restaurant', 'Food Stall', 'Attraction', 'Nature / Landscape',
+  'Onsen / Wellness', 'Michi-no-eki', 'Shop', 'Accommodation', 'Cultural / Historic',
+  'Viewpoint', 'Other'];
+const FOOD_TYPES = new Set(['Restaurant', 'Food Stall']);
+const PREFECTURES = ['Unknown', 'Hokkaido', 'Aomori', 'Iwate', 'Miyagi', 'Akita', 'Yamagata',
+  'Fukushima', 'Ibaraki', 'Tochigi', 'Gunma', 'Saitama', 'Chiba', 'Tokyo', 'Kanagawa', 'Niigata',
+  'Toyama', 'Ishikawa', 'Fukui', 'Yamanashi', 'Nagano', 'Gifu', 'Shizuoka', 'Aichi', 'Mie', 'Shiga',
+  'Kyoto', 'Osaka', 'Hyogo', 'Nara', 'Wakayama', 'Tottori', 'Shimane', 'Okayama', 'Hiroshima',
+  'Yamaguchi', 'Tokushima', 'Kagawa', 'Ehime', 'Kochi', 'Fukuoka', 'Saga', 'Nagasaki', 'Kumamoto',
+  'Oita', 'Miyazaki', 'Kagoshima', 'Okinawa'];
+const normPlaceType = (t) => (PLACE_TYPES.includes(t) ? t : 'Other');
+const priceRange = (s) => {
+  const t = (s || '').trim();
+  if (!t) return 'Unknown';
+  if (/free|無料|0\s*円/i.test(t)) return 'Free';
+  return '¥';
+};
+
 async function extractPlaces() {
   const errEl = document.getElementById('places-error');
   errEl.style.display = 'none';
-  rebuildCombinedOutline(); // in case the user came straight from Prep
-  if (!S.currentTranscriptOutline || !S.currentTranscriptOutline.trim()) {
-    errEl.textContent = 'No content outline in memory. In Stage 2 → Prep, run "Run outline" on your source video(s) first (or paste a transcript in Stage 3A and Run Pass 1).';
+  rebuildCombinedOutline();
+  if (!S.episodeBreakdowns.length) {
+    errEl.textContent = 'No breakdowns yet. In the Prep tab, run "Run breakdown" on your selected source video(s) first.';
     errEl.style.display = '';
     return;
   }
@@ -3307,60 +3325,54 @@ async function extractPlaces() {
   loadEl.style.display = 'flex';
 
   try {
-    // Fetch existing places from DB for cross-reference
     const existingData = await notionAPI(`databases/${DB_IDS.places}/query`, 'POST', { page_size: 100 });
-    const existingPlaces = (existingData.results || []).map(p => ({
-      id: p.id,
-      name: p.properties?.Name?.title?.[0]?.plain_text || '',
-      prefecture: p.properties?.Prefecture?.select?.name || '',
-      usedIn: p.properties?.['Used In Episodes']?.relation?.map(r=>r.id) || [],
-    }));
-
-    const system = buildDNASystem();
-    const raw = (await aiRun('places', { system, maxTokens: 4000, messages: [{
-      role: 'user',
-      content: `Extract ALL places mentioned in this content outline. For each place, check against the existing places database and classify as existing or new.
-
-<outline>
-${(S.currentTranscriptOutline || '').slice(0, 6000)}
-</outline>
-
-<existing_places count="${existingPlaces.length}">
-${existingPlaces.map(p => `- ${p.name} (${p.prefecture}) [ID: ${p.id}]`).slice(0,50).join('\n')}
-</existing_places>
-
-For each extracted place, generate:
-- name (as it appears / romanised)
-- type: one of Food/Restaurant, Onsen, Nature/Landscape, Cultural/Historical, Roadside Station (Michi-no-eki), Accommodation, Viewpoint, Other
-- prefecture
-- country (default: Japan)
-- is_existing: true/false (match against existing DB)
-- existing_id: (if existing, the DB entry ID)
-- google_maps_url: https://www.google.com/maps/search/[name]+[prefecture]+Japan
-- broll_description: what this looks like on screen in 1-2 sentences
-- halal_estimate: Yes/No/Unknown
-- price_range: ¥/¥¥/¥¥¥/Free/Unknown
-- already_in_episode_warning: true if used in a previous episode
-
-Respond ONLY in JSON: {"places":[{...},...]}
-`
-    }] })).text;
-
-    let parsed;
-    try { parsed = parseJsonLoose(raw); }
-    catch {
-      console.error('places raw reply:', raw);
-      throw new Error('The model’s places reply was not valid JSON — try again (check the console for the raw reply).');
+    const existingByName = new Map();
+    for (const r of (existingData.results || [])) {
+      const nm = (r.properties?.Name?.title?.[0]?.plain_text || '').trim().toLowerCase();
+      if (nm) existingByName.set(nm, { id: r.id, prefecture: r.properties?.Prefecture?.select?.name || '' });
     }
 
-    S.extractedPlaces = parsed.places || [];
+    // Flatten every breakdown's places; merge repeats within the batch by name.
+    const byKey = new Map();
+    for (const b of S.episodeBreakdowns) {
+      for (const p of (b.places || [])) {
+        const name = (p.name || '').trim();
+        if (!name) continue;
+        const key = name.toLowerCase();
+        if (byKey.has(key)) {
+          const e = byKey.get(key);
+          if (!e.what_happens_here && p.what_happens_here) e.what_happens_here = p.what_happens_here;
+          if (!e.food_here && p.food_here) e.food_here = p.food_here;
+          if (!e.price_if_spoken && p.price_if_spoken) e.price_if_spoken = p.price_if_spoken;
+          if (!e.from.includes(b.title)) e.from.push(b.title);
+          continue;
+        }
+        const hit = existingByName.get(key);
+        byKey.set(key, {
+          name,
+          name_local: p.name_local || '',
+          type: normPlaceType(p.type),
+          what_happens_here: p.what_happens_here || '',
+          food_here: p.food_here || '',
+          price_if_spoken: p.price_if_spoken || '',
+          prefecture: (hit && hit.prefecture) || 'Unknown',
+          halal: 'Unknown',
+          google_maps_url: 'https://www.google.com/maps/search/' + encodeURIComponent(name + ' Japan'),
+          is_existing: !!hit,
+          existing_id: hit ? hit.id : '',
+          from: [b.title],
+        });
+      }
+    }
+    S.extractedPlaces = [...byKey.values()];
     S.confirmedPlaces = [];
-    if (!S.extractedPlaces.length) throw new Error('No places found in the outline.');
+    if (!S.extractedPlaces.length) throw new Error('the breakdowns list no places');
     renderPlacesReview();
     document.getElementById('places-review-area').style.display = '';
-    toast(`Extracted ${S.extractedPlaces.length} places`, 'success');
+    const n = S.episodeBreakdowns.length;
+    toast(`${S.extractedPlaces.length} places from ${n} breakdown${n > 1 ? 's' : ''}`, 'success');
   } catch (err) {
-    errEl.textContent = `Places extraction failed: ${err.message}`;
+    errEl.textContent = `Places failed: ${err.message}`;
     errEl.style.display = '';
     console.error(err);
   } finally {
@@ -3368,19 +3380,33 @@ Respond ONLY in JSON: {"places":[{...},...]}
   }
 }
 
+function setPlaceField(i, field, value) {
+  if (S.extractedPlaces[i]) S.extractedPlaces[i][field] = value;
+}
+
 function renderPlacesReview() {
   const listEl = document.getElementById('places-list');
   listEl.innerHTML = S.extractedPlaces.map((p, i) => `
     <div class="place-row ${p.is_existing ? 'existing' : 'new-place'}" id="place-${i}">
       <div>
-        <div class="place-name">${p.name}</div>
-        <div class="place-type">${p.type} · ${p.prefecture || ''}</div>
-        ${p.is_existing ? '<span class="badge badge-green" style="font-size:10px">✓ In DB</span>' : '<span class="badge badge-blue" style="font-size:10px">🆕 New</span>'}
-        ${p.already_in_episode_warning ? '<span class="badge badge-amber" style="font-size:10px">⚠ Used before</span>' : ''}
+        <div class="place-name">${p.name}${p.name_local ? ` <span style="color:var(--text3);font-weight:400">${p.name_local}</span>` : ''}</div>
+        <div class="place-type">${p.type}${p.from && p.from.length ? ` · from: ${p.from.join(', ')}` : ''}</div>
+        ${p.is_existing
+          ? '<span class="badge badge-green" style="font-size:10px">✓ in DB</span>'
+          : '<span class="badge badge-blue" style="font-size:10px">🆕 new</span>'}
+        ${p.what_happens_here ? `<div style="font-size:11px;color:var(--text2);margin-top:4px">${p.what_happens_here}</div>` : ''}
+        <div style="margin-top:4px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <a href="${p.google_maps_url}" target="_blank" rel="noopener" style="font-size:11px;color:var(--blue)">Maps ↗</a>
+          ${FOOD_TYPES.has(p.type) ? `<label style="font-size:10px;color:var(--text3)">halal
+            <select onchange="setPlaceField(${i},'halal',this.value)" style="font-size:10px;padding:1px 4px">
+              ${['Unknown', 'Yes', 'Partial', 'No'].map(o => `<option ${p.halal === o ? 'selected' : ''}>${o}</option>`).join('')}
+            </select></label>` : ''}
+        </div>
       </div>
-      <div style="font-size:11px;color:var(--text3)">${p.halal_estimate||''}</div>
-      <div style="font-size:12px;font-family:var(--font-mono)">${p.price_range||''}</div>
-      <div><a href="${p.google_maps_url}" target="_blank" style="font-size:11px;color:var(--blue)">Maps ↗</a></div>
+      <select onchange="setPlaceField(${i},'prefecture',this.value)" style="font-size:11px;padding:3px 4px" title="Set the prefecture — the transcript usually doesn't say it">
+        ${PREFECTURES.map(o => `<option ${p.prefecture === o ? 'selected' : ''}>${o}</option>`).join('')}
+      </select>
+      <div style="font-size:11px;font-family:var(--font-mono);color:var(--text2)">${p.price_if_spoken || '—'}</div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-sm btn-primary" onclick="confirmPlace(${i})">✓</button>
         <button class="btn btn-sm btn-ghost" onclick="skipPlace(${i})">Skip</button>
@@ -3454,13 +3480,17 @@ async function saveConfirmedPlaces() {
           parent: { database_id: DB_IDS.places },
           properties: {
             'Name': { title: [{ text: { content: p.name } }] },
-            'Type': { select: { name: p.type || 'Other' } },
+            'Type': { select: { name: normPlaceType(p.type) } },
             'Prefecture': { select: { name: p.prefecture || 'Unknown' } },
-            'Country': { select: { name: p.country || 'Japan' } },
+            'Country': { select: { name: 'Japan' } },
             'Google Maps URL': { url: p.google_maps_url || null },
-            'B-Roll Description': { rich_text: [{ text: { content: p.broll_description || '' } }] },
-            'Halal': { select: { name: p.halal_estimate || 'Unknown' } },
-            'Price Range': { select: { name: p.price_range || 'Unknown' } },
+            'B-Roll Description': { rich_text: [{ text: { content: p.what_happens_here || '' } }] },
+            'Halal': { select: { name: p.halal || 'Unknown' } },
+            'Price Range': { select: { name: priceRange(p.price_if_spoken) } },
+            'Notes': { rich_text: [{ text: { content: [
+              p.price_if_spoken && `price mentioned: ${p.price_if_spoken}`,
+              p.food_here && `food: ${p.food_here}`,
+            ].filter(Boolean).join(' · ') } }] },
           }
         });
         p._saved = true;
