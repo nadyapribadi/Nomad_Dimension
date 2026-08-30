@@ -765,7 +765,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     <div class="nav-status" id="nav-7"></div>
   </div>
   <div class="nav-item" onclick="showStage(1)">
-    <span class="stage-num">2</span> YouTube Browser
+    <span class="stage-num">2</span> Research
     <div class="nav-status" id="nav-1"></div>
   </div>
   <div class="nav-item" onclick="showStage(2)">
@@ -912,7 +912,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     <p style="color:var(--text2);margin-bottom:14px">Settings loaded. Choose your next step.</p>
     <div class="btn-row">
       <button class="btn" onclick="showStage(7)">Plan →</button>
-      <button class="btn btn-primary" onclick="showStage(1)">Browse YouTube →</button>
+      <button class="btn btn-primary" onclick="showStage(1)">Research →</button>
       <button class="btn" onclick="showStage(2)">Episode Builder →</button>
     </div>
   </div>
@@ -923,10 +923,18 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
      ═══════════════════════════════════════════ -->
 <div class="stage-panel" id="stage-1">
   <div class="stage-header">
-    <h1>YouTube Browser</h1>
-    <span class="subtitle">stage 1 · find inspiration videos</span>
+    <h1>Research</h1>
+    <span class="subtitle">step 1 · gather material into Notion</span>
   </div>
 
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('res','youtube')">📺 YouTube</div>
+    <div class="tab" onclick="switchTab('res','prep');renderPrepList()">🧪 Prep</div>
+    <div class="tab" onclick="switchTab('res','places')">📍 Places</div>
+    <div class="tab" onclick="switchTab('res','web')">🌐 Web</div>
+  </div>
+
+  <div id="res-tab-youtube">
   <div class="card">
     <div class="card-title"><span class="icon">📺</span> Source Channels</div>
     <div id="channel-chips-area" class="channel-chips"></div>
@@ -983,65 +991,41 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     </div>
     <div class="video-grid" id="yt-video-grid"></div>
   </div>
-</div>
+  </div><!-- /res-tab-youtube -->
 
-<!-- ═══════════════════════════════════════════
-     STAGE 2 — EPISODE BUILDER
-     ═══════════════════════════════════════════ -->
-<div class="stage-panel" id="stage-2">
-  <div class="stage-header">
-    <h1>Episode Builder</h1>
-    <span class="subtitle">stage 3 · queue → prep → places → assemble</span>
-  </div>
-
-  <div class="tabs">
-    <div class="tab active" onclick="switchTab('ep', 'queue')">📋 Source Queue</div>
-    <div class="tab" onclick="switchTab('ep', 'prep');renderPrepList()">🧪 Prep</div>
-    <div class="tab" onclick="switchTab('ep', 'places')">📍 Places</div>
-    <div class="tab" onclick="switchTab('ep', 'assemble');enterAssemble()">🧩 Assemble</div>
-  </div>
-
-  <!-- QUEUE TAB -->
-  <div id="ep-tab-queue">
+  <!-- PREP TAB — pick source videos, then break each down -->
+  <div id="res-tab-prep" style="display:none">
     <div class="card">
-      <div class="btn-row" style="margin-top:0;margin-bottom:14px">
+      <div class="card-title"><span class="icon">📋</span> 1 · Pick source videos</div>
+      <div class="btn-row" style="margin-top:0;margin-bottom:12px">
         <button class="btn btn-sm" onclick="loadSourceQueue()">↻ Load from Notion</button>
         <div style="flex:1"></div>
         <span id="ep-sel-count" style="font-size:12px;color:var(--text2)">0 selected</span>
         <button class="btn btn-sm btn-ghost" onclick="clearEpSelection()">Clear</button>
-        <button class="btn btn-sm btn-primary" id="ep-next-btn" disabled onclick="switchTab('ep','prep');renderPrepList()">Next: Prep →</button>
       </div>
       <div id="ep-queue-area">
         <div class="empty-state">
           <div class="icon">📋</div>
-          <p>Load your Source Videos queue from Notion. Pick the videos this episode is built from.</p>
+          <p>Load your Source Videos from Notion, then tick the ones to break down.</p>
         </div>
       </div>
     </div>
-  </div>
-
-  <!-- PREP TAB -->
-  <div id="ep-tab-prep" style="display:none">
     <div class="card">
-      <div class="card-title"><span class="icon">🧪</span> Prep Ingredients</div>
+      <div class="card-title"><span class="icon">🧪</span> 2 · Break down each</div>
       <p style="font-size:12px;color:var(--text3);margin-bottom:12px">
-        Fetch each video's transcript, then <strong>Run breakdown</strong> — one AI pass
-        pulls a structured object (summary · places · route · beats · food · tips · quotes)
-        from what's actually said, and saves it as JSON to the video's Notion row.
-        Places and Assemble both read this.
+        Fetch the transcript, then <strong>Run breakdown</strong> — one AI pass pulls a
+        structured object (summary · places · route · beats · food · tips · quotes) and
+        saves it as JSON to the video's Notion row. Places reads this.
       </p>
       <div id="ep-prep-list"></div>
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="switchTab('ep','places')">Next: Places →</button>
-      </div>
     </div>
   </div>
 
-  <!-- PLACES TAB (folded in from old Stage 3B) -->
-  <div id="ep-tab-places" style="display:none">
+  <!-- PLACES TAB -->
+  <div id="res-tab-places" style="display:none">
     <div class="card">
       <div class="card-title"><span class="icon">📍</span> Places → Notion library</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Pulls the <code style="font-family:var(--font-mono)">places</code> list out of each Prep breakdown, enriches each via Google Maps, and <strong>pushes them to your Places DB</strong> (or <strong>refreshes</strong> ones already there — Maps data drifts). This tab is only about the library; whether a place goes <em>in the episode</em> is decided in Assemble. Sorted A–Z. Run <strong>Prep → Run breakdown</strong> first.</p>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Pulls the <code style="font-family:var(--font-mono)">places</code> list out of each Prep breakdown, enriches each via Google Maps, and <strong>pushes them to your Places DB</strong> (or <strong>refreshes</strong> ones already there — Maps data drifts). Sorted A–Z. Run <strong>Prep → Run breakdown</strong> first.</p>
       <button class="btn btn-primary" onclick="extractPlaces()">Collect Places →</button>
       <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Reading breakdowns…</div>
       <div id="places-error" class="info-box error" style="display:none;margin-top:12px"></div>
@@ -1057,14 +1041,35 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         <div id="confirmed-list" style="font-size:12px;color:var(--text2);margin-bottom:10px">Nothing queued yet — hit <strong>✓ Push</strong> / <strong>↻ Update</strong> above.</div>
         <div class="btn-row">
           <button class="btn btn-primary" id="save-places-btn" onclick="saveConfirmedPlaces()">Push Confirmed Places to Notion →</button>
-          <button class="btn" onclick="switchTab('ep','assemble');enterAssemble()">Next: Assemble →</button>
         </div>
       </div>
     </div>
   </div>
 
+  <!-- WEB TAB — stub (R4) -->
+  <div id="res-tab-web" style="display:none">
+    <div class="card">
+      <div class="card-title"><span class="icon">🌐</span> Web research</div>
+      <p style="color:var(--text2);font-size:13px">Coming next (R4): enter a place, category, or region → web search → drafts rows for the Research / Places / Data / Glossary stores → review → push.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     STAGE 2 — EPISODE BUILDER
+     ═══════════════════════════════════════════ -->
+<div class="stage-panel" id="stage-2">
+  <div class="stage-header">
+    <h1>Episode Builder</h1>
+    <span class="subtitle">step 2 · plan the episode</span>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('ep','assemble');enterAssemble()">🧩 Assemble</div>
+  </div>
+
   <!-- ASSEMBLE TAB (Theme + Create merged — you author it, AI only on the ✨ buttons) -->
-  <div id="ep-tab-assemble" style="display:none">
+  <div id="ep-tab-assemble">
     <div class="card">
       <div class="card-title"><span class="icon">🧩</span> Episode Identity</div>
       <div class="grid-2">
@@ -1224,7 +1229,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <div id="pass1-output" class="code-block"></div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="saveOutlineToNotion()">Save Outline to Notion →</button>
-        <button class="btn" onclick="showStage(2);switchTab('ep','places')">Continue → Places →</button>
+        <button class="btn" onclick="showStage(1);switchTab('res','places')">Continue → Places →</button>
       </div>
     </div>
   </div>
@@ -1682,23 +1687,25 @@ function showStage(n) {
   navItems.forEach((item, idx) => {
     if (idx === activeIdx) item.classList.add('active');
   });
+  // Episode Builder has a single tab (Assemble) — prime it on entry.
+  if (n === 2 && typeof enterAssemble === 'function') enterAssemble();
   // save current stage
   if (S.notionToken) writeAppState({ 'Current Stage': `Stage ${n}` });
 }
 
 // ─── TAB SWITCHING ───────────────────────────────────────────────────────────
+// Works for any number of tab bars — scopes to the .tabs inside the active
+// stage panel and marks the .tab whose onclick names this tab.
 function switchTab(prefix, tab) {
-  // find all siblings
-  document.querySelectorAll(`[id^="${prefix}-tab-"]`).forEach(el => el.style.display = 'none');
-  document.getElementById(`${prefix}-tab-${tab}`).style.display = '';
-  // update tab buttons
-  const tabBar = document.querySelector('.tabs');
+  document.querySelectorAll(`[id^="${prefix}-tab-"]`).forEach(el => (el.style.display = 'none'));
+  const panel = document.getElementById(`${prefix}-tab-${tab}`);
+  if (panel) panel.style.display = '';
+  const activePanel = document.querySelector('.stage-panel.active');
+  const tabBar = activePanel && activePanel.querySelector('.tabs');
   if (tabBar) {
-    tabBar.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    const allTabs = tabBar.querySelectorAll('.tab');
-    const tabNames = ['queue','prep','places','assemble','calendar','gap'];
-    const idx = tabNames.indexOf(tab);
-    if (idx >= 0 && allTabs[idx]) allTabs[idx].classList.add('active');
+    tabBar.querySelectorAll('.tab').forEach(t =>
+      t.classList.toggle('active', (t.getAttribute('onclick') || '').includes(`'${tab}'`))
+    );
   }
 }
 
@@ -2656,24 +2663,24 @@ function toggleEpVideo(i) {
   if (S.epSelected.has(i)) S.epSelected.delete(i);
   else S.epSelected.add(i);
   document.getElementById(`ep-cb-${i}`).checked = S.epSelected.has(i);
-  const n = S.epSelected.size;
-  document.getElementById('ep-sel-count').textContent = `${n} selected`;
-  document.getElementById('ep-next-btn').disabled = n < 1;
+  document.getElementById('ep-sel-count').textContent = `${S.epSelected.size} selected`;
+  renderPrepList();
 }
 
 function clearEpSelection() {
   S.epSelected.clear();
   document.querySelectorAll('[id^="ep-cb-"]').forEach(cb => cb.checked = false);
   document.getElementById('ep-sel-count').textContent = '0 selected';
-  document.getElementById('ep-next-btn').disabled = true;
+  renderPrepList();
 }
 
-// ─── Stage 2 · Prep (transcript + outline per selected source video) ─────────
+// ─── Research · Prep (transcript + breakdown per ticked source video) ────────
 function renderPrepList() {
   const el = document.getElementById('ep-prep-list');
+  if (!el) return;
   const sel = [...S.epSelected].map(i => ({ i, v: S.epQueue[i] })).filter(x => x.v);
   if (!sel.length) {
-    el.innerHTML = '<div class="empty-state"><div class="icon">🧪</div><p>Pick videos in the Source Queue tab first.</p></div>';
+    el.innerHTML = '<div class="empty-state"><div class="icon">🧪</div><p>Tick source videos in <strong>1 · Pick source videos</strong> above.</p></div>';
     return;
   }
   el.innerHTML = sel.map(({ i, v }) => `
