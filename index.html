@@ -1013,11 +1013,16 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     <div class="card">
       <div class="card-title"><span class="icon">🧪</span> 2 · Break down each</div>
       <p style="font-size:12px;color:var(--text3);margin-bottom:12px">
-        Fetch the transcript, then <strong>Run breakdown</strong> — one AI pass pulls a
-        structured object (summary · places · route · beats · food · tips · quotes) and
-        saves it as JSON to the video's Notion row. Places reads this.
+        Fetch the transcript, then <strong>Run breakdown</strong> — two AI passes pull a
+        structured object (places · activities · food · transport · beats · quotes, then
+        research · prices · data · glossary) and save it as JSON to the video's Notion row.
       </p>
       <div id="ep-prep-list"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="icon">📤</span> 3 · Review &amp; push to the stores</div>
+      <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Places go via the <strong>Places</strong> tab (Maps enrichment). Everything else is pushed here — tick what's worth keeping. All of it is low-confidence until the <strong>Web</strong> tab verifies it.</p>
+      <div id="extract-review"><div class="empty-state"><div class="icon">📤</div><p>Run a breakdown above first.</p></div></div>
     </div>
   </div>
 
@@ -2705,6 +2710,7 @@ function renderPrepList() {
       <div id="prep-status-${i}" style="font-size:11px;color:var(--text3);margin-top:6px"></div>
       <pre id="prep-view-${i}" style="display:none;white-space:pre-wrap;font-size:11px;color:var(--text2);background:var(--surface2);border-radius:var(--radius);padding:10px;margin-top:8px;max-height:320px;overflow:auto"></pre>
     </div>`).join('');
+  renderExtractReview();
 }
 
 async function prepUsePasted(i) {
@@ -2782,29 +2788,40 @@ async function prepFetchTranscript(i) {
   prepStatus(i, msg);    // then restore the message on the fresh node
 }
 
-// The one place the transcript-extraction schema is defined. Every field is
-// something a travel-vlog transcript actually contains — no prefecture, no
-// timestamps, no halal. Lists come back empty when the video is silent.
-const BREAKDOWN_SHAPE = `{
-  "summary": "2-3 sentences — what happens in this video",
+// The transcript-extraction schema, split into two passes (30s function ceiling).
+// Every field is something a travel-vlog transcript actually contains. Lists come
+// back [] when the source is silent. prefecture_guess / area_guess are the only
+// inferred fields.
+const EXTRACT_SHAPE_1 = `{
+  "summary": "2-3 sentences — what happens",
   "places": [
     {
       "name": "romanised place name",
-      "name_local": "the place's Japanese name in kanji/kana if it's in Japan — \\"\\" if you're not sure or it's not Japanese (do NOT transliterate into the transcript's language)",
+      "name_local": "Japanese kanji/kana name if in Japan, else \\"\\" (never transliterate into the transcript's language)",
       "type": "Restaurant | Food Stall | Onsen / Wellness | Michi-no-eki | Nature / Landscape | Cultural / Historic | Accommodation | Viewpoint | Attraction | Shop | Other",
       "what_happens_here": "1-2 sentences",
       "food_here": "dishes eaten here, or \\"\\"",
-      "price_if_spoken": "e.g. ¥500 / free — \\"\\" if not stated on camera",
-      "prefecture_guess": "your best guess of the Japanese prefecture from the place name / context — \\"\\" if you genuinely can't tell (this ONE field may be inferred)",
-      "area_guess": "city / town / area if you can infer it, else \\"\\""
+      "price_if_spoken": "e.g. ¥500 / free — \\"\\" if not stated",
+      "prefecture_guess": "best guess of the Japanese prefecture, else \\"\\"",
+      "area_guess": "city / town / area, else \\"\\""
     }
   ],
   "route": ["place name in visit order", "..."],
+  "activities": [ { "activity": "e.g. sunrise hike to the ridge", "type": "Hike | Water | Scenic Drive | Festival | Food Experience | Craft | Stargazing | Other", "place": "where, or \\"\\"", "season": "if mentioned, else \\"\\"", "difficulty": "Easy | Moderate | Hard | \\"\\"", "duration": "if mentioned", "cost": "if mentioned" } ],
+  "food": [ { "dish": "romanised name", "japanese_name": "kanji/kana or \\"\\"", "romaji": "", "category": "Noodle | Rice | Seafood | Sweet | Street | Drink | Other", "region": "region of origin if known, else \\"\\"", "halal": "Yes | Partial | No | Unknown", "description": "taste / what it is", "where": "place or \\"\\"" } ],
+  "transport": [ { "route": "From → To", "mode": "Drive | Ferry | Train | Ropeway | Walk", "from": "", "to": "", "distance_km": 0, "duration": "if mentioned", "fare": "if mentioned", "scenic": false } ],
   "beats": [ { "moment": "a scene/turn", "why_it_matters": "one line", "type": "discovery | problem | scenic | human | food" } ],
-  "food": [ { "dish": "name", "where": "place or \\"\\"" } ],
-  "tips": ["practical advice the vlogger actually gives"],
-  "quotes": ["memorable line, translated to English"]
+  "tips": ["practical advice the vlogger gives"],
+  "quotes": [ { "text": "memorable line, translated to English", "speaker": "who said it, or \\"\\"" } ]
 }`;
+const EXTRACT_SHAPE_2 = `{
+  "research": [ { "statement": "one checkable claim, one sentence", "kind": "fact | connection | dispute | misconception | sentiment | etiquette | access | timing", "confidence": "low", "as_of_date": "YYYY-MM-DD or \\"\\"", "prefecture": "if known, else \\"\\"", "topic": "short topic tag" } ],
+  "prices": [ { "item": "what was paid for", "amount": 0, "currency": "JPY | USD | Other", "place": "where, or \\"\\"", "as_of_date": "YYYY-MM-DD or \\"\\"" } ],
+  "data": [ { "metric": "what is counted", "value": 0, "unit": "e.g. people, metres, °C", "year": 0, "place_or_region": "" } ],
+  "glossary": [ { "term": "Japanese word worth explaining on screen", "reading": "kana", "romaji": "", "english": "plain-English meaning" } ]
+}`;
+// Kept for back-compat (legacy rows / renderBreakdownText).
+const BREAKDOWN_SHAPE = EXTRACT_SHAPE_1;
 
 // Stored breakdown JSON (or a legacy prose outline) -> { breakdown, outline }.
 function parseStoredBreakdown(raw) {
@@ -2842,26 +2859,55 @@ function renderBreakdownText(b) {
     for (const x of b.beats) L.push(`• [${x.type || '—'}] ${x.moment} — ${x.why_it_matters}`);
     L.push('');
   }
+  if (b.activities && b.activities.length) {
+    L.push('ACTIVITIES:');
+    for (const a of b.activities) L.push(`• ${a.activity}${a.place ? ` @ ${a.place}` : ''}${a.type ? ` [${a.type}]` : ''}`);
+    L.push('');
+  }
   if (b.food && b.food.length) {
     L.push('FOOD:');
     for (const f of b.food) L.push(`• ${f.dish}${f.where ? ` @ ${f.where}` : ''}`);
     L.push('');
   }
+  if (b.transport && b.transport.length) {
+    L.push('TRANSPORT:');
+    for (const t of b.transport) L.push(`• ${t.route || `${t.from} → ${t.to}`}${t.mode ? ` (${t.mode})` : ''}`);
+    L.push('');
+  }
+  if (b.research && b.research.length) {
+    L.push('RESEARCH:');
+    for (const r of b.research) L.push(`• [${r.kind || 'fact'}] ${r.statement}`);
+    L.push('');
+  }
   if (b.tips && b.tips.length) { L.push('TIPS:'); for (const t of b.tips) L.push(`• ${t}`); L.push(''); }
-  if (b.quotes && b.quotes.length) { L.push('QUOTES:'); for (const q of b.quotes) L.push(`• "${q}"`); }
+  if (b.quotes && b.quotes.length) { L.push('QUOTES:'); for (const q of b.quotes) L.push(`• "${q.text || q}"`); }
   return L.join('\n').trim();
 }
 
-// Fast model, explicit — no Notion routing round-trip. One retry on a second provider.
-async function runBreakdownCall(prompt) {
-  const sys = 'You extract structured data from travel-video transcripts. Output only valid JSON matching the requested shape.';
+// One extraction call, fast model, explicit (no Notion routing round-trip);
+// retry once on a second provider. Returns parsed JSON or throws.
+async function runExtractCall(transcript, shape, guard) {
+  const sys = 'You extract structured data from travel-video transcripts. Output only valid JSON matching the requested shape. Use "" or [] where the transcript is silent — never invent.';
+  const prompt = `Break down this source-video transcript for the Nomad Dimension channel.
+It may be in any language or a rough machine translation — work out the real meaning
+and render in natural English. Romanise place names. ${guard}
+
+<transcript>
+${(transcript || '').slice(0, 9000)}
+</transcript>
+
+Return ONLY this JSON shape, no markdown:
+${shape}`;
   const req = { system: sys, maxTokens: 3500, messages: [{ role: 'user', content: prompt }] };
+  let raw;
   try {
-    return (await aiRun('outline', { ...req, provider: 'gemini', model: 'gemini-3.6-flash' })).text;
+    raw = (await aiRun('outline', { ...req, provider: 'gemini', model: 'gemini-3.6-flash' })).text;
   } catch (e1) {
-    console.warn('breakdown: gemini flash failed, retrying on haiku —', e1.message);
-    return (await aiRun('outline', { ...req, provider: 'anthropic', model: 'claude-haiku-4-5-20251001' })).text;
+    console.warn('extract: gemini flash failed, retrying on haiku —', e1.message);
+    raw = (await aiRun('outline', { ...req, provider: 'anthropic', model: 'claude-haiku-4-5-20251001' })).text;
   }
+  try { return parseJsonLoose(raw); }
+  catch { console.error('extract raw reply:', raw); throw new Error('the model’s reply was not valid JSON'); }
 }
 
 async function prepRunBreakdown(i) {
@@ -2871,40 +2917,39 @@ async function prepRunBreakdown(i) {
   btn.disabled = true; btn.textContent = 'Running…';
   let msg = '';
   try {
-    const prompt = `Break down this source-video transcript for the Nomad Dimension channel.
-The transcript may be in any language or a rough machine translation — work out the
-real meaning and render everything in natural English. Romanise place names.
-Record ONLY what the transcript actually supports. Use "" or [] wherever it is
-silent — never invent a price, an event, or a place that isn't there. The only
-exception: "prefecture_guess" / "area_guess" may be your own inference from the
-place name (leave "" if you truly can't tell).
+    // Two passes — see EXTRACT_SHAPE_1 / _2. Pass 2 is the low-confidence,
+    // web-verifiable layer.
+    const p1 = await runExtractCall(v.transcript, EXTRACT_SHAPE_1,
+      'prefecture_guess / area_guess may be inferred from the name; nothing else.');
+    const p2 = await runExtractCall(v.transcript, EXTRACT_SHAPE_2,
+      'Everything here is a CLAIM the vlogger makes — mark confidence "low".').catch(e => {
+        console.warn('extract pass 2 failed:', e.message); return {};
+      });
 
-<transcript>
-${v.transcript.slice(0, 9000)}
-</transcript>
-
-Return ONLY this JSON shape, no markdown:
-${BREAKDOWN_SHAPE}`;
-    // Pin the model explicitly (gemini flash → haiku): fast, and it makes ai-run
-    // skip the Notion routing lookup that was blowing the 30s function timeout.
-    // Small system prompt on purpose — extraction doesn't need the full brand DNA.
-    const raw = await runBreakdownCall(prompt);
-
-    let parsed;
-    try { parsed = parseJsonLoose(raw); }
-    catch { console.error('breakdown raw reply:', raw); throw new Error('the model’s reply was not valid JSON — Re-run (see console)'); }
-    if (!parsed || typeof parsed !== 'object') throw new Error('the breakdown came back empty');
+    // Stamp source provenance onto the claim-layer arrays.
+    const stamp = (arr) => (arr || []).map(x => ({
+      source_url: v.url || '', source_name: v.channel || '', needs_verification: true, ...x,
+    }));
+    const parsed = {
+      ...p1,
+      research: stamp(p2.research),
+      prices: stamp(p2.prices),
+      data: stamp(p2.data),
+      glossary: p2.glossary || [],
+    };
 
     v.breakdown = parsed;
     v.outline = renderBreakdownText(parsed);
     rebuildCombinedOutline();
+    renderExtractReview();
     let saveErr = null;
     await notionAPI(`pages/${v.id}`, 'PATCH', {
       properties: { 'Content Outline': { rich_text: codeBlockRichText(JSON.stringify(parsed, null, 2).slice(0, 190000)) } },
     }).catch(e => { saveErr = e; });
+    const n = (k) => (parsed[k] || []).length;
     msg = saveErr
-      ? `⚠ Breakdown generated but NOT saved to Notion: ${saveErr.message}. Click Re-run to retry.`
-      : `Breakdown saved to Notion — ${(parsed.places || []).length} places, ${(parsed.beats || []).length} beats.`;
+      ? `⚠ Extracted but NOT saved to Notion: ${saveErr.message}. Re-run to retry.`
+      : `Extracted — ${n('places')} places · ${n('activities')} activities · ${n('food')} food · ${n('research')} claims.`;
   } catch (e) {
     msg = `Breakdown failed: ${e.message}`;
   } finally {
@@ -2920,6 +2965,177 @@ function rebuildCombinedOutline() {
   S.episodeBreakdowns = sel.filter(v => v.breakdown).map(v => ({ title: v.title, ...v.breakdown }));
   const parts = sel.filter(v => v.outline).map(v => `### ${v.title}\n${v.outline}`);
   S.currentTranscriptOutline = parts.length ? parts.join('\n\n') : '';
+}
+
+// ─── Research · generic "review & push" for the non-Places stores ────────────
+const _today = () => new Date().toISOString().slice(0, 10);
+const _txt = (s) => ({ rich_text: [{ text: { content: String(s || '').slice(0, 1900) } }] });
+const _clamp = (v, opts, fallback) => (opts.includes(v) ? v : fallback);
+const ACT_TYPES = ['Hike', 'Water', 'Scenic Drive', 'Festival', 'Food Experience', 'Craft', 'Stargazing', 'Other'];
+const FOOD_CATS = ['Noodle', 'Rice', 'Seafood', 'Sweet', 'Street', 'Drink', 'Other'];
+const TRANS_MODES = ['Drive', 'Ferry', 'Train', 'Ropeway', 'Walk'];
+const RES_KINDS = ['fact', 'connection', 'dispute', 'misconception', 'sentiment', 'etiquette', 'access', 'timing'];
+
+// arrayKey → { db, label, titleProp, name(item), props(item) }
+const RESEARCH_STORES = {
+  activities: {
+    db: () => DB_IDS.activities, label: 'Activities', titleProp: 'Activity',
+    name: (it) => it.activity,
+    props: (it) => ({
+      'Activity': { title: [{ text: { content: it.activity || '' } }] },
+      'Type': { select: { name: _clamp(it.type, ACT_TYPES, 'Other') } },
+      'Place': _txt(it.place), 'Season': _txt(it.season),
+      ...(it.difficulty && ['Easy', 'Moderate', 'Hard'].includes(it.difficulty) ? { 'Difficulty': { select: { name: it.difficulty } } } : {}),
+      'Duration': _txt(it.duration), 'Cost': _txt(it.cost),
+      'Source URL': { url: it.source_url || null }, 'Date Added': { date: { start: _today() } },
+    }),
+  },
+  food: {
+    db: () => DB_IDS.food, label: 'Food', titleProp: 'Dish',
+    name: (it) => it.dish,
+    props: (it) => ({
+      'Dish': { title: [{ text: { content: it.dish || '' } }] },
+      'Japanese Name': _txt(it.japanese_name), 'Romaji': _txt(it.romaji),
+      'Category': { select: { name: _clamp(it.category, FOOD_CATS, 'Other') } },
+      'Region of Origin': _txt(it.region),
+      'Halal': { select: { name: _clamp(it.halal, ['Yes', 'Partial', 'No', 'Unknown'], 'Unknown') } },
+      'Taste / Description': _txt(it.description), 'Where Tried': _txt(it.where),
+      'Source URL': { url: it.source_url || null }, 'Date Added': { date: { start: _today() } },
+    }),
+  },
+  transport: {
+    db: () => DB_IDS.transport, label: 'Transport', titleProp: 'Route or Segment',
+    name: (it) => it.route || `${it.from} → ${it.to}`,
+    props: (it) => ({
+      'Route or Segment': { title: [{ text: { content: it.route || `${it.from || ''} → ${it.to || ''}` } }] },
+      ...(TRANS_MODES.includes(it.mode) ? { 'Mode': { select: { name: it.mode } } } : {}),
+      'From': _txt(it.from), 'To': _txt(it.to),
+      ...(typeof it.distance_km === 'number' && it.distance_km > 0 ? { 'Distance km': { number: it.distance_km } } : {}),
+      'Duration': _txt(it.duration), 'Fare or Toll': _txt(it.fare),
+      'Scenic': { checkbox: !!it.scenic },
+      'Source URL': { url: it.source_url || null }, 'Date Added': { date: { start: _today() } },
+    }),
+  },
+  research: {
+    db: () => DB_IDS.research, label: 'Research', titleProp: 'Statement',
+    name: (it) => it.statement,
+    props: (it) => ({
+      'Statement': { title: [{ text: { content: (it.statement || '').slice(0, 1900) } }] },
+      'Kind': { select: { name: _clamp(it.kind, RES_KINDS, 'fact') } },
+      'Source URL': { url: it.source_url || null }, 'Source Name': _txt(it.source_name),
+      'Confidence': { select: { name: _clamp(it.confidence, ['low', 'medium', 'high'], 'low') } },
+      ...(it.as_of_date ? { 'As-of Date': { date: { start: it.as_of_date } } } : {}),
+      'Retrieved Date': { date: { start: _today() } },
+      'Prefecture': { select: { name: it.prefecture || 'Unknown' } }, 'Topic': _txt(it.topic),
+    }),
+  },
+  prices: {
+    db: () => DB_IDS.prices, label: 'Prices', titleProp: 'Item',
+    name: (it) => it.item,
+    props: (it) => ({
+      'Item': { title: [{ text: { content: it.item || '' } }] },
+      ...(typeof it.amount === 'number' ? { 'Amount': { number: it.amount } } : {}),
+      'Currency': { select: { name: _clamp(it.currency, ['JPY', 'USD', 'Other'], 'JPY') } },
+      'Place': _txt(it.place), 'Source URL': { url: it.source_url || null },
+      ...(it.as_of_date ? { 'As-of Date': { date: { start: it.as_of_date } } } : {}),
+    }),
+  },
+  data: {
+    db: () => DB_IDS.data, label: 'Data', titleProp: 'Metric',
+    name: (it) => it.metric,
+    props: (it) => ({
+      'Metric': { title: [{ text: { content: it.metric || '' } }] },
+      ...(typeof it.value === 'number' ? { 'Value': { number: it.value } } : {}),
+      'Unit': _txt(it.unit),
+      ...(typeof it.year === 'number' && it.year > 0 ? { 'Year': { number: it.year } } : {}),
+      'Place or Region': _txt(it.place_or_region), 'Source URL': { url: it.source_url || null },
+    }),
+  },
+  glossary: {
+    db: () => DB_IDS.glossary, label: 'Glossary', titleProp: 'Term',
+    name: (it) => it.term,
+    props: (it) => ({
+      'Term': { title: [{ text: { content: it.term || '' } }] },
+      'Reading': _txt(it.reading), 'Romaji': _txt(it.romaji),
+      'English': _txt(it.english), 'Usage Note': _txt(it.usage_note),
+    }),
+  },
+};
+
+// Flatten one array across the ticked videos' breakdowns, dedup by name.
+function extractPool(key) {
+  const seen = new Set();
+  const out = [];
+  for (const b of (S.episodeBreakdowns || [])) {
+    for (const it of (b[key] || [])) {
+      const nm = String(RESEARCH_STORES[key].name(it) || '').trim();
+      if (!nm || seen.has(nm.toLowerCase())) continue;
+      seen.add(nm.toLowerCase());
+      out.push({ ...it, _key: `${key}:${nm.toLowerCase()}` });
+    }
+  }
+  return out;
+}
+
+function renderExtractReview() {
+  rebuildCombinedOutline();
+  const el = document.getElementById('extract-review');
+  if (!el) return;
+  const keys = Object.keys(RESEARCH_STORES).filter(k => extractPool(k).length);
+  if (!keys.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">📤</div><p>Nothing extracted yet — run a breakdown above.</p></div>';
+    return;
+  }
+  S._extractSkip = S._extractSkip || new Set();
+  el.innerHTML = keys.map(k => {
+    const pool = extractPool(k);
+    return `<div style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">${RESEARCH_STORES[k].label} · ${pool.length}</span>
+        <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${k}',this)">Push ticked →</button>
+      </div>
+      ${pool.map((it, i) => {
+        const off = S._extractSkip.has(it._key);
+        return `<label style="display:flex;gap:8px;align-items:flex-start;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:3px;opacity:${off ? 0.4 : 1};font-size:12px">
+          <input type="checkbox" ${off ? '' : 'checked'} onchange="toggleExtract('${it._key}')" style="width:14px;flex:none;margin-top:2px">
+          <span>${RESEARCH_STORES[k].name(it) || '(unnamed)'}</span>
+        </label>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+function toggleExtract(key) {
+  S._extractSkip = S._extractSkip || new Set();
+  if (S._extractSkip.has(key)) S._extractSkip.delete(key); else S._extractSkip.add(key);
+  renderExtractReview();
+}
+
+async function pushStore(key, btn) {
+  const cfg = RESEARCH_STORES[key];
+  const items = extractPool(key).filter(it => !(S._extractSkip || new Set()).has(it._key));
+  if (!items.length) { toast('Nothing ticked', 'error'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Pushing…'; }
+  let added = 0, skipped = 0, failed = 0;
+  try {
+    let existing = new Set();
+    try {
+      const cur = await notionAPI(`databases/${cfg.db()}/query`, 'POST', { page_size: 100 });
+      existing = new Set((cur.results || []).map(r =>
+        (r.properties?.[cfg.titleProp]?.title?.[0]?.plain_text || '').trim().toLowerCase()));
+    } catch (e) { console.warn(`${key} dedupe pre-check failed:`, e.message); }
+    for (const it of items) {
+      const nm = String(cfg.name(it) || '').trim().toLowerCase();
+      if (!nm || existing.has(nm)) { skipped++; continue; }
+      try {
+        await notionAPI('pages', 'POST', { parent: { database_id: cfg.db() }, properties: cfg.props(it) });
+        existing.add(nm); added++;
+      } catch (e) { failed++; console.error(`${key} push error`, cfg.name(it), e); }
+    }
+    toast([added && `${added} added`, skipped && `${skipped} skipped`, failed && `${failed} failed`]
+      .filter(Boolean).join(' · ') || 'nothing to push', failed ? 'error' : 'success');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Push ticked →'; }
+  }
 }
 
 // ─── Stage 2 · Assemble (author-driven; AI only on the ✨ buttons) ────────────
