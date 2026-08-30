@@ -1882,6 +1882,15 @@ function collectRouting() {
   return out;
 }
 
+// Notion caps each rich_text item's content at 2000 chars — chunk long JSON.
+function codeBlockRichText(str) {
+  const out = [];
+  for (let i = 0; i < str.length; i += 2000) {
+    out.push({ type: 'text', text: { content: str.slice(i, i + 2000) } });
+  }
+  return out.length ? out : [{ type: 'text', text: { content: '' } }];
+}
+
 async function saveRouting() {
   const routing = collectRouting();
   const json = JSON.stringify(routing, null, 2);
@@ -1893,7 +1902,7 @@ async function saveRouting() {
   }
   try {
     await notionAPI(`blocks/${S.routingBlockId}`, 'PATCH', {
-      code: { language: 'json', rich_text: [{ type: 'text', text: { content: json } }] },
+      code: { language: 'json', rich_text: codeBlockRichText(json) },
     });
     S.routing = routing;
     toast('Routing saved to Notion. ai-run picks it up within ~60s.', 'success');
@@ -1913,27 +1922,51 @@ const DNA_SCHEMA = {
   Production:   { episode_length:'Episode length', host_ratio:'Host ratio', music_philosophy:'Music philosophy', sound_design:'Sound design', editing_rhythm:'Editing rhythm' },
 };
 
+// One group visible at a time (tabs) so the operator isn't scrolling ~30 fields.
+let _dnaTab = Object.keys(DNA_SCHEMA)[0];
+
+// Pull the currently-shown textareas back into S.dna before re-render / save
+// (only the active tab is in the DOM at any time).
+function captureDNAVisible() {
+  S.dna = S.dna || {};
+  document.querySelectorAll('[data-dna-group]').forEach(el => {
+    const g = el.dataset.dnaGroup, k = el.dataset.dnaKey;
+    (S.dna[g] = S.dna[g] || {})[k] = el.value;
+  });
+}
+
+function selectDNATab(group) {
+  captureDNAVisible();
+  _dnaTab = group;
+  renderDNAForm();
+}
+
 function renderDNAForm() {
   const d = S.dna || {};
-  document.getElementById('dna-fields').innerHTML = Object.entries(DNA_SCHEMA).map(([group, fields]) => {
-    const g = group.toLowerCase();
-    const rows = Object.entries(fields).map(([key, label]) => {
-      const val = ((d[g] || {})[key] || '').replace(/</g, '&lt;');
-      return `<div class="field"><label>${label}</label>
-        <textarea data-dna-group="${g}" data-dna-key="${key}" rows="2">${val}</textarea></div>`;
-    }).join('');
-    return `<div style="margin-top:14px">
-      <div style="font-size:11px;letter-spacing:.08em;color:var(--text3);text-transform:uppercase;margin-bottom:6px">${group}</div>
-      ${rows}</div>`;
+  const groups = Object.keys(DNA_SCHEMA);
+  if (!groups.includes(_dnaTab)) _dnaTab = groups[0];
+  const tabs = groups.map(g =>
+    `<button type="button" class="btn btn-sm ${g === _dnaTab ? 'btn-primary' : 'btn-ghost'}"
+      onclick="selectDNATab('${g}')" style="font-size:11px">${g}</button>`).join('');
+  const gk = _dnaTab.toLowerCase();
+  const fields = Object.entries(DNA_SCHEMA[_dnaTab]).map(([key, label]) => {
+    const val = ((d[gk] || {})[key] || '').replace(/</g, '&lt;');
+    return `<div class="field"><label>${label}</label>
+      <textarea data-dna-group="${gk}" data-dna-key="${key}" rows="2">${val}</textarea></div>`;
   }).join('');
+  document.getElementById('dna-fields').innerHTML =
+    `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px">${tabs}</div>${fields}`;
 }
 
 async function saveDNA() {
+  captureDNAVisible();
+  // Normalise to the schema — trims, drops stray keys, keeps every group.
   const dna = {};
-  document.querySelectorAll('[data-dna-group]').forEach(el => {
-    const g = el.dataset.dnaGroup, k = el.dataset.dnaKey;
-    (dna[g] = dna[g] || {})[k] = el.value.trim();
-  });
+  for (const [group, fields] of Object.entries(DNA_SCHEMA)) {
+    const g = group.toLowerCase();
+    dna[g] = {};
+    for (const key of Object.keys(fields)) dna[g][key] = (((S.dna || {})[g] || {})[key] || '').trim();
+  }
   S.dna = dna;
   const json = JSON.stringify(dna, null, 2);
   if (!S.dnaBlockId) {
@@ -1943,7 +1976,7 @@ async function saveDNA() {
   }
   try {
     await notionAPI(`blocks/${S.dnaBlockId}`, 'PATCH', {
-      code: { language: 'json', rich_text: [{ type: 'text', text: { content: json } }] },
+      code: { language: 'json', rich_text: codeBlockRichText(json) },
     });
     toast('Channel DNA saved to Notion.', 'success');
   } catch (e) {
