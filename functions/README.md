@@ -18,6 +18,12 @@ Set these in the Netlify dashboard (Site settings → Environment variables) and
 for local `netlify dev`, in a gitignored `.env` (see `.env.example`). Once set,
 the browser no longer needs to send keys.
 
+`_shared/` (underscore prefix — not deployed as a function) holds the
+provider-agnostic model router `models.js` (`callModel()`), used from Phase 2
+onward via an `ai-run.js` endpoint. See `Docs/AS_BUILT.md` → "Direction &
+evolution plan". Adapters currently: Anthropic (`ANTHROPIC_API_KEY`), Gemini
+(`GEMINI_API_KEY`).
+
 All functions: `POST` only (plus `OPTIONS` preflight),
 `Access-Control-Allow-Origin: *`, JSON in / JSON out, upstream errors returned
 with their status code.
