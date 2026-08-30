@@ -1918,11 +1918,10 @@ const MODEL_CATALOG = [
   ['openai|gpt-4.1',                      'OpenAI · GPT-4.1'],
   ['openai|o4-mini',                      'OpenAI · o4-mini (reasoning, cheap)'],
   ['openai|o3',                           'OpenAI · o3 (reasoning)'],
-  ['gemini|gemini-2.0-flash',             'Google · Gemini 2.0 Flash (cheap, fast)'],
-  ['gemini|gemini-2.0-flash-lite',        'Google · Gemini 2.0 Flash-Lite (ultra-cheap)'],
-  ['gemini|gemini-2.5-flash',             'Google · Gemini 2.5 Flash'],
-  ['gemini|gemini-2.5-pro',               'Google · Gemini 2.5 Pro (reasoning)'],
-  ['gemini|gemini-1.5-pro',               'Google · Gemini 1.5 Pro (long context)'],
+  ['gemini|gemini-3.6-flash',             'Google · Gemini 3.6 Flash (cheap, fast)'],
+  ['gemini|gemini-3.7-flash',             'Google · Gemini 3.7 Flash'],
+  ['gemini|gemini-3.1-flash-lite',        'Google · Gemini 3.1 Flash-Lite (ultra-cheap)'],
+  ['gemini|gemini-3.6-pro',               'Google · Gemini 3.6 Pro (reasoning)'],
   ['deepseek|deepseek-chat',              'DeepSeek · deepseek-chat / V3 (cheap, strong)'],
   ['deepseek|deepseek-reasoner',          'DeepSeek · deepseek-reasoner / R1'],
   ['qwen|qwen-max',                       'Qwen · qwen-max (strong)'],
@@ -1939,17 +1938,17 @@ const MODEL_CATALOG = [
 ];
 // Offline default if Notion has no routing block yet.
 const DEFAULT_ROUTING_UI = {
-  angle:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'gemini',model:'gemini-2.0-flash'}},
+  angle:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'gemini',model:'gemini-3.6-flash'}},
   theme:{provider:'anthropic',model:'claude-sonnet-4-6',fallback:{provider:'openai',model:'gpt-4o'}},
   gap:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
   outline:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
-  translate:{provider:'gemini',model:'gemini-2.0-flash',fallback:{provider:'anthropic',model:'claude-haiku-4-5-20251001'}},
-  places:{provider:'gemini',model:'gemini-2.0-flash',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
+  translate:{provider:'gemini',model:'gemini-3.6-flash',fallback:{provider:'anthropic',model:'claude-haiku-4-5-20251001'}},
+  places:{provider:'gemini',model:'gemini-3.6-flash',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
   dialogue:{provider:'anthropic',model:'claude-sonnet-4-6',fallback:{provider:'openai',model:'gpt-4o'}},
   thumbnail:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
   metadata:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
   handoff:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
-  critic:{provider:'gemini',model:'gemini-2.0-flash',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
+  critic:{provider:'gemini',model:'gemini-3.6-flash',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
 };
 
 // <optgroup>-grouped <option>s built from MODEL_CATALOG. `selected` = "provider|model".
