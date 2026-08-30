@@ -31,16 +31,22 @@ test('extractPlayerResponse: pulls the object after the marker', () => {
   assert.deepEqual(extractPlayerResponse(html), { captions: { x: 1 } });
 });
 
-test('pickCaptionTrack: lang match > manual > english > first', () => {
-  const tracks = [
-    { languageCode: 'ja', kind: 'asr' },
-    { languageCode: 'en', kind: 'asr' },
+test('pickCaptionTrack: explicit lang > English > non-tlang > first', () => {
+  const many = [
+    { languageCode: 'ar' },
+    { languageCode: 'bg' },
+    { languageCode: 'en', name: { simpleText: 'English' } },
     { languageCode: 'fr' },
   ];
-  assert.equal(pickCaptionTrack(tracks, 'ja').languageCode, 'ja'); // exact
-  assert.equal(pickCaptionTrack(tracks, '').languageCode, 'fr'); // manual (non-asr)
-  assert.equal(pickCaptionTrack([tracks[0], tracks[1]], '').languageCode, 'en'); // english asr
-  assert.equal(pickCaptionTrack([tracks[0]], '').languageCode, 'ja'); // first
+  assert.equal(pickCaptionTrack(many, '').languageCode, 'en'); // English beats first (Arabic)
+  assert.equal(pickCaptionTrack(many, 'fr').languageCode, 'fr'); // explicit request wins
+
+  const noEn = [
+    { languageCode: 'ja', baseUrl: 'x?tlang=en' }, // auto-translated
+    { languageCode: 'ja', baseUrl: 'x' }, // original
+  ];
+  assert.equal(pickCaptionTrack(noEn, '').baseUrl, 'x'); // prefer the non-tlang original
+  assert.equal(pickCaptionTrack([{ languageCode: 'de' }], '').languageCode, 'de'); // fall to first
 });
 
 test('parseJson3: joins segs, one line per event', () => {

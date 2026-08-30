@@ -176,18 +176,21 @@ function sliceBalancedJson(str, start) {
   return null;
 }
 
-// Prefer an ORIGINAL (non-machine-translated) track — YouTube marks translated
-// tracks with &tlang= in the baseUrl. The pipeline translates later, so the
-// faithful source beats an auto-translation. Then: lang match → manual → en → first.
+// Priority: explicit lang → English → a non-machine-translated track → first.
+// Many videos ship dozens of translated caption files with no "original"
+// marker and no Japanese; English is the safest pick, and the outline step
+// translates anything else. YouTube marks auto-translations with &tlang=.
 function pickCaptionTrack(tracks, lang) {
-  const originals = tracks.filter((t) => !/[?&]tlang=/.test(t.baseUrl || ''));
-  const pool = originals.length ? originals : tracks;
-  const byLang = lang && pool.find((t) => (t.languageCode || '').startsWith(lang));
-  if (byLang) return byLang;
-  const manual = pool.find((t) => t.kind !== 'asr');
-  if (manual) return manual;
-  const en = pool.find((t) => (t.languageCode || '').startsWith('en'));
-  return en || pool[0];
+  const notTlang = (t) => !/[?&]tlang=/.test(t.baseUrl || '');
+  if (lang) {
+    const m = tracks.find((t) => (t.languageCode || '').startsWith(lang));
+    if (m) return m;
+  }
+  const en =
+    tracks.find((t) => /^en/.test(t.languageCode || '') && notTlang(t)) ||
+    tracks.find((t) => /^en/.test(t.languageCode || ''));
+  if (en) return en;
+  return tracks.find(notTlang) || tracks[0];
 }
 
 // json3 caption format → plain text.
