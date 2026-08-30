@@ -1148,22 +1148,47 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     </div>
 
     <div class="card">
-      <div class="card-title"><span class="icon">✅</span> What's in this episode</div>
-      <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Pick which source videos feed this episode (<strong>FROM:</strong> row), then tick the places / beats / food you want — grouped by video. Ticked items, top to bottom, are the running order: they become the brief and seed Script Builder. Reorder with ↑ ↓ or ✨ Suggest order.</p>
-      <div class="row" style="gap:6px;margin-bottom:4px">
-        <button class="btn btn-sm" onclick="buildIncludeList()">↻ Rebuild from breakdowns</button>
-        <button class="btn btn-sm btn-ghost" onclick="suggestIncludeOrder(this)">✨ Suggest order</button>
+      <div class="card-title"><span class="icon">🧱</span> Sections</div>
+      <p style="font-size:12px;color:var(--text3);margin-bottom:8px">The shape of the episode — an ordered list of typed sections. Start blank or from a template, then assign material below. This seeds Script Builder.</p>
+      <div class="row" style="gap:6px;margin-bottom:8px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="epTemplate('blank')">Blank</button>
+        <button class="btn btn-sm" onclick="epTemplate('A')">Template A · Road Trip</button>
+        <button class="btn btn-sm" onclick="epTemplate('B')">Template B · Deep Dive</button>
+        <div style="flex:1"></div>
+        <button class="btn btn-sm btn-ghost" onclick="addSection()">+ Section</button>
+        <button class="btn btn-sm btn-ghost" onclick="suggestSectionOrder(this)">✨ Order</button>
       </div>
-      <div id="ep-include-list" style="margin-top:10px"></div>
+      <div id="ep-sections"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">🗂️</span> Material</div>
+      <div class="row" style="gap:6px;margin-bottom:8px;flex-wrap:wrap">
+        <select id="ep-mat-cat" onchange="epLoadMaterial()" style="width:150px">
+          <option value="places">Places</option>
+          <option value="activities">Activities</option>
+          <option value="food">Food</option>
+          <option value="research">Knowledge</option>
+          <option value="transport">Transport</option>
+        </select>
+        <input type="text" id="ep-mat-search" oninput="renderMaterial()" placeholder="filter…" style="flex:1;min-width:140px">
+        <input type="text" id="ep-mat-pref" oninput="renderMaterial()" placeholder="prefecture" style="width:120px">
+        <label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px"><input type="checkbox" id="ep-mat-unused" style="width:auto" onchange="renderMaterial()"> unused only</label>
+        <button class="btn btn-sm" onclick="epLoadMaterial()">↻ Reload</button>
+        <button class="btn btn-sm btn-ghost" onclick="autoDistribute(this)">✨ Distribute</button>
+      </div>
+      <div id="ep-mat-list"><div class="empty-state"><div class="icon">🗂️</div><p>Pick a category and reload.</p></div></div>
     </div>
 
     <div class="card">
       <div class="card-title"><span class="icon">🎬</span> Create</div>
-      <div class="btn-row">
+      <div class="btn-row" style="margin-bottom:8px">
         <button class="btn btn-primary" onclick="createEpisode()">Create Episode in Notion →</button>
+        <button class="btn btn-ghost" onclick="epGapCheck(this)">✨ Gap check</button>
         <div id="ep-creating" style="display:none" class="loading-row"><div class="spinner"></div> Creating episode…</div>
       </div>
-      <div id="ep-create-result" style="display:none"></div>
+      <div id="ep-gap" style="font-size:12px;color:var(--text3)"></div>
+      <div id="ep-create-result" style="display:none;margin-top:8px"></div>
     </div>
   </div>
 </div>
@@ -1544,10 +1569,10 @@ const S = {
   audioCtx: null,
   currentTranscriptOutline: '',
   episodeBreakdowns: [],
-  includeSourceOff: new Set(),
   extractedPlaces: [],
   confirmedPlaces: [],
-  includeItems: [],
+  webExtract: {},
+  ep: { sections: [], assign: {}, pool: {}, _items: {} },
   handoffDoc: null,
 };
 
@@ -3203,154 +3228,226 @@ async function runWebResearch(btn) {
   }
 }
 
-// ─── Stage 2 · Assemble (author-driven; AI only on the ✨ buttons) ────────────
+// ─── Step 2 · Episode Builder — typed sections + Notion-backed material ──────
+let _secId = 0;
+const EP_TEMPLATES = {
+  blank: ['Intro', 'Outro'],
+  A: ['Intro', 'Food Stop', 'Place / Attraction', 'Cultural Note', 'Outro'],
+  B: ['Intro', 'Place / Attraction', 'Cultural Note', 'Food Stop', 'Outro'],
+};
+
 function enterAssemble() {
   const toneSel = document.getElementById('ep-tone');
   if (toneSel && !toneSel.options.length) {
     toneSel.innerHTML = (S.lookups.tones || []).map(t => `<option>${t}</option>`).join('');
   }
-  buildIncludeList();
+  S.ep = S.ep || { sections: [], assign: {}, pool: {}, _items: {} };
+  if (!S.ep.sections.length) epTemplate('blank');
+  else renderSections();
   updateEpisodePreview();
 }
 
-// Flatten the selected videos' breakdowns into a tickable list; keep prior ticks.
-// Default order = the order things happened in each video (breakdown.route for
-// places, then its beats, then its food) — a sensible starting sequence you
-// don't need any local knowledge to accept. Reorder or hit ✨ Suggest order.
-function buildIncludeList() {
-  rebuildCombinedOutline();
-  const prev = new Map(S.includeItems.map(it => [it.kind + '|' + it.label.toLowerCase(), it.checked]));
-  const raw = [];
-  for (const b of S.episodeBreakdowns) {
-    if (S.includeSourceOff.has(b.title)) continue;          // video excluded from this episode
-    const places = (b.places || []).filter(p => p.name);
-    const order = (b.route || []).map(r => String(r).toLowerCase());
-    const rank = (p) => {
-      const k = order.indexOf(p.name.toLowerCase());
-      return k === -1 ? 999 : k;
-    };
-    for (const p of [...places].sort((a, z) => rank(a) - rank(z)))
-      raw.push({ kind: 'place', source: b.title, label: p.name, detail: [p.type, p.what_happens_here].filter(Boolean).join(' — ') });
-    for (const x of (b.beats || [])) if (x.moment)
-      raw.push({ kind: 'beat', source: b.title, label: x.moment, detail: x.why_it_matters || '' });
-    for (const f of (b.food || [])) if (f.dish)
-      raw.push({ kind: 'food', source: b.title, label: f.dish, detail: f.where || '' });
-  }
-  const seen = new Set();
-  S.includeItems = raw.filter(it => {
-    const k = it.kind + '|' + it.label.toLowerCase();
-    if (seen.has(k)) return false;
-    seen.add(k);
-    it.checked = prev.has(k) ? prev.get(k) : true;
-    return true;
-  });
-  renderIncludeList();
+function epTemplate(name) {
+  const types = EP_TEMPLATES[name] || EP_TEMPLATES.blank;
+  S.ep.sections = types.map(t => ({ id: `s${++_secId}`, type: t }));
+  S.ep.assign = {};
+  renderSections();
 }
-
-function toggleIncludeSource(title) {
-  if (S.includeSourceOff.has(title)) S.includeSourceOff.delete(title);
-  else S.includeSourceOff.add(title);
-  buildIncludeList();
+function addSection() {
+  const opts = S.lookups.sections || ['Travel Segment'];
+  S.ep.sections.push({ id: `s${++_secId}`, type: opts[1] || opts[0] });
+  renderSections();
 }
-function groupSetChecked(title, val) {
-  S.includeItems.forEach(it => { if (it.source === title) it.checked = val; });
-  renderIncludeList();
+function removeSection(id) {
+  S.ep.sections = S.ep.sections.filter(s => s.id !== id);
+  for (const k of Object.keys(S.ep.assign)) if (S.ep.assign[k] === id) delete S.ep.assign[k];
+  renderSections();
 }
-
-// ✨ Ask the model to sequence the ticked items for narrative flow. Advisory —
-// you still own the order; it just gives a foreigner a defensible starting point.
-async function suggestIncludeOrder(btn) {
-  const ticked = S.includeItems.filter(it => it.checked);
-  if (ticked.length < 3) { toast('Tick at least 3 items first', 'error'); return; }
-  rebuildCombinedOutline();
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
-  try {
-    const list = ticked.map((it, i) => `${i}. [${it.kind}] ${it.label}`).join('\n');
-    const raw = (await aiRun('theme', { provider: 'gemini', model: 'gemini-3.6-flash', system: buildDNASystem(), messages: [{
-      role: 'user',
-      content: `Order these episode beats for the best documentary flow — open on a strong
-hook, build, save the biggest payoff for near the end, wind down. Ground it in
-the material; do not add or drop anything.
-
-Material:
-${(S.currentTranscriptOutline || '').slice(0, 3500)}
-
-Beats (0-indexed):
-${list}
-
-Respond ONLY in JSON: {"order":[<the indices, every one, reordered>]}`
-    }] })).text;
-    const idx = (parseJsonLoose(raw).order || []).filter(n => Number.isInteger(n) && ticked[n]);
-    if (idx.length !== ticked.length) throw new Error('incomplete order');
-    const reordered = idx.map(n => ticked[n]);
-    const rest = S.includeItems.filter(it => !it.checked);
-    S.includeItems = [...reordered, ...rest];
-    renderIncludeList();
-    toast('Reordered for flow — tweak with ↑↓', 'success');
-  } catch (e) {
-    toast(`Suggest order failed: ${e.message}`, 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest order'; }
-  }
+function moveSection(id, d) {
+  const i = S.ep.sections.findIndex(s => s.id === id);
+  const j = i + d;
+  if (i < 0 || j < 0 || j >= S.ep.sections.length) return;
+  [S.ep.sections[i], S.ep.sections[j]] = [S.ep.sections[j], S.ep.sections[i]];
+  renderSections();
 }
+function setSectionType(id, t) { const s = S.ep.sections.find(x => x.id === id); if (s) s.type = t; }
 
-const shortTitle = (s) => (s && s.length > 42) ? s.slice(0, 41) + '…' : (s || '(untitled)');
+function sectionItems(id) {
+  return Object.entries(S.ep.assign)
+    .filter(([, sid]) => sid === id)
+    .map(([key]) => S.ep._items[key]).filter(Boolean);
+}
+const _catIcon = (c) => ({ places: '📍', food: '🍜', activities: '🎯', transport: '🚐', research: '🔎' }[c] || '•');
 
-function renderIncludeList() {
-  const el = document.getElementById('ep-include-list');
-  const bd = S.episodeBreakdowns || [];
-
-  // Row 1 — which source videos feed THIS episode.
-  const chips = bd.length > 1
-    ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-        <span style="font-size:10px;color:var(--text3);align-self:center;font-family:var(--font-mono)">FROM:</span>
-        ${bd.map(b => {
-          const on = !S.includeSourceOff.has(b.title);
-          return `<button class="btn btn-sm ${on ? 'btn-primary' : 'btn-ghost'}" onclick="toggleIncludeSource(${JSON.stringify(b.title).replace(/"/g, '&quot;')})">${on ? '' : '✕ '}${shortTitle(b.title)}</button>`;
-        }).join('')}
-      </div>`
-    : '';
-
-  if (!S.includeItems.length) {
-    el.innerHTML = chips + '<div class="empty-state"><div class="icon">✅</div><p>No items — run Prep → Run breakdown, or turn a source video back on above.</p></div>';
-    return;
-  }
-
-  const icon = { place: '📍', beat: '🎬', food: '🍜' };
-  const last = S.includeItems.length - 1;
-  let prevSource = null;
-  const rows = S.includeItems.map((it, i) => {
-    let head = '';
-    if (it.source !== prevSource) {
-      prevSource = it.source;
-      const n = S.includeItems.filter(x => x.source === it.source).length;
-      const anyOff = S.includeItems.some(x => x.source === it.source && !x.checked);
-      head = `<div style="display:flex;align-items:center;gap:8px;margin:12px 0 6px;font-size:11px;font-family:var(--font-mono);color:var(--text3)">
-        <span style="text-transform:uppercase;letter-spacing:.06em">${shortTitle(it.source)}</span>
-        <span>· ${n}</span>
-        <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="groupSetChecked(${JSON.stringify(it.source).replace(/"/g, '&quot;')}, ${anyOff})">${anyOff ? 'include all' : 'clear all'}</button>
-      </div>`;
-    }
-    return head + `
-    <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;opacity:${it.checked ? 1 : 0.4}">
-      <input type="checkbox" ${it.checked ? 'checked' : ''} onchange="toggleInclude(${i})" style="width:16px;flex:none;margin-top:3px">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:500">${icon[it.kind] || ''} ${it.label}</div>
-        ${it.detail ? `<div style="font-size:11px;color:var(--text3)">${it.detail}</div>` : ''}
+function renderSections() {
+  const el = document.getElementById('ep-sections');
+  if (!el) return;
+  const opts = S.lookups.sections || [];
+  el.innerHTML = S.ep.sections.map((s, i) => {
+    const its = sectionItems(s.id);
+    return `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;margin-bottom:6px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-family:var(--font-mono);font-size:11px;color:var(--text3);min-width:18px">${i + 1}</span>
+        <select onchange="setSectionType('${s.id}',this.value)" style="width:auto;font-size:12px;padding:3px 6px">
+          ${opts.map(o => `<option ${o === s.type ? 'selected' : ''}>${o}</option>`).join('')}
+        </select>
+        <div style="flex:1"></div>
+        <button class="btn btn-sm btn-ghost" style="flex:none" onclick="moveSection('${s.id}',-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button class="btn btn-sm btn-ghost" style="flex:none" onclick="moveSection('${s.id}',1)" ${i === S.ep.sections.length - 1 ? 'disabled' : ''}>↓</button>
+        <button class="btn btn-sm btn-ghost" style="flex:none" onclick="removeSection('${s.id}')">✕</button>
       </div>
-      <button class="btn btn-sm btn-ghost" style="flex:none" onclick="moveInclude(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
-      <button class="btn btn-sm btn-ghost" style="flex:none" onclick="moveInclude(${i},1)" ${i === last ? 'disabled' : ''}>↓</button>
+      ${its.length ? `<div style="margin-top:6px;display:flex;flex-direction:column;gap:3px">${its.map(it => `
+        <div style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--text2)">
+          <span style="flex:1">${_catIcon(it._cat)} ${it._name}</span>
+          <button class="btn btn-sm btn-ghost" style="padding:1px 6px;flex:none" onclick="assignItem('${it._key}','')">unassign</button>
+        </div>`).join('')}</div>` : '<div style="font-size:11px;color:var(--text3);margin-top:4px">no material assigned</div>'}
     </div>`;
   }).join('');
-
-  el.innerHTML = chips + rows;
 }
-function toggleInclude(i) { S.includeItems[i].checked = !S.includeItems[i].checked; renderIncludeList(); }
-function moveInclude(i, d) {
-  const j = i + d;
-  if (j < 0 || j >= S.includeItems.length) return;
-  [S.includeItems[i], S.includeItems[j]] = [S.includeItems[j], S.includeItems[i]];
-  renderIncludeList();
+
+// ── material browser (per-category Notion query + filter + assign) ──
+const EP_MAT = {
+  places:     { db: () => DB_IDS.places,           title: 'Name',            pref: 'Prefecture', usedProp: 'Used In Episodes' },
+  activities: { db: () => DB_IDS.activities,        title: 'Activity',        pref: 'Prefecture', usedProp: 'Used In Episode' },
+  food:       { db: () => DB_IDS.food,             title: 'Dish',            pref: null,         usedProp: 'Used In Episode' },
+  research:   { db: () => DB_IDS.research,          title: 'Statement',       pref: 'Prefecture', usedProp: 'Used In Episode' },
+  transport:  { db: () => DB_IDS.transport,        title: 'Route or Segment', pref: null,        usedProp: 'Used In Episode' },
+};
+async function epLoadMaterial() {
+  const cat = document.getElementById('ep-mat-cat').value;
+  const listEl = document.getElementById('ep-mat-list');
+  listEl.innerHTML = '<div class="loading-row"><div class="spinner"></div> Loading…</div>';
+  try {
+    const cfg = EP_MAT[cat];
+    const data = await notionAPI(`databases/${cfg.db()}/query`, 'POST', { page_size: 100 });
+    S.ep.pool[cat] = (data.results || []).map(r => {
+      const pr = r.properties || {};
+      return {
+        id: r.id, _cat: cat,
+        _name: pr[cfg.title]?.title?.[0]?.plain_text || '(unnamed)',
+        prefecture: cfg.pref ? (pr[cfg.pref]?.select?.name || '') : '',
+        used: !!(pr[cfg.usedProp]?.rich_text?.[0]?.plain_text),
+        type: pr['Type']?.select?.name || pr['Kind']?.select?.name || '',
+      };
+    });
+    renderMaterial();
+  } catch (e) {
+    listEl.innerHTML = `<div class="info-box error">${e.message} — is the ${cat} DB connected to the NomadDimension integration?</div>`;
+  }
+}
+function renderMaterial() {
+  const cat = document.getElementById('ep-mat-cat').value;
+  const listEl = document.getElementById('ep-mat-list');
+  const pool = S.ep.pool[cat] || [];
+  if (!pool.length) { listEl.innerHTML = '<div class="empty-state"><div class="icon">🗂️</div><p>Reload to fetch.</p></div>'; return; }
+  const q = document.getElementById('ep-mat-search').value.trim().toLowerCase();
+  const pf = document.getElementById('ep-mat-pref').value.trim().toLowerCase();
+  const unused = document.getElementById('ep-mat-unused').checked;
+  const rows = pool.filter(it =>
+    (!q || it._name.toLowerCase().includes(q) || (it.type || '').toLowerCase().includes(q)) &&
+    (!pf || (it.prefecture || '').toLowerCase().includes(pf)) &&
+    (!unused || !it.used));
+  listEl.innerHTML = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">${rows.length} / ${pool.length}</div>` +
+    rows.map(it => {
+      it._key = `${cat}:${it.id}`;
+      S.ep._items[it._key] = it;
+      const at = S.ep.assign[it._key] || '';
+      const secOpts = S.ep.sections.map((s, i) =>
+        `<option value="${s.id}" ${s.id === at ? 'selected' : ''}>${i + 1}. ${s.type}</option>`).join('');
+      return `<div style="display:flex;gap:8px;align-items:center;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:3px;font-size:12px">
+        <span style="flex:1">${it._name}${it.prefecture ? ` <span style="color:var(--text3)">· ${it.prefecture}</span>` : ''}${it.used ? ' <span class="badge" style="font-size:9px">used</span>' : ''}</span>
+        <select onchange="assignItem('${it._key}',this.value)" style="width:auto;font-size:11px;padding:2px 4px">
+          <option value="">— assign —</option>${secOpts}
+        </select>
+      </div>`;
+    }).join('');
+}
+function assignItem(key, sectionId) {
+  if (sectionId) S.ep.assign[key] = sectionId;
+  else delete S.ep.assign[key];
+  renderSections();
+  renderMaterial();
+}
+
+// E2 — deterministic auto-distribute: unassigned items of the loaded category
+// drop into the first section whose type matches the category.
+const SECTION_MATCH = {
+  places: /place|attraction|onsen|viewpoint|stop|travel|segment/i,
+  activities: /activity|onsen|travel|segment|place/i,
+  food: /food|meal|eat/i,
+  research: /cultural|note|history|context/i,
+  transport: /travel|drive|road|segment|transit/i,
+};
+function autoDistribute(btn) {
+  const cat = document.getElementById('ep-mat-cat').value;
+  const pool = S.ep.pool[cat] || [];
+  if (!pool.length) { toast('Reload the category first', 'error'); return; }
+  const re = SECTION_MATCH[cat] || /segment/i;
+  const target = S.ep.sections.find(s => re.test(s.type));
+  if (!target) { toast(`No section matches ${cat} — add one`, 'error'); return; }
+  let n = 0;
+  for (const it of pool) {
+    it._key = `${cat}:${it.id}`;
+    S.ep._items[it._key] = it;
+    if (!S.ep.assign[it._key]) { S.ep.assign[it._key] = target.id; n++; }
+  }
+  renderSections();
+  renderMaterial();
+  toast(`${n} ${cat} → “${target.type}”`, 'success');
+}
+
+// E3 — episode-level gap check against the central question.
+async function epGapCheck(btn) {
+  const concept = document.getElementById('ep-concept').value.trim();
+  if (!concept) { toast('Set the central question first', 'error'); return; }
+  const el = document.getElementById('ep-gap');
+  el.textContent = 'Checking…';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const outline = S.ep.sections.map((s, i) =>
+      `${i + 1}. ${s.type}: ${sectionItems(s.id).map(x => x._name).join(', ') || '(empty)'}`).join('\n');
+    const raw = (await aiRun('gap', { provider: 'gemini', model: 'gemini-3.6-flash', system: buildDNASystem(), messages: [{
+      role: 'user',
+      content: `Central question: ${concept}
+
+Planned sections + assigned material:
+${outline}
+
+What's missing or too thin to answer that question well? Name 3-5 specific gaps,
+and for each say exactly what to research (a place, a fact, a number, a source).`,
+    }] })).text;
+    el.innerHTML = `<div class="code-block" style="white-space:pre-wrap;font-size:12px">${raw}</div>`;
+  } catch (e) {
+    el.textContent = `Gap check failed: ${e.message}`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Gap check'; }
+  }
+}
+
+async function suggestSectionOrder(btn) {
+  if (S.ep.sections.length < 3) { toast('Add a few sections first', 'error'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const list = S.ep.sections.map((s, i) =>
+      `${i}. ${s.type} [${sectionItems(s.id).map(x => x._name).join(', ') || 'empty'}]`).join('\n');
+    const raw = (await aiRun('theme', { provider: 'gemini', model: 'gemini-3.6-flash', system: buildDNASystem(), messages: [{
+      role: 'user',
+      content: `Order these episode sections for documentary flow — hook first, build,
+biggest payoff near the end, wind down. Keep Intro first and Outro last.
+Sections (0-indexed):
+${list}
+Respond ONLY in JSON: {"order":[<every index, reordered>]}`,
+    }] })).text;
+    const idx = (parseJsonLoose(raw).order || []).filter(n => Number.isInteger(n) && S.ep.sections[n]);
+    if (idx.length !== S.ep.sections.length) throw new Error('incomplete order');
+    S.ep.sections = idx.map(n => S.ep.sections[n]);
+    renderSections();
+    toast('Reordered — tweak with ↑↓', 'success');
+  } catch (e) {
+    toast(`Order failed: ${e.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Order'; }
+  }
 }
 
 async function suggestTitles(btn) {
@@ -3429,7 +3526,6 @@ const _rt = (s) => [{ type: 'text', text: { content: String(s || '').slice(0, 19
 const _p = (s) => ({ object: 'block', type: 'paragraph', paragraph: { rich_text: _rt(s) } });
 const _h2 = (s) => ({ object: 'block', type: 'heading_2', heading_2: { rich_text: _rt(s) } });
 const _li = (s) => ({ object: 'block', type: 'bulleted_list_item', bulleted_list_item: { rich_text: _rt(s) } });
-const SECTION_TYPE_FOR = { place: 'Place / Attraction', food: 'Food Stop', beat: 'Travel Segment' };
 
 async function createEpisode() {
   const series  = document.getElementById('ep-series').value;
@@ -3445,9 +3541,12 @@ async function createEpisode() {
 
   if (theme === 'New Episode' || !concept) { toast('Set a working title and the central question first', 'error'); return; }
 
+  const secs = (S.ep && S.ep.sections) || [];
+  if (!secs.length) { toast('Add at least one section', 'error'); return; }
+
   const epName = `${series} · EP${num} · ${theme}`;
   const sourceTitles = [...S.epSelected].map(i => S.epQueue[i]?.title).filter(Boolean);
-  const chosen = S.includeItems.filter(it => it.checked);
+  const assigned = [...new Set(Object.keys(S.ep.assign))].map(k => S.ep._items[k]).filter(Boolean);
 
   const creatingEl = document.getElementById('ep-creating');
   const resultEl = document.getElementById('ep-create-result');
@@ -3459,9 +3558,11 @@ async function createEpisode() {
     const body = [_h2('Brief'), _p(concept)];
     if (hook) body.push(_p(`Hook: ${hook}`));
     if (tone) body.push(_p(`Tone: ${tone}`));
-    body.push(_h2('In this episode'));
-    if (chosen.length) chosen.forEach(it => body.push(_li(`${it.label}${it.detail ? ` — ${it.detail}` : ''}`)));
-    else body.push(_p('(nothing ticked in Assemble → What\'s in this episode)'));
+    body.push(_h2('Running order'));
+    secs.forEach((s, i) => {
+      body.push(_p(`${i + 1}. ${s.type}`));
+      sectionItems(s.id).forEach(it => body.push(_li(`${_catIcon(it._cat)} ${it._name}`)));
+    });
     if (notes) { body.push(_h2('Notes')); body.push(_p(notes)); }
     if (sourceTitles.length) { body.push(_h2('Source videos')); sourceTitles.forEach(t => body.push(_li(t))); }
 
@@ -3483,28 +3584,34 @@ async function createEpisode() {
       children: body.slice(0, 100),
     });
 
-    // ── seed Script Builder sections from the ticked items (Intro … items … Outro) ──
-    const rows = [
-      { title: 'Intro', type: 'Intro', brief: '' },
-      ...chosen.map(it => ({ title: it.label, type: SECTION_TYPE_FOR[it.kind] || 'Travel Segment', brief: it.detail || '' })),
-      { title: 'Outro', type: 'Outro', brief: '' },
-    ];
+    // ── seed one Script Builder section per typed section; brief = its material ──
     let seeded = 0, order = 1;
-    for (const r of rows) {
+    for (const s of secs) {
+      const brief = sectionItems(s.id).map(it => `${it._cat}: ${it._name}`).join(' · ');
       try {
         await notionAPI('pages', 'POST', {
           parent: { database_id: DB_IDS.scripts },
           properties: {
-            'Section Title': { title: [{ text: { content: r.title } }] },
-            'Section Type': { select: { name: r.type } },
-            'Section Brief': { rich_text: [{ text: { content: r.brief } }] },
+            'Section Title': { title: [{ text: { content: s.type } }] },
+            'Section Type': { select: { name: s.type } },
+            'Section Brief': { rich_text: [{ text: { content: brief } }] },
             'Section Order': { number: order++ },
             'Episode': { rich_text: [{ text: { content: epName } }] },
             'Script Status': { select: { name: '⬜ Not Started' } },
           },
         });
         seeded++;
-      } catch (e) { console.warn('seed section failed:', r.title, e.message); }
+      } catch (e) { console.warn('seed section failed:', s.type, e.message); }
+    }
+
+    // ── stamp Used In Episode on every assigned material row ──
+    for (const it of assigned) {
+      const prop = it._cat === 'places' ? 'Used In Episodes' : 'Used In Episode';
+      try {
+        await notionAPI(`pages/${it.id}`, 'PATCH', {
+          properties: { [prop]: { rich_text: [{ text: { content: epName } }] } },
+        });
+      } catch { /* best effort */ }
     }
 
     S.activeEpisode = epName;
@@ -3512,10 +3619,9 @@ async function createEpisode() {
     document.getElementById('topbar-ep-text').textContent = epName;
     document.getElementById('state-episode').textContent  = epName;
     resultEl.style.display = '';
-    resultEl.innerHTML = `<div class="info-box success">✓ Episode created: <strong>${epName}</strong> — brief written, ${seeded} section${seeded === 1 ? '' : 's'} seeded.
+    resultEl.innerHTML = `<div class="info-box success">✓ Episode created: <strong>${epName}</strong> — ${seeded} section${seeded === 1 ? '' : 's'} seeded, ${assigned.length} material item${assigned.length === 1 ? '' : 's'} marked used.
       <button class="btn btn-sm" style="margin-left:8px" onclick="showStage(4);loadSections()">Open Script Builder →</button></div>`;
 
-    // Mark source videos as promoted
     for (const i of S.epSelected) {
       try {
         await notionAPI(`pages/${S.epQueue[i].id}`, 'PATCH', {
