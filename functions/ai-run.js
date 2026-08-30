@@ -43,7 +43,8 @@ const STATUS_BY_CODE = {
   network: 502,
 };
 
-const COSTS_DB_ID = '6c2855fd-38c8-4e81-8f4d-4c4070b3b82d';
+// Notion DATABASE id (not the data-source id from the Notion doc's table).
+const COSTS_DB_ID = '36962616-b115-4398-850d-40582b092973';
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return respond(200, '');
