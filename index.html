@@ -1011,8 +1011,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <div id="theme-selected-videos" style="margin-bottom:14px;color:var(--text3);font-size:13px">
         Select videos from the Source Queue tab first.
       </div>
-      <button class="btn btn-primary" onclick="generateThemes()" id="gen-theme-btn">Generate Episode Themes with Claude →</button>
-      <div id="theme-loading" style="display:none" class="loading-row"><div class="spinner"></div> Claude is reading your videos and suggesting themes…</div>
+      <button class="btn btn-primary" onclick="generateThemes()" id="gen-theme-btn">Generate Episode Themes →</button>
+      <div id="theme-loading" style="display:none" class="loading-row"><div class="spinner"></div> Reading your videos and suggesting themes…</div>
       <div id="theme-results" style="display:none;margin-top:16px"></div>
     </div>
     <div class="card" id="places-match-card" style="display:none">
@@ -1044,7 +1044,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         </div>
       </div>
       <div class="field">
-        <label>Working Title Options (Claude suggests — you pick)</label>
+        <label>Working Title Options (AI suggests — you pick)</label>
         <div id="ep-title-options" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
         <input type="text" id="ep-title-custom" placeholder="Or write your own title theme…">
       </div>
@@ -1097,9 +1097,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   <div id="ep-tab-gap" style="display:none">
     <div class="card">
       <div class="card-title"><span class="icon">🔍</span> What should I make next?</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Claude reads your Episodes and Places databases and suggests uncovered prefectures, underrepresented content types, and seasonal opportunities.</p>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Reads your Episodes and Places databases and suggests uncovered prefectures, underrepresented content types, and seasonal opportunities.</p>
       <button class="btn btn-primary" onclick="runGapAnalysis()">🔍 Analyse My Content Gaps →</button>
-      <div id="gap-loading" style="display:none" class="loading-row"><div class="spinner"></div> Claude is analysing your content library…</div>
+      <div id="gap-loading" style="display:none" class="loading-row"><div class="spinner"></div> Analysing your content library…</div>
       <div id="gap-results" style="margin-top:16px;display:none"></div>
     </div>
   </div>
@@ -1130,7 +1130,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <div class="card-title"><span class="icon">📄</span> SRT / Transcript Upload</div>
       <div class="field">
         <label>Paste SRT content or plain transcript</label>
-        <textarea id="transcript-input" rows="10" placeholder="Paste SRT or transcript here… If none available, leave blank and Claude will generate a content outline from video metadata."></textarea>
+        <textarea id="transcript-input" rows="10" placeholder="Paste SRT or transcript here… If none available, leave blank and a content outline is generated from video metadata."></textarea>
       </div>
       <div class="row" style="margin-bottom:10px">
         <div id="lang-detect-badge" class="badge">Language: auto-detect</div>
@@ -1168,8 +1168,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
   <div class="card">
     <div class="card-title"><span class="icon">📍</span> Extract Places from Transcript Outline</div>
-    <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Claude (Sonnet) extracts all mentioned places, cross-references the Places Database for duplicates, and generates entries for new locations.</p>
-    <button class="btn btn-primary" onclick="extractPlaces()">Extract Places with Claude →</button>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Extracts all mentioned places, cross-references the Places Database for duplicates, and generates entries for new locations. Model per the <em>places</em> route.</p>
+    <button class="btn btn-primary" onclick="extractPlaces()">Extract Places →</button>
     <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Sonnet extracting and cross-referencing places…</div>
   </div>
 
@@ -1310,7 +1310,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   <div class="card">
     <div class="card-title"><span class="icon">📋</span> Generate Handoff Document</div>
     <p style="font-size:13px;color:var(--text2);margin-bottom:14px">
-      Claude (Haiku) generates a complete production handoff including: place list with routes and B-roll cues, section timestamps, Canva slides brief, thumbnail brief, CapCut edit guide, and YouTube metadata.
+      Generates a complete production handoff including: place list with routes and B-roll cues, section timestamps, Canva slides brief, thumbnail brief, CapCut edit guide, and YouTube metadata. Model per the <em>handoff</em> route.
     </p>
     <div class="btn-row">
       <button class="btn btn-primary" onclick="generateHandoff()">Generate Handoff Doc →</button>
@@ -1372,7 +1372,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 <div class="modal-overlay" id="modal-review">
   <div class="modal" style="max-width:720px;width:95%">
     <div class="modal-title">Review & Push to Notion</div>
-    <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Claude has auto-generated a content angle for each video. Review, edit if needed, then push all to your Source Videos database.</p>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:16px">A content angle has been auto-generated for each video (<em>angle</em> route). Review, edit if needed, then push all to your Source Videos database.</p>
     <div id="review-list"></div>
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="closeModal('modal-review')">Cancel</button>
@@ -2241,7 +2241,7 @@ async function fetchYouTube() {
         viewsNum: parseInt(v.statistics?.viewCount || 0, 10),
         views: parseInt(v.statistics?.viewCount || 0).toLocaleString(),
         url: `https://youtube.com/watch?v=${v.id}`,
-        angle: '', // to be generated by Claude
+        angle: '', // filled by the 'angle' route in openReviewModal
         contentType: [],
         region: '',
       })) || [];
@@ -2362,7 +2362,7 @@ function clearYTSelection() {
 async function openReviewModal() {
   const selected = [...S.ytSelected].map(i => S.ytVideos[i]);
   const listEl = document.getElementById('review-list');
-  listEl.innerHTML = '<div class="loading-row"><div class="spinner"></div> Claude is generating content angles…</div>';
+  listEl.innerHTML = '<div class="loading-row"><div class="spinner"></div> Generating content angles…</div>';
   openModal('modal-review');
 
   // Generate angles for each video
@@ -2550,7 +2550,7 @@ Respond ONLY in JSON (no markdown): {"themes":[{"title":"...","concept":"...","h
 
     let parsed;
     try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
-    catch { throw new Error('Claude returned invalid JSON'); }
+    catch { throw new Error('The model returned invalid JSON'); }
 
     S._suggestedThemes = parsed.themes || [];
     S.chosenTheme = null;
@@ -2911,7 +2911,7 @@ Respond ONLY in JSON: {"places":[{...},...]}
 
     let parsed;
     try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
-    catch { throw new Error('Claude returned invalid JSON for places'); }
+    catch { throw new Error('The model returned invalid JSON for places'); }
 
     S.extractedPlaces = parsed.places || [];
     S.confirmedPlaces = [];
@@ -3483,7 +3483,7 @@ Respond ONLY in valid JSON.`
 
     let parsed;
     try { parsed = JSON.parse(raw.replace(/```json|```/g,'').trim()); }
-    catch { throw new Error('Invalid JSON from Claude'); }
+    catch { throw new Error('Invalid JSON from the model'); }
 
     S.handoffDoc = parsed;
     renderHandoffDoc(parsed);
