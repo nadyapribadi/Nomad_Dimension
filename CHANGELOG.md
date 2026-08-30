@@ -24,6 +24,16 @@ episode }` to the Production Costs DB.
   block (no deploy). Replaces the dead `S.models` panel / `saveModels`.
   Routing block updated to a multi-provider spread (OpenAI `gpt-4o` /
   `gpt-4o-mini`, Gemini `gemini-2.0-flash`, Claude Haiku/Sonnet) + fallbacks.
+- **Channel DNA is now a machine-read Notion block + Stage 0 form.** Restructured
+  from 9 flat prose fields to a 6-group tree (Identity / Voice / Storytelling /
+  Editorial / Visual / Production, ~30 fields), stored as the **"📺 Channel DNA"**
+  JSON block. `parseAndApplySettings` reads it into `S.dna`; the DNA card renders
+  grouped textareas from `DNA_SCHEMA`; _Save Channel DNA to Notion_ `PATCH`es the
+  block (previously "saved locally" and never persisted). `buildDNASystem()`
+  serialises the tree, dropping blank fields and empty groups.
+- `getPageBlocks` (app) and `getRouting` (`ai-run.js`) now page through
+  `next_cursor` — the App Settings page can grow past 100 blocks without hiding
+  the DNA / routing blocks.
 - Repo tooling: `package.json`, ESLint (flat) + Prettier, `.nvmrc`, GitHub
   Actions CI, git pre-commit hook.
 - `Docs/AS_BUILT.md` — code-side companion to the Notion System Documentation,

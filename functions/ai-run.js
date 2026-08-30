@@ -102,26 +102,33 @@ async function getRouting() {
   if (!token) return null;
   if (Date.now() - _routingCache.at < 60_000) return _routingCache.value;
 
-  const res = await fetch(
-    `https://api.notion.com/v1/blocks/${APP_SETTINGS_PAGE_ID}/children?page_size=100`,
-    { headers: { Authorization: `Bearer ${token}`, 'Notion-Version': '2022-06-28' } }
-  );
-  if (!res.ok) throw new Error(`Notion ${res.status}`);
-  const data = await res.json();
+  // Page through all children — the App Settings page is long enough that one
+  // page_size=100 request would miss the routing block near the bottom.
   let value = null;
-  for (const block of data.results || []) {
-    if (block.type !== 'code') continue;
-    const text = (block.code.rich_text || []).map((r) => r.plain_text).join('');
-    try {
-      const parsed = JSON.parse(text);
-      if (parsed && typeof parsed === 'object' && parsed.dialogue) {
-        value = parsed;
-        break;
+  let cursor = null;
+  do {
+    const qs = `page_size=100${cursor ? `&start_cursor=${cursor}` : ''}`;
+    const res = await fetch(
+      `https://api.notion.com/v1/blocks/${APP_SETTINGS_PAGE_ID}/children?${qs}`,
+      { headers: { Authorization: `Bearer ${token}`, 'Notion-Version': '2022-06-28' } }
+    );
+    if (!res.ok) throw new Error(`Notion ${res.status}`);
+    const data = await res.json();
+    for (const block of data.results || []) {
+      if (block.type !== 'code') continue;
+      const text = (block.code.rich_text || []).map((r) => r.plain_text).join('');
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === 'object' && parsed.dialogue && parsed.dialogue.provider) {
+          value = parsed;
+        }
+      } catch {
+        /* not the routing block */
       }
-    } catch {
-      /* not the routing block */
     }
-  }
+    cursor = !value && data.has_more ? data.next_cursor : null;
+  } while (cursor);
+
   _routingCache = { at: Date.now(), value };
   return value;
 }

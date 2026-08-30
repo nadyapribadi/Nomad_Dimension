@@ -50,7 +50,7 @@ reads or writes it. (App Settings is a page, handled via `APP_SETTINGS_PAGE_ID`.
 
 | Stage | Functions |
 | --- | --- |
-| 0 Settings | `connectNotion` · `loadSettingsFromNotion` · `parseAndApplySettings` · `parseSettingsPage` · `getPageBlocks` · `renderSettingsUI` · `renderRoutingTable` · `saveRouting` · `runHealthCheck` · `resumeSession` · `writeAppState` · `saveLookups` · `saveDNA` |
+| 0 Settings | `connectNotion` · `loadSettingsFromNotion` · `parseAndApplySettings` · `parseSettingsPage` · `getPageBlocks` (paginated) · `renderSettingsUI` · `renderRoutingTable` · `saveRouting` · `renderDNAForm` · `saveDNA` · `runHealthCheck` · `resumeSession` · `writeAppState` · `saveLookups` |
 | 1 YouTube Browser | `fetchYouTube` · `renderYTVideos` · `openReviewModal` · `pushToNotion` |
 | 2 Episode Builder | `loadSourceQueue` · `generateThemes` · `selectTheme` · `suggestEpisodeTitles` · `createEpisode` · `loadCalendar` · `runGapAnalysis` |
 | 3A Transcript | `loadTranscriptVideos` · `runPass1` · `saveOutlineToNotion` |
@@ -77,7 +77,7 @@ block is editable from the app: **Stage 0 → Active Model Routing** — per-tas
 | --- | --- |
 | "Every API call logged to **Production Costs** DB" | `ai-run.js` logs every LLM call (provider, model, tokens, cost, stage, episode). TTS/YouTube calls not yet logged; no Total-Cost rollup on Episodes. |
 | **Performance** DB — post-publish metrics at 3 checkpoints | not referenced in code |
-| App Settings is the source of truth for lookup tables | `saveLookups()` only updates memory. Model routing *is* now Notion-read (the "🔀 Active Routing" block). |
+| App Settings is the source of truth for lookup tables | `saveLookups()` only updates memory. Model routing (**"🔀 Active Routing"** block) and Channel DNA (**"📺 Channel DNA"** block) *are* now Notion-read machine blocks — parsed into `S.routing` / `S.dna`, edited via Stage 0, saved back with `PATCH`. `getPageBlocks` pages through `next_cursor` so the blocks are found however long the page grows. |
 | Two-pass transcript: Pass 2 uses "only the relevant **outline chunk** + place details + brief" | `generateDialogue` passes brief + route order + matched place b-roll — **not the outline chunk** |
 | "Each dialogue line gets an estimated timestamp" | `generateDialogue` output is `KAI:` / `MIA:` lines only; no timestamps produced |
 | Dialogue version history — "last 5 versions stored" | `Dialogue Version` number increments; prior text is overwritten, not kept |
