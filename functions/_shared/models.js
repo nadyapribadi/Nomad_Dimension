@@ -28,6 +28,8 @@ const PRICING = {
   'claude-haiku-4-5-20251001': { in: 1.0, out: 5.0 },
   'claude-sonnet-4-6': { in: 3.0, out: 15.0 },
   'gemini-2.0-flash': { in: 0.1, out: 0.4 },
+  'gpt-4o-mini': { in: 0.15, out: 0.6 },
+  'gpt-4o': { in: 2.5, out: 10.0 },
 };
 
 // Error codes an agent / caller may branch on.
@@ -36,7 +38,7 @@ const RETRYABLE = new Set(['rate_limited', 'network', 'provider_error']);
 /**
  * callModel(req, deps?)
  *   req.task?       key into DEFAULT_ROUTING
- *   req.provider?   'anthropic' | 'gemini'   (overrides task routing)
+ *   req.provider?   'anthropic' | 'gemini' | 'openai'   (overrides task routing)
  *   req.model?      model id                  (overrides task routing)
  *   req.system?     system prompt string
  *   req.messages    [{ role: 'user'|'assistant', content: string }]  (required)
@@ -174,7 +176,46 @@ async function geminiAdapter(req, { fetch, env }) {
   };
 }
 
-const ADAPTERS = { anthropic: anthropicAdapter, gemini: geminiAdapter };
+async function openaiAdapter(req, { fetch, env }) {
+  const key = env.OPENAI_API_KEY;
+  if (!key) throw taxonomyError('invalid_request', 'OPENAI_API_KEY not set');
+
+  const messages = req.system
+    ? [{ role: 'system', content: req.system }, ...req.messages]
+    : req.messages;
+  const body = { model: req.model, messages };
+  if (req.maxTokens) body.max_tokens = req.maxTokens;
+  if (typeof req.temperature === 'number') body.temperature = req.temperature;
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  }).catch((e) => {
+    throw taxonomyError('network', e.message);
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw mapHttp(res.status, data && data.error && data.error.message);
+
+  const choice = (data.choices || [])[0];
+  if (choice && choice.finish_reason === 'content_filter') {
+    throw taxonomyError('content_filtered', 'OpenAI blocked the response (content filter)');
+  }
+  const u = data.usage || {};
+  return {
+    text: (choice && choice.message && choice.message.content) || '',
+    provider: 'openai',
+    model: req.model,
+    usage: { inputTokens: u.prompt_tokens || 0, outputTokens: u.completion_tokens || 0 },
+    raw: data,
+  };
+}
+
+const ADAPTERS = { anthropic: anthropicAdapter, gemini: geminiAdapter, openai: openaiAdapter };
 
 function taxonomyError(code, message, status) {
   const e = new Error(message || code);
