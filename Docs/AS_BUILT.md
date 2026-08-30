@@ -151,14 +151,20 @@ here.
 ### Step 1 / Step 2 restructure (designed 2026-08, not built)
 
 Separate *gathering knowledge* from *building an episode*. Stage 1 (YouTube
-Browser) + Stage 2 tabs (Queue / Prep / Places) collapse into **Step 1 —
-Research**: source-agnostic ingest (YouTube auto-transcript, everything else
-pasted) → 2-pass extraction → optional web verify → push to one-fact-per-column
-Notion stores (Sources · Places · Research · Prices · Data · Glossary · Food ·
-Transport). **Step 2 — Episode Builder** then queries those stores, filters by
-prefecture / region / "unused", and picks what goes in the episode. Full spec +
-DB columns + extraction schema + build phases R1–R5:
-[`RESEARCH_PIPELINE.md`](RESEARCH_PIPELINE.md).
+Browser) + Stage 2 (Queue / Prep / Places / Assemble) collapse into two steps:
+
+- **Step 1 — Research**: source-agnostic ingest (YouTube auto-transcript,
+  everything else pasted) → 2-pass extraction → optional web verify → push to
+  one-fact-per-column Notion stores (Sources · Places · **Activities** ·
+  Research · Prices · Data · Glossary · Food · Transport).
+- **Step 2 — Episode Builder**: query those stores via a per-category filter
+  engine, assign material into **typed sections** (`section_types` stays in the
+  Settings Lookup Tables block — Episode Builder reads it), commit an Episodes
+  row + plan + **seeded Script Builder sections**. Script Builder (Stage 4) is
+  unchanged — it writes dialogue into those sections.
+
+Full spec + DB columns + extraction schema + build phases R1–R4 / E1–E3:
+[`PIPELINE.md`](PIPELINE.md).
 
 ## Security notes (not in the Notion doc)
 

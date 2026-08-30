@@ -7,11 +7,13 @@ Human-readable, updated per milestone. Format loosely follows
 
 ### Planned
 
-- **Step 1 / Step 2 restructure** — `Docs/RESEARCH_PIPELINE.md`. Stage 1 +
-  Stage 2's gathering tabs become **Research** (source-agnostic ingest → 2-pass
-  extract → web verify → one-fact-per-column Notion stores: Sources, Places,
-  Research, Prices, Data, Glossary, Food, Transport); **Episode Builder** then
-  queries and filters those stores. Phases R1–R5.
+- **Step 1 / Step 2 restructure** — `Docs/PIPELINE.md`. Stage 1 + Stage 2's
+  gathering tabs become **Research** (source-agnostic ingest → 2-pass extract →
+  web verify → one-fact-per-column Notion stores: Sources, Places, Activities,
+  Research, Prices, Data, Glossary, Food, Transport). **Episode Builder** then
+  queries those stores via a per-category filter engine and assigns material
+  into typed sections (`section_types` stays in Settings), committing a seeded
+  Script Builder structure. Phases R1–R4 / E1–E3.
 
 ### Added
 
