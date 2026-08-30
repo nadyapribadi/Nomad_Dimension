@@ -382,6 +382,9 @@ label {
   background: rgba(168,197,160,.10);
   box-shadow: 0 0 0 3px rgba(168,197,160,.25);
 }
+.video-card.in-notion .video-thumb,
+.video-card.in-notion .video-thumb-placeholder { opacity: .5; }
+.video-card.in-notion .video-title { color: var(--text3); }
 .video-card.selected::after {
   content: '✓';
   position: absolute;
@@ -2306,6 +2309,9 @@ async function fetchYouTube() {
     chSel.innerHTML = '<option value="">all channels</option>' +
       chNames.map(n => `<option value="${n}">${n}</option>`).join('');
 
+    // Cross-reference the Source Videos DB so we can flag ones already saved.
+    await loadExistingSourceVideoIds();
+
     renderYTVideos();
     document.getElementById('yt-results-area').style.display = '';
     toast(`Fetched ${S.ytVideos.length} videos`, 'success');
@@ -2346,11 +2352,33 @@ function filteredYTVideos() {
   return rows;
 }
 
+// Video ids already in the Source Videos DB (so the browser can flag them).
+async function loadExistingSourceVideoIds() {
+  S.existingVideoIds = new Set();
+  try {
+    let cursor = null;
+    do {
+      const q = { page_size: 100 };
+      if (cursor) q.start_cursor = cursor;
+      const data = await notionAPI(`databases/${DB_IDS.sourceVideos}/query`, 'POST', q);
+      for (const p of data.results || []) {
+        const url = p.properties?.['userDefined:YouTube URL']?.url || '';
+        const m = url.match(/[?&]v=([\w-]{11})|youtu\.be\/([\w-]{11})/);
+        if (m) S.existingVideoIds.add(m[1] || m[2]);
+      }
+      cursor = data.has_more ? data.next_cursor : null;
+    } while (cursor);
+  } catch { /* non-fatal — just don't flag */ }
+}
+
 function renderYTVideos() {
   const grid = document.getElementById('yt-video-grid');
   const rows = filteredYTVideos();
-  grid.innerHTML = rows.map(({ v, i }) => `
-    <div class="video-card ${S.ytSelected.has(i) ? 'selected' : ''}" onclick="toggleYTVideo(${i})">
+  const known = S.existingVideoIds || new Set();
+  grid.innerHTML = rows.map(({ v, i }) => {
+    const inNotion = known.has(v.id);
+    return `
+    <div class="video-card ${S.ytSelected.has(i) ? 'selected' : ''}${inNotion ? ' in-notion' : ''}" onclick="toggleYTVideo(${i})">
       ${v.thumbnail
         ? `<img class="video-thumb" src="${v.thumbnail}" alt="${v.title}" loading="lazy">`
         : `<div class="video-thumb-placeholder">🎥</div>`}
@@ -2361,11 +2389,16 @@ function renderYTVideos() {
           <span class="video-stat">👁 ${v.views}</span>
           <span class="video-stat">${formatISO8601Duration(v.duration)}</span>
           <span class="video-stat">${(v.publishedAt || '').slice(0, 10)}</span>
+          ${inNotion ? '<span class="video-stat" style="color:var(--accent2)">✓ in Notion</span>' : ''}
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   const c = document.getElementById('ytf-count');
-  if (c) c.textContent = `showing ${rows.length} of ${S.ytVideos.length}`;
+  if (c) {
+    const dup = rows.filter(({ v }) => known.has(v.id)).length;
+    c.textContent = `showing ${rows.length} of ${S.ytVideos.length}` + (dup ? ` · ${dup} already in Notion` : '');
+  }
   updateYTSelectionCount();
 }
 
@@ -2412,9 +2445,13 @@ function clearYTSelection() {
 }
 
 async function openReviewModal() {
-  const selected = [...S.ytSelected].map(i => S.ytVideos[i]);
+  const known = S.existingVideoIds || new Set();
+  const selected = [...S.ytSelected].map(i => S.ytVideos[i]).filter(v => !known.has(v.id));
+  const skipped = S.ytSelected.size - selected.length;
+  if (!selected.length) { toast(skipped ? 'All selected videos are already in Notion' : 'Nothing selected', 'error'); return; }
   const listEl = document.getElementById('review-list');
-  listEl.innerHTML = '<div class="loading-row"><div class="spinner"></div> Generating content angles…</div>';
+  listEl.innerHTML = `<div class="loading-row"><div class="spinner"></div> Generating content angles…</div>` +
+    (skipped ? `<div style="font-size:12px;color:var(--text3);margin-top:8px">${skipped} already in Notion — skipped.</div>` : '');
   openModal('modal-review');
 
   // Generate angles for each video
