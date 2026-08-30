@@ -34,6 +34,13 @@ episode }` to the Production Costs DB.
 - `getPageBlocks` (app) and `getRouting` (`ai-run.js`) now page through
   `next_cursor` — the App Settings page can grow past 100 blocks without hiding
   the DNA / routing blocks.
+- **More providers.** `models.js` gains a table-driven `openaiCompatibleAdapter`
+  (`OPENAI_COMPAT`) — one adapter for **OpenAI / DeepSeek / Qwen / Mistral / xAI /
+  OpenRouter / Groq** (each keyed by its own `<PROVIDER>_API_KEY` env var).
+  Reasoning models (`o3`, `*-reasoner`) get `max_completion_tokens` and no
+  temperature. The Stage 0 routing panel is now a **combo box** (free text +
+  ~30-entry `MODEL_CATALOG`, not a closed list) so any `provider|model` works
+  without a code change. `.env.example` lists the optional keys. 24 tests.
 - Repo tooling: `package.json`, ESLint (flat) + Prettier, `.nvmrc`, GitHub
   Actions CI, git pre-commit hook.
 - `Docs/AS_BUILT.md` — code-side companion to the Notion System Documentation,

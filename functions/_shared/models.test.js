@@ -171,6 +171,53 @@ test('gemini SAFETY finishReason -> content_filtered', async () => {
   );
 });
 
+test('deepseek: routed through the OpenAI-compatible adapter (base url + key env)', async () => {
+  const fetch = mockFetch(() =>
+    ok({
+      choices: [{ message: { content: 'hi' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1, completion_tokens: 2 },
+    })
+  );
+  const r = await callModel(
+    { provider: 'deepseek', model: 'deepseek-chat', messages: [{ role: 'user', content: 'x' }] },
+    { fetch, env: { DEEPSEEK_API_KEY: 'dk' } }
+  );
+  assert.equal(r.provider, 'deepseek');
+  assert.equal(r.text, 'hi');
+  assert.match(fetch.calls[0].url, /api\.deepseek\.com\/v1\/chat\/completions/);
+  assert.equal(fetch.calls[0].opts.headers.Authorization, 'Bearer dk');
+});
+
+test('reasoning model: max_completion_tokens instead of max_tokens, no temperature', async () => {
+  const fetch = mockFetch(() =>
+    ok({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }], usage: {} })
+  );
+  await callModel(
+    {
+      provider: 'openai',
+      model: 'o3',
+      maxTokens: 100,
+      temperature: 0.7,
+      messages: [{ role: 'user', content: 'x' }],
+    },
+    { fetch, env: { OPENAI_API_KEY: 'o' } }
+  );
+  const b = fetch.calls[0].body;
+  assert.equal(b.max_completion_tokens, 100);
+  assert.equal(b.max_tokens, undefined);
+  assert.equal(b.temperature, undefined);
+});
+
+test('missing provider key -> invalid_request naming the env var', async () => {
+  await assert.rejects(
+    callModel(
+      { provider: 'qwen', model: 'qwen-max', messages: [{ role: 'user', content: 'x' }] },
+      { fetch: mockFetch(() => ok({})), env: {} }
+    ),
+    (e) => e.code === 'invalid_request' && /DASHSCOPE_API_KEY/.test(e.message)
+  );
+});
+
 test('task fallback: provider_error on the primary fails over to the fallback provider', async () => {
   // DEFAULT_ROUTING.angle = anthropic primary, gemini fallback.
   const fetch = mockFetch((n) =>

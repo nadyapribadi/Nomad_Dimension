@@ -23,7 +23,7 @@ map, where the **code diverges from the spec**, and the **forward plan**
 | `index.html` | The whole app — inline `<style>` + `<script>`, ~3,300 lines, no build step |
 | `functions/notion-proxy.js` `youtube-proxy.js` `tts-proxy.js` | thin CORS proxies; keys from Netlify env only — see `../functions/README.md` |
 | `functions/ai-run.js` | LLM entry point: routes via `_shared/models.js`, logs cost to the Costs DB |
-| `functions/_shared/models.js` | `callModel()` — provider-agnostic router (Anthropic / Gemini / OpenAI) + `PRICING`; `_shared` is not deployed as a function |
+| `functions/_shared/models.js` | `callModel()` — provider-agnostic router. Dedicated adapters for Anthropic + Gemini; one table-driven `openaiCompatibleAdapter` (`OPENAI_COMPAT`) covers OpenAI / DeepSeek / Qwen / Mistral / xAI / OpenRouter / Groq. Per-task `fallback`, `PRICING`. `_shared` is not deployed as a function |
 | `functions/**/*.test.js` | `node --test` (mocked fetch); run by `npm test` + CI + pre-commit |
 | `netlify.toml` | `publish = "."`, `functions = "functions"`; push to `main` deploys |
 | `package.json` etc. | ESLint + Prettier + `node --test` in CI + pre-commit |
@@ -69,7 +69,11 @@ thumbnail · metadata · critic`. Each routing entry is
 **"🔀 Active Routing"** JSON block on the App Settings Notion page (cached ~60s,
 edit = no deploy), falling back to `DEFAULT_ROUTING` in `_shared/models.js`. The
 block is editable from the app: **Stage 0 → Active Model Routing** — per-task
-`provider|model` dropdowns + *Save Routing to Notion* (`PATCH`es the code block).
+`provider|model` **combo boxes** (free text + `MODEL_CATALOG` suggestions, not a
+closed list) + *Save Routing to Notion* (`PATCH`es the code block). Extra
+providers need their `<PROVIDER>_API_KEY` in Netlify env (`DEEPSEEK_API_KEY`,
+`DASHSCOPE_API_KEY` for Qwen, `MISTRAL_API_KEY`, `XAI_API_KEY`,
+`OPENROUTER_API_KEY`, `GROQ_API_KEY`).
 
 ## Code vs. spec — open gaps
 

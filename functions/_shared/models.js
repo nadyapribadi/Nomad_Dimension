@@ -41,6 +41,9 @@ const PRICING = {
   'gemini-2.0-flash': { in: 0.1, out: 0.4 },
   'gpt-4o-mini': { in: 0.15, out: 0.6 },
   'gpt-4o': { in: 2.5, out: 10.0 },
+  'deepseek-chat': { in: 0.27, out: 1.1 },
+  'deepseek-reasoner': { in: 0.55, out: 2.19 },
+  // Anything not listed here logs costUsd: null — the call still works.
 };
 
 // Retried once against the SAME model.
@@ -51,7 +54,9 @@ const FAILOVER = new Set(['rate_limited', 'network', 'provider_error', 'content_
 /**
  * callModel(req, deps?)
  *   req.task?       key into DEFAULT_ROUTING
- *   req.provider?   'anthropic' | 'gemini' | 'openai'   (overrides task routing)
+ *   req.provider?   'anthropic' | 'gemini' | any key of OPENAI_COMPAT
+ *                   ('openai' | 'deepseek' | 'qwen' | 'mistral' | 'xai' |
+ *                    'openrouter' | 'groq')            (overrides task routing)
  *   req.model?      model id                  (overrides task routing)
  *   req.fallback?   { provider, model } tried once if the primary fails over
  *   req.system?     system prompt string
@@ -207,23 +212,42 @@ async function geminiAdapter(req, { fetch, env }) {
   };
 }
 
-async function openaiAdapter(req, { fetch, env }) {
-  const key = env.OPENAI_API_KEY;
-  if (!key) throw taxonomyError('invalid_request', 'OPENAI_API_KEY not set');
+// Providers that speak the OpenAI Chat Completions wire format. One adapter,
+// table-driven: add a row + set its key env var to enable another provider.
+// `model` ids are passed straight through (e.g. "deepseek-reasoner",
+// "qwen-max", "openrouter" takes "vendor/model"). Verify ids against the
+// provider's own docs — they change often.
+const OPENAI_COMPAT = {
+  openai: { base: 'https://api.openai.com/v1', keyEnv: 'OPENAI_API_KEY' },
+  deepseek: { base: 'https://api.deepseek.com/v1', keyEnv: 'DEEPSEEK_API_KEY' },
+  qwen: {
+    base: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+    keyEnv: 'DASHSCOPE_API_KEY',
+  },
+  mistral: { base: 'https://api.mistral.ai/v1', keyEnv: 'MISTRAL_API_KEY' },
+  xai: { base: 'https://api.x.ai/v1', keyEnv: 'XAI_API_KEY' },
+  openrouter: { base: 'https://openrouter.ai/api/v1', keyEnv: 'OPENROUTER_API_KEY' },
+  groq: { base: 'https://api.groq.com/openai/v1', keyEnv: 'GROQ_API_KEY' },
+};
+
+async function openaiCompatibleAdapter(provider, req, { fetch, env }) {
+  const cfg = OPENAI_COMPAT[provider];
+  const key = env[cfg.keyEnv];
+  if (!key) throw taxonomyError('invalid_request', `${cfg.keyEnv} not set`);
 
   const messages = req.system
     ? [{ role: 'system', content: req.system }, ...req.messages]
     : req.messages;
   const body = { model: req.model, messages };
-  if (req.maxTokens) body.max_tokens = req.maxTokens;
-  if (typeof req.temperature === 'number') body.temperature = req.temperature;
+  // ponytail: OpenAI o-series and *-reasoner models reject max_tokens and
+  // temperature; they want max_completion_tokens and no temperature.
+  const reasoning = /(^|\/)o\d/.test(req.model) || /reason/i.test(req.model);
+  if (req.maxTokens) body[reasoning ? 'max_completion_tokens' : 'max_tokens'] = req.maxTokens;
+  if (!reasoning && typeof req.temperature === 'number') body.temperature = req.temperature;
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch(`${cfg.base}/chat/completions`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'content-type': 'application/json',
-    },
+    headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
     body: JSON.stringify(body),
   }).catch((e) => {
     throw taxonomyError('network', e.message);
@@ -234,19 +258,22 @@ async function openaiAdapter(req, { fetch, env }) {
 
   const choice = (data.choices || [])[0];
   if (choice && choice.finish_reason === 'content_filter') {
-    throw taxonomyError('content_filtered', 'OpenAI blocked the response (content filter)');
+    throw taxonomyError('content_filtered', `${provider} blocked the response (content filter)`);
   }
   const u = data.usage || {};
   return {
     text: (choice && choice.message && choice.message.content) || '',
-    provider: 'openai',
+    provider,
     model: req.model,
     usage: { inputTokens: u.prompt_tokens || 0, outputTokens: u.completion_tokens || 0 },
     raw: data,
   };
 }
 
-const ADAPTERS = { anthropic: anthropicAdapter, gemini: geminiAdapter, openai: openaiAdapter };
+const ADAPTERS = { anthropic: anthropicAdapter, gemini: geminiAdapter };
+for (const name of Object.keys(OPENAI_COMPAT)) {
+  ADAPTERS[name] = (req, deps) => openaiCompatibleAdapter(name, req, deps);
+}
 
 function taxonomyError(code, message, status) {
   const e = new Error(message || code);
