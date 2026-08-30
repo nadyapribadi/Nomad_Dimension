@@ -56,10 +56,10 @@ JSON block.
 | Stage | Functions |
 | --- | --- |
 | 0 Settings | `connectNotion` · `loadSettingsFromNotion` · `parseAndApplySettings` · `parseSettingsPage` · `getPageBlocks` (paginated) · `renderSettingsUI` · `renderRoutingTable` · `saveRouting` · `renderDNAForm` · `saveDNA` · `runHealthCheck` · `resumeSession` · `writeAppState` · `saveLookups` |
-| 1 YouTube Browser | `renderChannelChips` · `addChannel` · `saveChannels` · `fetchYouTube` (order + `publishedAfter/Before`) · `filteredYTVideos` · `renderYTVideos` · `resetYTFilters` · `openReviewModal` · `pushToNotion` |
-| 2 Episode Builder | `loadSourceQueue` · `generateThemes` · `selectTheme` · `suggestEpisodeTitles` · `createEpisode` · `loadCalendar` · `runGapAnalysis` |
-| 3A Transcript | `loadTranscriptVideos` · `fetchTranscript` (→ `yt-transcript` fn) · `runPass1` · `saveOutlineToNotion` |
-| 3B Places | `extractPlaces` · `renderPlacesReview` · `confirmPlace` · `skipPlace` · `renderRouteOrder` · `movePlaceUp/Down` · `saveConfirmedPlaces` |
+| Plan (nav 1 → `stage-7`) | `loadCalendar` · `runGapAnalysis` — calendar + "what's next", moved out of Episode Builder |
+| 1 YouTube Browser (nav 2) | `renderChannelChips` · `addChannel` · `saveChannels` · `fetchYouTube` (order + `publishedAfter/Before`) · `filteredYTVideos` · `renderYTVideos` · `resetYTFilters` · `openReviewModal` · `pushToNotion` |
+| 2 Episode Builder (nav 3) | tabs **Queue → Prep → Places → Assemble**. Queue: `loadSourceQueue` · `toggleEpVideo`. Prep: `renderPrepList` · `prepFetchTranscript` · `prepUsePasted` · `prepRunBreakdown` (structured JSON per video → `Content Outline`) · `parseStoredBreakdown` · `renderBreakdownText` · `rebuildCombinedOutline` (builds `S.episodeBreakdowns`). Places: `extractPlaces` (reads `breakdown.places`, no AI) · `setPlaceField` · `renderPlacesReview` · `confirmPlace` · `skipPlace` · `renderRouteOrder` · `movePlaceUp/Down` · `saveConfirmedPlaces` (dedupe guard). Assemble: `enterAssemble` · `buildIncludeList` / `renderIncludeList` / `toggleInclude` / `moveInclude` · `suggestTitles` (✨) · `draftAngle` (✨) · `episodeThemeOnly` · `updateEpisodePreview` · `createEpisode` (brief → Episode page body + seeds Scripts rows) |
+| 3A Transcript (`stage-3`, unreachable) | `loadTranscriptVideos` · `fetchTranscript` (→ `yt-transcript` fn) · `runPass1` · `saveOutlineToNotion` — legacy, no nav entry |
 | 4 Script Builder | `loadSections` · `renderSections` · `renderSectionCard` · `generateDialogue` · `lockSection` · `saveSection` · `applyTemplate` · `parseDialogue` · **`runScriptCheck`** (deterministic QA, added) |
 | 5 Audio TTS | `renderAllAudio` · `playSegment` · `playFullEpisode` · `exportAudio` |
 | 6 Handoff | `generateHandoff` · `renderHandoffDoc` · `saveHandoffToNotion` · `regenerateHandoff` |

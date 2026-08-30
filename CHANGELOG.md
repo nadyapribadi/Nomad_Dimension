@@ -7,6 +7,24 @@ Human-readable, updated per milestone. Format loosely follows
 
 ### Added
 
+- **Stage 2 rebuilt around a structured breakdown.** Prep's "Run outline" is
+  now **"Run breakdown"** — one AI pass per source video extracts a defined
+  JSON object (`summary` · `places[]` · `route[]` · `beats[]` · `food[]` ·
+  `tips[]` · `quotes[]`), only fields a transcript actually contains, stored as
+  JSON in the Source Videos `Content Outline` field (schema = `BREAKDOWN_SHAPE`
+  in `index.html`, no Notion schema change).
+- **Places tab** reads `breakdown.places` directly (deterministic, no AI call,
+  was re-parsing a lossy prose outline). Per-row Prefecture `<select>` (47 + Unknown)
+  and, for food types, Halal `<select>` — the fields transcripts can't give.
+- **Assemble tab** merges the old Theme + Create tabs into one author-driven
+  form: you write title/angle/hook/tone/notes, AI only behind two ✨ buttons.
+  An **Include checklist** (places + beats + food from the breakdowns, tick +
+  reorder) drives both the episode brief (written into the Episode page body)
+  and seeded Script Builder sections (Intro · items · Outro).
+- **Plan** — new nav item 1 (before YouTube Browser): the Content Calendar and
+  "What should I make next?" gap analysis, moved out of the Episode Builder tab
+  bar. Nav renumbered (7 items); `showStage(7)` → `#stage-7`.
+
 - **Model router** (`functions/_shared/models.js`) — `callModel()`, a
   provider-agnostic LLM router over **Anthropic / Gemini / OpenAI** adapters:
   normalized `{ text, provider, model, usage, costUsd }`, error taxonomy, one

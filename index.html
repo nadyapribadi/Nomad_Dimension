@@ -760,25 +760,29 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     <span class="stage-num">0</span> Settings
     <div class="nav-status" id="nav-0"></div>
   </div>
+  <div class="nav-item" onclick="showStage(7)">
+    <span class="stage-num">1</span> Plan
+    <div class="nav-status" id="nav-7"></div>
+  </div>
   <div class="nav-item" onclick="showStage(1)">
-    <span class="stage-num">1</span> YouTube Browser
+    <span class="stage-num">2</span> YouTube Browser
     <div class="nav-status" id="nav-1"></div>
   </div>
   <div class="nav-item" onclick="showStage(2)">
-    <span class="stage-num">2</span> Episode Builder
+    <span class="stage-num">3</span> Episode Builder
     <div class="nav-status" id="nav-2"></div>
   </div>
   <div class="sidebar-section" style="margin-top:8px">Per Episode</div>
   <div class="nav-item" onclick="showStage(4)">
-    <span class="stage-num">3</span> Script Builder
+    <span class="stage-num">4</span> Script Builder
     <div class="nav-status" id="nav-4"></div>
   </div>
   <div class="nav-item" onclick="showStage(5)">
-    <span class="stage-num">4</span> Audio TTS
+    <span class="stage-num">5</span> Audio TTS
     <div class="nav-status" id="nav-5"></div>
   </div>
   <div class="nav-item" onclick="showStage(6)">
-    <span class="stage-num">5</span> Handoff
+    <span class="stage-num">6</span> Handoff
     <div class="nav-status" id="nav-6"></div>
   </div>
 </nav>
@@ -907,8 +911,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     <div class="card-title"><span class="icon">✅</span> Ready to Create</div>
     <p style="color:var(--text2);margin-bottom:14px">Settings loaded. Choose your next step.</p>
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="showStage(1)">Stage 1 — Browse YouTube →</button>
-      <button class="btn" onclick="showStage(2)">Stage 2 — Episode Builder →</button>
+      <button class="btn" onclick="showStage(7)">Plan →</button>
+      <button class="btn btn-primary" onclick="showStage(1)">Browse YouTube →</button>
+      <button class="btn" onclick="showStage(2)">Episode Builder →</button>
     </div>
   </div>
 </div>
@@ -986,13 +991,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 <div class="stage-panel" id="stage-2">
   <div class="stage-header">
     <h1>Episode Builder</h1>
-    <span class="subtitle">stage 2 · queue → prep → places → theme → create</span>
+    <span class="subtitle">stage 3 · queue → prep → places → assemble</span>
   </div>
 
-  <div class="row" style="justify-content:flex-end;gap:6px;margin-bottom:8px">
-    <button class="btn btn-sm btn-ghost" onclick="switchTab('ep','calendar')">📅 Calendar</button>
-    <button class="btn btn-sm btn-ghost" onclick="switchTab('ep','gap')">🔍 What's next?</button>
-  </div>
   <div class="tabs">
     <div class="tab active" onclick="switchTab('ep', 'queue')">📋 Source Queue</div>
     <div class="tab" onclick="switchTab('ep', 'prep');renderPrepList()">🧪 Prep</div>
@@ -1136,29 +1137,33 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <div id="ep-create-result" style="display:none"></div>
     </div>
   </div>
+</div>
 
-  <!-- CALENDAR TAB -->
-  <div id="ep-tab-calendar" style="display:none">
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div class="card-title" style="margin:0"><span class="icon">📅</span> Content Calendar</div>
-        <button class="btn btn-sm" onclick="loadCalendar()">↻ Load Calendar</button>
-      </div>
-      <div id="calendar-area">
-        <div class="empty-state"><div class="icon">📅</div><p>Load calendar to see your episode schedule.</p></div>
-      </div>
+<!-- ═══════════════════════════════════════════
+     STAGE 1 (nav) — PLAN — calendar + what to make next
+     ═══════════════════════════════════════════ -->
+<div class="stage-panel" id="stage-7">
+  <div class="stage-header">
+    <h1>Plan</h1>
+    <span class="subtitle">stage 1 · what to make next, and when</span>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="card-title" style="margin:0"><span class="icon">📅</span> Content Calendar</div>
+      <button class="btn btn-sm" onclick="loadCalendar()">↻ Load Calendar</button>
+    </div>
+    <div id="calendar-area">
+      <div class="empty-state"><div class="icon">📅</div><p>Load calendar to see your episode schedule.</p></div>
     </div>
   </div>
 
-  <!-- GAP TAB -->
-  <div id="ep-tab-gap" style="display:none">
-    <div class="card">
-      <div class="card-title"><span class="icon">🔍</span> What should I make next?</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Reads your Episodes and Places databases and suggests uncovered prefectures, underrepresented content types, and seasonal opportunities.</p>
-      <button class="btn btn-primary" onclick="runGapAnalysis()">🔍 Analyse My Content Gaps →</button>
-      <div id="gap-loading" style="display:none" class="loading-row"><div class="spinner"></div> Analysing your content library…</div>
-      <div id="gap-results" style="margin-top:16px;display:none"></div>
-    </div>
+  <div class="card">
+    <div class="card-title"><span class="icon">🔍</span> What should I make next?</div>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Reads your Episodes and Places databases and suggests uncovered prefectures, underrepresented content types, and seasonal opportunities.</p>
+    <button class="btn btn-primary" onclick="runGapAnalysis()">🔍 Analyse My Content Gaps →</button>
+    <div id="gap-loading" style="display:none" class="loading-row"><div class="spinner"></div> Analysing your content library…</div>
+    <div id="gap-results" style="margin-top:16px;display:none"></div>
   </div>
 </div>
 
@@ -1628,16 +1633,16 @@ async function getPageBlocks(pageId) {
 
 // ─── STAGE NAVIGATION ───────────────────────────────────────────────────────
 const stageMap = {
-  0: 'stage-0', 1: 'stage-1', 2: 'stage-2',
+  0: 'stage-0', 7: 'stage-7', 1: 'stage-1', 2: 'stage-2',
   // 3 (Transcript) + 3.5 (Places) folded into Episode Builder tabs.
   3: 'stage-2', 3.5: 'stage-2', 4: 'stage-4',
   5: 'stage-5', 6: 'stage-6',
 };
 // stage number → index of the .nav-item to highlight.
-// Nav is 6 items: 0 Settings · 1 YouTube · 2 Episode Builder · 3 Script · 4 Audio · 5 Handoff.
-// Stages 2 / 3 / 3.5 (Prep + Places live inside Episode Builder now) all light up item 2.
+// Nav is 7 items: 0 Settings · 1 Plan(stage 7) · 2 YouTube(1) · 3 Episode Builder(2) ·
+// 4 Script(4) · 5 Audio(5) · 6 Handoff(6). Stages 2 / 3 / 3.5 all light up item 3.
 const navMap = {
-  0: 0, 1: 1, 2: 2, 3: 2, 3.5: 2, 4: 3, 5: 4, 6: 5,
+  0: 0, 7: 1, 1: 2, 2: 3, 3: 3, 3.5: 3, 4: 4, 5: 5, 6: 6,
 };
 
 function showStage(n) {
