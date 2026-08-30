@@ -3021,12 +3021,19 @@ async function prepRunBreakdown(i) {
         console.warn('extract pass 2 failed:', e.message); return {};
       });
 
-    // Stamp source provenance onto the claim-layer arrays.
+    // Stamp source provenance onto every pushable array.
     const stamp = (arr) => (arr || []).map(x => ({
-      source_url: v.url || '', source_name: v.channel || '', needs_verification: true, ...x,
+      source_url: v.url || '', source_name: v.channel || '', source_title: v.title || '', needs_verification: true, ...x,
     }));
     const parsed = {
-      ...p1,
+      summary: p1.summary || '',
+      route: p1.route || [],
+      beats: p1.beats || [],
+      tips: p1.tips || [],
+      quotes: p1.quotes || [],
+      activities: stamp(p1.activities),
+      food: stamp(p1.food),
+      transport: stamp(p1.transport),
       research: stamp(p2.research),
       prices: stamp(p2.prices),
       data: stamp(p2.data),
@@ -3082,7 +3089,8 @@ const RESEARCH_STORES = {
       'Place': _txt(it.place), 'Season': _txt(it.season),
       ...(it.difficulty && ['Easy', 'Moderate', 'Hard'].includes(it.difficulty) ? { 'Difficulty': { select: { name: it.difficulty } } } : {}),
       'Duration': _txt(it.duration), 'Cost': _txt(it.cost),
-      'Source URL': { url: it.source_url || null }, 'Date Added': { date: { start: _today() } },
+      'Source URL': { url: it.source_url || null }, 'Source Video': _txt(it.source_title),
+      'Date Added': { date: { start: _today() } },
     }),
   },
   food: {
@@ -3095,7 +3103,8 @@ const RESEARCH_STORES = {
       'Region of Origin': _txt(it.region),
       'Halal': { select: { name: _clamp(it.halal, ['Yes', 'Partial', 'No', 'Unknown'], 'Unknown') } },
       'Taste / Description': _txt(it.description), 'Where Tried': _txt(it.where),
-      'Source URL': { url: it.source_url || null }, 'Date Added': { date: { start: _today() } },
+      'Source URL': { url: it.source_url || null }, 'Source Video': _txt(it.source_title),
+      'Date Added': { date: { start: _today() } },
     }),
   },
   transport: {
@@ -3108,7 +3117,8 @@ const RESEARCH_STORES = {
       ...(typeof it.distance_km === 'number' && it.distance_km > 0 ? { 'Distance km': { number: it.distance_km } } : {}),
       'Duration': _txt(it.duration), 'Fare or Toll': _txt(it.fare),
       'Scenic': { checkbox: !!it.scenic },
-      'Source URL': { url: it.source_url || null }, 'Date Added': { date: { start: _today() } },
+      'Source URL': { url: it.source_url || null }, 'Source Video': _txt(it.source_title),
+      'Date Added': { date: { start: _today() } },
     }),
   },
   research: {
@@ -3122,6 +3132,7 @@ const RESEARCH_STORES = {
       ...(it.as_of_date ? { 'As-of Date': { date: { start: it.as_of_date } } } : {}),
       'Retrieved Date': { date: { start: _today() } },
       'Prefecture': { select: { name: it.prefecture || 'Unknown' } }, 'Topic': _txt(it.topic),
+      'Source Video': _txt(it.source_title),
     }),
   },
   prices: {
@@ -3188,6 +3199,7 @@ function poolFor(key, src) {
 }
 const _skipSet = (src) => (S[src === 'web' ? '_webSkip' : '_extractSkip'] ||= new Set());
 
+const _reviewTab = { prep: '', web: '' };
 function renderReviewInto(elId, src) {
   const el = document.getElementById(elId);
   if (!el) return;
@@ -3196,23 +3208,36 @@ function renderReviewInto(elId, src) {
     el.innerHTML = `<div class="empty-state"><div class="icon">📤</div><p>${src === 'web' ? 'Run a search above.' : 'Run a breakdown above.'}</p></div>`;
     return;
   }
+  if (!keys.includes(_reviewTab[src])) _reviewTab[src] = keys[0];
+  const active = _reviewTab[src];
   const skip = _skipSet(src);
-  el.innerHTML = keys.map(k => {
-    const pool = poolFor(k, src);
-    return `<div style="margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <span style="font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">${RESEARCH_STORES[k].label} · ${pool.length}</span>
-        <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${k}',this,'${src}')">Push ticked →</button>
-      </div>
-      ${pool.map(it => {
-        const off = skip.has(it._key);
-        return `<label style="display:flex;gap:8px;align-items:flex-start;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:3px;opacity:${off ? 0.4 : 1};font-size:12px">
-          <input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview('${it._key}','${src}')" style="width:14px;flex:none;margin-top:2px">
-          <span>${RESEARCH_STORES[k].name(it) || '(unnamed)'}</span>
-        </label>`;
-      }).join('')}
-    </div>`;
-  }).join('');
+  const pool = poolFor(active, src);
+  const tabs = keys.map(k =>
+    `<div class="tab ${k === active ? 'active' : ''}" onclick="switchReviewTab('${src}','${k}')">${RESEARCH_STORES[k].label} · ${poolFor(k, src).length}</div>`
+  ).join('');
+  el.innerHTML = `
+    <div class="tabs" style="margin-bottom:10px">${tabs}</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${active}',this,'${src}')">Push ticked → ${RESEARCH_STORES[active].label}</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',true)">all</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',false)">none</button>
+    </div>
+    ${pool.map(it => {
+      const off = skip.has(it._key);
+      return `<label style="display:flex;gap:8px;align-items:flex-start;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:3px;opacity:${off ? 0.4 : 1};font-size:12px">
+        <input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview('${it._key}','${src}')" style="width:14px;flex:none;margin-top:2px">
+        <span>${RESEARCH_STORES[active].name(it) || '(unnamed)'}</span>
+      </label>`;
+    }).join('')}`;
+}
+function switchReviewTab(src, key) {
+  _reviewTab[src] = key;
+  renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
+}
+function reviewAll(src, key, on) {
+  const s = _skipSet(src);
+  for (const it of poolFor(key, src)) { if (on) s.delete(it._key); else s.add(it._key); }
+  renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
 }
 function renderExtractReview() { rebuildCombinedOutline(); renderReviewInto('extract-review', 'prep'); }
 function renderWebReview() { renderReviewInto('web-review', 'web'); }
