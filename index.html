@@ -2655,13 +2655,17 @@ async function prepFetchTranscript(i) {
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     if (!data.text) throw new Error('empty transcript returned');
     v.transcript = data.text;
+    let saveErr = null;
     await notionAPI(`pages/${v.id}`, 'PATCH', {
       properties: {
         'Transcript': { rich_text: codeBlockRichText(data.text.slice(0, 190000)) },
         'Has Subtitles': { select: { name: 'Yes - Auto' } },
       },
-    }).catch(() => {});
-    msg = `Transcript saved — ${data.text.length.toLocaleString()} chars, via ${data.source}.`;
+    }).catch(e => { saveErr = e; });
+    const n = data.text.length.toLocaleString();
+    msg = saveErr
+      ? `⚠ Fetched ${n} chars but NOT saved to Notion: ${saveErr.message}. Click Re-fetch to retry.`
+      : `Transcript saved to Notion — ${n} chars, via ${data.source}.`;
   } catch (e) {
     msg = `Fetch failed: ${e.message}`;
   }
@@ -2694,10 +2698,13 @@ Use clear headers.`;
     const out = (await aiRun('outline', { system: buildDNASystem(), messages: [{ role: 'user', content: prompt }] })).text;
     v.outline = out;
     rebuildCombinedOutline();
+    let saveErr = null;
     await notionAPI(`pages/${v.id}`, 'PATCH', {
       properties: { 'Content Outline': { rich_text: codeBlockRichText(out.slice(0, 190000)) } },
-    }).catch(() => {});
-    msg = 'Outline saved to the video’s Notion row (Content Outline).';
+    }).catch(e => { saveErr = e; });
+    msg = saveErr
+      ? `⚠ Outline generated but NOT saved to Notion: ${saveErr.message}. Click Re-run to retry.`
+      : 'Outline saved to Notion (Content Outline).';
   } catch (e) {
     msg = `Outline failed: ${e.message}`;
   } finally {
