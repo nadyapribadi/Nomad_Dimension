@@ -40,10 +40,15 @@ Node 22 (`.nvmrc`).
 
 Netlify auto-builds are **stopped**. Pushing to `main` no longer deploys.
 
+Agents: your job ends at step 3. Step 4 is the operator's, or something you do
+**only** when the operator explicitly says "deploy" in that moment — see
+Boundaries.
+
 1. Make the change; `npm run check` must pass (also runs on pre-commit + CI).
 2. `npm run dev` and click through the affected stage(s) locally.
 3. Commit + push (history only — no deploy).
-4. Ship: `netlify deploy --prod` (run `netlify login` + `netlify link` once first).
+4. **Operator only:** `netlify deploy --prod` (folder is linked to
+   `adorable-granita-954de2`).
 
 `netlify.toml` still carries a `build.ignore` guard in case auto-deploy is ever
 re-enabled.
@@ -63,6 +68,12 @@ re-enabled.
 
 ## Boundaries
 
+- **Never deploy.** Do **not** run `netlify deploy` (or any deploy) unless the
+  operator, in that same message, explicitly tells you to deploy/ship/push live.
+  "It's ready", "commit it", "looks good", a passing `npm run check`, or an
+  earlier "you can deploy" from before do **not** count. Commit + push to git is
+  fine; deploying is the operator's call, every time. The CLI is installed and
+  linked, so it is easy to do by accident — don't.
 - **Never commit secrets.** Provider keys are moving to Netlify environment
   variables (`ANTHROPIC_API_KEY`, `GOOGLE_TTS_API_KEY`, `YOUTUBE_API_KEY`,
   `NOTION_TOKEN` — see `functions/README.md`); the proxies still accept a
