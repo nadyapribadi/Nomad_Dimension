@@ -148,12 +148,29 @@ Phases 1–4 ≈ 10–14 focused sessions, all JS/Netlify, app stays live throug
 The Notion "System Roadmap" section carries the one-line summary; detail lives
 here.
 
+### Step 1 / Step 2 restructure (designed 2026-08, not built)
+
+Separate *gathering knowledge* from *building an episode*. Stage 1 (YouTube
+Browser) + Stage 2 tabs (Queue / Prep / Places) collapse into **Step 1 —
+Research**: source-agnostic ingest (YouTube auto-transcript, everything else
+pasted) → 2-pass extraction → optional web verify → push to one-fact-per-column
+Notion stores (Sources · Places · Research · Prices · Data · Glossary · Food ·
+Transport). **Step 2 — Episode Builder** then queries those stores, filters by
+prefecture / region / "unused", and picks what goes in the episode. Full spec +
+DB columns + extraction schema + build phases R1–R5:
+[`RESEARCH_PIPELINE.md`](RESEARCH_PIPELINE.md).
+
 ## Security notes (not in the Notion doc)
 
 - **Keys/tokens are Netlify env vars only** — the browser sends none. Required:
   `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_TTS_API_KEY`,
-  `YOUTUBE_API_KEY`, `NOTION_TOKEN`. Each proxy returns `500` if its var is unset.
-  The App Settings "🔐 API Keys" table holds status text, not secrets.
+  `YOUTUBE_API_KEY`, `NOTION_TOKEN`. Optional: `GOOGLE_MAPS_API_KEY`
+  (`maps-proxy`), `TRANSCRIPT_API_KEY` (`yt-transcript` fallback),
+  `ANTHROPIC_WORKSPACE_ID`, and extra-provider keys `DEEPSEEK_API_KEY` /
+  `DASHSCOPE_API_KEY` / `MISTRAL_API_KEY` / `XAI_API_KEY` / `OPENROUTER_API_KEY` /
+  `GROQ_API_KEY`. Each proxy returns `500` (or a graceful `{found:false}` for
+  `maps-proxy`) if its var is unset. The App Settings "🔐 API Keys" table holds
+  status text, not secrets.
 - `_shared/models.js` maps errors to a taxonomy and retries `rate_limited` /
   `provider_error` / `network` once. The remaining proxies still do no schema
   validation on upstream responses.
