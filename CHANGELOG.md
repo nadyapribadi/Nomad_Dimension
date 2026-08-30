@@ -34,6 +34,14 @@ episode }` to the Production Costs DB.
 - `getPageBlocks` (app) and `getRouting` (`ai-run.js`) now page through
   `next_cursor` — the App Settings page can grow past 100 blocks without hiding
   the DNA / routing blocks.
+- **Channel DNA panel is now tabbed** (Identity / Voice / Storytelling /
+  Editorial / Visual / Production) — one group on screen at a time instead of
+  ~30 stacked fields. Tab switches preserve unsaved edits.
+- **Fix:** `saveDNA` / `saveRouting` now chunk the JSON into ≤2000-char
+  `rich_text` items — Notion rejected the single-item PATCH once the DNA block
+  grew past 2000 chars ("body.code.rich_text[0].text.content.length ≤ 2000").
+- **Build credits:** `netlify.toml` `build.ignore` skips the production deploy
+  when a commit only touches `Docs/`, `*.md`, `*.test.js`, or `.github/`.
 - **More providers.** `models.js` gains a table-driven `openaiCompatibleAdapter`
   (`OPENAI_COMPAT`) — one adapter for **OpenAI / DeepSeek / Qwen / Mistral / xAI /
   OpenRouter / Groq** (each keyed by its own `<PROVIDER>_API_KEY` env var).

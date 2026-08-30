@@ -1,6 +1,13 @@
 [build]
   publish = "."
   functions = "functions"
+  # Skip the production deploy (saves build credits) when a commit touches only
+  # docs / tests / CI. exit 0 = skip build, non-zero = build. If we can't diff
+  # (first build / shallow clone), build.
+  ignore = """
+    git rev-parse HEAD^ >/dev/null 2>&1 || exit 1
+    git diff --name-only HEAD^ HEAD | grep -qvE '^(Docs/|\\.github/|[^/]*\\.md$|.*\\.test\\.js$)' && exit 1 || exit 0
+  """
 
 [[headers]]
   for = "/*"
