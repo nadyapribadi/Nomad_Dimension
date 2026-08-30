@@ -10,10 +10,11 @@ The operating manual for Nomad Dimension is the Notion page
 8-stage pipeline, the 8-database schema, model routing, status flow, naming, and
 the design decisions. **Read it first.**
 
-This file only covers what a developer or coding agent needs that the Notion doc
+This file covers what a developer or coding agent needs that the Notion doc
 doesn't: exact identifiers used in `index.html`, the proxy contract, a function
-map, and where the **code diverges from the spec**. Repo conventions and
-boundaries are in [`../CLAUDE.md`](../CLAUDE.md).
+map, where the **code diverges from the spec**, and the **forward plan**
+(see "Direction & evolution plan" below). Repo conventions and boundaries are in
+[`../CLAUDE.md`](../CLAUDE.md).
 
 ## Repo shape
 
@@ -79,14 +80,47 @@ Model routing keys read from settings: `S.models.{angle, pass, places, theme, di
   `S.dna.ratio`, cliché/avoided-phrase scan, repeated 8-word runs across
   sections, confirmed places flagged `already_in_episode_warning`.
 
+## Direction & evolution plan
+
+**Decision:** evolve this JS/Netlify/Notion app toward provider-agnostic model
+routing and an independent Critic layer — the "thin brain" approach. Move the AI
+logic out of `index.html` into small, tested modules behind Netlify Functions,
+keeping the wizard UI. **Not** a Python multi-agent rewrite (`archive/`), **not**
+cramming more logic into `index.html`.
+
+Rationale: the working app already covers ~60% of the vision's value (owned
+workflow, structured state). The gaps — agnostic routing, a quality gate, cost
+visibility, testability — are reachable incrementally, days per phase, without a
+rewrite. Autonomous multi-agent orchestration is deliberately out of scope: a
+guided workflow with a Critic and swappable models delivers the same outcome for
+one video per month.
+
+Each phase ships something; decide at the gate before moving on.
+
+| # | Phase | Delivers | Key work | Exit |
+| --- | --- | --- | --- | --- |
+| 0 | Foundations | tooling, keys→env, docs, Script Check | *(≈ done)* | proxies verified on live site; request-body key fallback removed |
+| 1 | Capability layer | tested model router | `functions/lib/models.js` + `providers/{anthropic,gemini,openai}.js` + `cost.js` + `*.test.js` + `ai-run.js` endpoint | `callModel` passes tests for all three providers; error taxonomy tested |
+| 2 | Migrate pipeline | **models are agnostic**; **cost visible** | route every AI stage through `ai-run.js`; prompts → `functions/lib/prompts/`; `callModel` writes Costs DB rows; delete hard-coded model IDs; model choice read from the Notion model table | every stage runs through the layer; swapping a model is a Notion edit; Costs DB fills |
+| 3 | Critic layer | **independent quality gate** | `functions/lib/critic.js` — `review()` on a *different* provider than the writer — + stage rubrics + per-stage "Review" button (PASS / REWORK notes) | weak dialogue/outline reliably flagged; optional auto-revise-once |
+| 4 | Light orchestration | **machine runs a stage** | `run-stage.js` background function: generate → critic → revise-once → result; UI fires and polls; progress in Notion App State | one click → critic-reviewed stage output; survives a closed tab |
+| 5 | Real state + event log *(only if Phase 4's gate says "chain stages")* | recoverable multi-stage runs; per-episode timeline | Netlify Blobs (or a small hosted SQLite) + `lib/events.js` append-only log + `run-episode.js` with checkpoints | an interrupted multi-stage run resumes from the last checkpoint |
+| 6 | Genuine autonomy *(probably never)* | a planner decides which stages an episode needs | — | only if the fixed pipeline proves too rigid |
+
+Phases 1–4 ≈ 10–14 focused sessions, all JS/Netlify, app stays live throughout.
+The Notion "System Roadmap" section carries the one-line summary; detail lives
+here.
+
 ## Security notes (not in the Notion doc)
 
-- **API keys live in plain text on the App Settings Notion page**, loaded into
-  browser memory and passed per-request to the proxies. Anyone with that page —
-  or the Notion integration token — has every key. Rotating a key = editing the
-  page. There is no server-side secret store.
+- **API keys** have been rotated. Each proxy reads its key from a Netlify
+  environment variable (`ANTHROPIC_API_KEY`, `GOOGLE_TTS_API_KEY`,
+  `YOUTUBE_API_KEY`, `NOTION_TOKEN`), falling back to a key in the request body
+  only while the env vars are being configured. Follow-up: remove that fallback,
+  stop `index.html` sending keys, and remove the plaintext key table from the
+  Notion App Settings page.
 - Netlify functions do **no schema validation** on upstream responses.
-- No rate-limit handling or retry in any proxy.
+- No rate-limit handling or retry in any proxy (addressed in evolution Phase 1).
 
 ## Pointers
 

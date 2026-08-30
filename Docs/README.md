@@ -10,8 +10,8 @@ conventions, and the design decisions. Read it first.
 ## In this repo
 
 - **[`AS_BUILT.md`](AS_BUILT.md)** — the code-side companion: identifiers used in
-  `index.html`, the proxy contract, a function map, and where the code diverges
-  from the Notion spec.
+  `index.html`, the proxy contract, a function map, where the code diverges from
+  the Notion spec, and the **forward plan** ("Direction & evolution plan").
 - **[`../functions/README.md`](../functions/README.md)** — the proxy/API contract.
 
 ## `archive/`
