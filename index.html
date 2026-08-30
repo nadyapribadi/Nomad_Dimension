@@ -913,22 +913,50 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   <div class="card">
     <div class="card-title"><span class="icon">📺</span> Source Channels</div>
     <div id="channel-chips-area" class="channel-chips"></div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <input type="text" id="new-channel-input" placeholder="Add channel name or ID…" style="max-width:260px">
       <button class="btn btn-sm" onclick="addChannel()">+ Add</button>
+      <button class="btn btn-sm btn-ghost" onclick="saveChannels()">Save to Notion →</button>
     </div>
-    <div class="row">
-      <input type="text" id="yt-keyword" placeholder="Filter keyword (optional)…" style="max-width:240px">
-      <select id="yt-max-results" style="width:120px">
+    <div class="row" style="flex-wrap:wrap">
+      <input type="text" id="yt-keyword" placeholder="Fetch keyword (optional)…" style="max-width:220px">
+      <select id="yt-max-results" style="width:110px">
         <option value="10">10 videos</option>
         <option value="20" selected>20 videos</option>
         <option value="50">50 videos</option>
       </select>
+      <select id="yt-order" style="width:150px" title="YouTube API sort">
+        <option value="date" selected>Newest first</option>
+        <option value="viewCount">Most viewed</option>
+        <option value="rating">Top rated</option>
+      </select>
+      <label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px">from
+        <input type="date" id="yt-after" style="width:135px"></label>
+      <label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px">to
+        <input type="date" id="yt-before" style="width:135px"></label>
       <button class="btn btn-primary" onclick="fetchYouTube()" id="yt-fetch-btn">Fetch All →</button>
     </div>
   </div>
 
   <div id="yt-results-area" style="display:none">
+    <!-- post-fetch filter/sort — instant, no API calls -->
+    <div class="card" style="padding:12px 14px;margin-bottom:12px">
+      <div class="row" style="flex-wrap:wrap;gap:8px">
+        <input type="text" id="ytf-text" oninput="renderYTVideos()" placeholder="Filter title / description / tags / channel…" style="flex:1;min-width:200px">
+        <input type="number" id="ytf-minviews" oninput="renderYTVideos()" placeholder="min views" style="width:110px">
+        <input type="number" id="ytf-mindur" oninput="renderYTVideos()" placeholder="min min" style="width:80px" title="minimum minutes">
+        <input type="number" id="ytf-maxdur" oninput="renderYTVideos()" placeholder="max min" style="width:80px" title="maximum minutes">
+        <select id="ytf-channel" onchange="renderYTVideos()" style="width:150px"><option value="">all channels</option></select>
+        <select id="ytf-sort" onchange="renderYTVideos()" style="width:150px">
+          <option value="views">Sort: views ↓</option>
+          <option value="date">Sort: newest</option>
+          <option value="dateAsc">Sort: oldest</option>
+          <option value="duration">Sort: longest</option>
+        </select>
+        <button class="btn btn-sm btn-ghost" onclick="resetYTFilters()">Reset</button>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px" id="ytf-count"></div>
+    </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
       <div style="font-size:12px;color:var(--text2)" id="yt-selection-count">0 videos selected</div>
       <div class="row">
@@ -1667,6 +1695,12 @@ function parseAndApplySettings(blocks) {
             voices: parsed.voice_configs || [],
           };
           S.lookupsBlockId = block.id;
+        } else if (parsed && Array.isArray(parsed.channels)) {
+          // entry may be a string or { name, id?, region?, note? }
+          S.channels = parsed.channels
+            .map(c => (typeof c === 'string' ? c : c && c.name))
+            .filter(Boolean);
+          S.sourceChannelsBlockId = block.id;
         }
       } catch { /* not a machine-read block */ }
     }
@@ -2122,6 +2156,23 @@ function addChannel() {
   renderChannelChips();
 }
 
+async function saveChannels() {
+  const json = JSON.stringify({ channels: S.channels }, null, 2);
+  if (!S.sourceChannelsBlockId) {
+    navigator.clipboard?.writeText(json);
+    toast('No "📺 Source Channels" JSON block on the Notion page yet. JSON copied to clipboard — paste it into a code block there.', 'warning');
+    return;
+  }
+  try {
+    await notionAPI(`blocks/${S.sourceChannelsBlockId}`, 'PATCH', {
+      code: { language: 'json', rich_text: codeBlockRichText(json) },
+    });
+    toast('Source channels saved to Notion.', 'success');
+  } catch (e) {
+    toast(`Could not save source channels: ${e.message}`, 'error');
+  }
+}
+
 async function fetchYouTube() {
   if (!S.keys.youtube) { toast('YouTube API key not loaded — connect Notion first', 'error'); return; }
 
@@ -2130,6 +2181,9 @@ async function fetchYouTube() {
 
   const keyword = document.getElementById('yt-keyword').value.trim();
   const maxResults = document.getElementById('yt-max-results').value;
+  const order = document.getElementById('yt-order').value;
+  const after = document.getElementById('yt-after').value;   // yyyy-mm-dd or ''
+  const before = document.getElementById('yt-before').value;
   const btn = document.getElementById('yt-fetch-btn');
   btn.disabled = true;
   btn.textContent = 'Fetching…';
@@ -2158,9 +2212,11 @@ async function fetchYouTube() {
         channelId,
         type: 'video',
         maxResults,
-        order: 'date',
+        order: order || 'date',
       };
       if (keyword) params.q = keyword;
+      if (after) params.publishedAfter = `${after}T00:00:00Z`;
+      if (before) params.publishedBefore = `${before}T23:59:59Z`;
 
       const videosRes = await ytAPI('search', params);
       const videoIds = videosRes.items?.map(v => v.id?.videoId).filter(Boolean) || [];
@@ -2177,9 +2233,12 @@ async function fetchYouTube() {
         channelName: chName,
         title: v.snippet?.title || '',
         description: v.snippet?.description || '',
+        tags: v.snippet?.tags || [],
         thumbnail: v.snippet?.thumbnails?.medium?.url || '',
         publishedAt: v.snippet?.publishedAt || '',
         duration: v.contentDetails?.duration || '',
+        durationMin: iso8601Minutes(v.contentDetails?.duration || ''),
+        viewsNum: parseInt(v.statistics?.viewCount || 0, 10),
         views: parseInt(v.statistics?.viewCount || 0).toLocaleString(),
         url: `https://youtube.com/watch?v=${v.id}`,
         angle: '', // to be generated by Claude
@@ -2189,6 +2248,12 @@ async function fetchYouTube() {
 
       S.ytVideos.push(...videos);
     }
+
+    // Populate the channel filter with the distinct channels we actually got.
+    const chSel = document.getElementById('ytf-channel');
+    const chNames = [...new Set(S.ytVideos.map(v => v.channelName))];
+    chSel.innerHTML = '<option value="">all channels</option>' +
+      chNames.map(n => `<option value="${n}">${n}</option>`).join('');
 
     renderYTVideos();
     document.getElementById('yt-results-area').style.display = '';
@@ -2202,9 +2267,38 @@ async function fetchYouTube() {
   }
 }
 
+// Reads the filter bar, filters + sorts S.ytVideos, keeps original indices for
+// selection (S.ytSelected stores indices into S.ytVideos).
+function filteredYTVideos() {
+  const q = (document.getElementById('ytf-text')?.value || '').trim().toLowerCase();
+  const minViews = parseInt(document.getElementById('ytf-minviews')?.value || '', 10);
+  const minDur = parseFloat(document.getElementById('ytf-mindur')?.value || '');
+  const maxDur = parseFloat(document.getElementById('ytf-maxdur')?.value || '');
+  const chan = document.getElementById('ytf-channel')?.value || '';
+  const sort = document.getElementById('ytf-sort')?.value || 'views';
+
+  let rows = S.ytVideos.map((v, i) => ({ v, i }));
+  if (q) rows = rows.filter(({ v }) =>
+    `${v.title} ${v.description} ${v.channelName} ${(v.tags || []).join(' ')}`.toLowerCase().includes(q));
+  if (!Number.isNaN(minViews)) rows = rows.filter(({ v }) => v.viewsNum >= minViews);
+  if (!Number.isNaN(minDur)) rows = rows.filter(({ v }) => v.durationMin >= minDur);
+  if (!Number.isNaN(maxDur)) rows = rows.filter(({ v }) => v.durationMin <= maxDur);
+  if (chan) rows = rows.filter(({ v }) => v.channelName === chan);
+
+  const cmp = {
+    views: (a, b) => b.v.viewsNum - a.v.viewsNum,
+    date: (a, b) => (b.v.publishedAt || '').localeCompare(a.v.publishedAt || ''),
+    dateAsc: (a, b) => (a.v.publishedAt || '').localeCompare(b.v.publishedAt || ''),
+    duration: (a, b) => b.v.durationMin - a.v.durationMin,
+  }[sort];
+  rows.sort(cmp);
+  return rows;
+}
+
 function renderYTVideos() {
   const grid = document.getElementById('yt-video-grid');
-  grid.innerHTML = S.ytVideos.map((v, i) => `
+  const rows = filteredYTVideos();
+  grid.innerHTML = rows.map(({ v, i }) => `
     <div class="video-card ${S.ytSelected.has(i) ? 'selected' : ''}" onclick="toggleYTVideo(${i})">
       ${v.thumbnail
         ? `<img class="video-thumb" src="${v.thumbnail}" alt="${v.title}" loading="lazy">`
@@ -2215,10 +2309,22 @@ function renderYTVideos() {
           <span class="video-stat">${v.channelName}</span>
           <span class="video-stat">👁 ${v.views}</span>
           <span class="video-stat">${formatISO8601Duration(v.duration)}</span>
+          <span class="video-stat">${(v.publishedAt || '').slice(0, 10)}</span>
         </div>
       </div>
     </div>`).join('');
+  const c = document.getElementById('ytf-count');
+  if (c) c.textContent = `showing ${rows.length} of ${S.ytVideos.length}`;
   updateYTSelectionCount();
+}
+
+function resetYTFilters() {
+  ['ytf-text','ytf-minviews','ytf-mindur','ytf-maxdur'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const ch = document.getElementById('ytf-channel'); if (ch) ch.value = '';
+  const s = document.getElementById('ytf-sort'); if (s) s.value = 'views';
+  renderYTVideos();
 }
 
 function formatISO8601Duration(d) {
@@ -2227,6 +2333,12 @@ function formatISO8601Duration(d) {
   if (!m) return d;
   const h = m[1]||0, min = m[2]||0, s = m[3]||0;
   return h ? `${h}:${String(min).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${min}:${String(s).padStart(2,'0')}`;
+}
+
+function iso8601Minutes(d) {
+  const m = (d || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  return (+(m[1]||0)) * 60 + (+(m[2]||0)) + (+(m[3]||0)) / 60;
 }
 
 function toggleYTVideo(i) {
