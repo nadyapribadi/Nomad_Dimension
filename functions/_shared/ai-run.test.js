@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { handler, STAGE_BY_TASK, PROVIDER_SELECT, STATUS_BY_CODE } = require('./ai-run');
+const { handler, STAGE_BY_TASK, PROVIDER_SELECT, STATUS_BY_CODE } = require('../ai-run');
 
 const post = (body) => ({ httpMethod: 'POST', body: JSON.stringify(body) });
 
