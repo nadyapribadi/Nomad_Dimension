@@ -813,11 +813,15 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <button class="btn btn-primary" onclick="saveRouting()">Save Routing to Notion →</button>
     </div>
     <div style="font-size:11px;color:var(--text3);margin-top:8px">
-      Pick a model per task. Saving writes the <strong>🔀 Active Routing</strong> JSON
-      block on the Notion App Settings page; <code style="font-family:var(--font-mono)">ai-run</code>
-      picks it up within ~60s — no deploy. <em>Fallback</em> is used automatically if the
-      primary is rate-limited, errors, or is content-filtered. If no block exists yet,
-      the router uses its built-in <code style="font-family:var(--font-mono)">DEFAULT_ROUTING</code>.
+      Type <code style="font-family:var(--font-mono)">provider|model</code> per task, or pick a
+      suggestion. Not a closed list — any id works. Providers:
+      <code style="font-family:var(--font-mono)">anthropic · gemini · openai · deepseek · qwen · mistral · xai · openrouter · groq</code>,
+      each needing its <code style="font-family:var(--font-mono)">&lt;PROVIDER&gt;_API_KEY</code> in
+      Netlify env. Verify model ids against the provider's own docs. Saving writes the
+      <strong>🔀 Active Routing</strong> block; <code style="font-family:var(--font-mono)">ai-run</code>
+      picks it up within ~60s — no deploy. <em>Fallback</em> runs automatically if the primary
+      is rate-limited, errors, or is content-filtered. No block yet → built-in
+      <code style="font-family:var(--font-mono)">DEFAULT_ROUTING</code>.
     </div>
   </div>
 
@@ -1777,13 +1781,40 @@ function saveLookups() {
 
 // Tasks ai-run.js knows about, in pipeline order.
 const ROUTING_TASKS = ['angle','theme','gap','outline','translate','places','dialogue','thumbnail','metadata','handoff','critic'];
-// Selectable models. value = "provider|model"; must be a real, current model id.
-const MODEL_CHOICES = [
-  ['anthropic|claude-haiku-4-5-20251001', 'Claude Haiku 4.5  (cheap, fast)'],
-  ['anthropic|claude-sonnet-4-6',         'Claude Sonnet 4.6  (strong, creative)'],
-  ['gemini|gemini-2.0-flash',             'Gemini 2.0 Flash  (cheap, fast)'],
-  ['openai|gpt-4o-mini',                  'GPT-4o mini  (cheap, fast)'],
-  ['openai|gpt-4o',                       'GPT-4o  (strong, reasoning)'],
+// Suggestions for the combo boxes. value = "provider|model". NOT a closed list —
+// you can type any "provider|model" string; these are just autocomplete hints.
+// Verify ids against each provider's own docs (they change often). Providers:
+// anthropic · gemini · openai · deepseek · qwen · mistral · xai · openrouter · groq
+// (each needs its <PROVIDER>_API_KEY set in Netlify env; see functions/_shared/models.js).
+const MODEL_CATALOG = [
+  ['anthropic|claude-haiku-4-5-20251001', 'Anthropic · Claude Haiku 4.5 (cheap, fast)'],
+  ['anthropic|claude-sonnet-4-6',         'Anthropic · Claude Sonnet 4.6 (strong, creative)'],
+  ['anthropic|claude-sonnet-5',           'Anthropic · Claude Sonnet 5 (frontier)'],
+  ['anthropic|claude-opus-5',             'Anthropic · Claude Opus 5 (frontier, deepest)'],
+  ['openai|gpt-4o-mini',                  'OpenAI · GPT-4o mini (cheap, fast)'],
+  ['openai|gpt-4o',                       'OpenAI · GPT-4o (strong)'],
+  ['openai|gpt-4.1-mini',                 'OpenAI · GPT-4.1 mini'],
+  ['openai|gpt-4.1',                      'OpenAI · GPT-4.1'],
+  ['openai|o4-mini',                      'OpenAI · o4-mini (reasoning, cheap)'],
+  ['openai|o3',                           'OpenAI · o3 (reasoning)'],
+  ['gemini|gemini-2.0-flash',             'Google · Gemini 2.0 Flash (cheap, fast)'],
+  ['gemini|gemini-2.0-flash-lite',        'Google · Gemini 2.0 Flash-Lite (ultra-cheap)'],
+  ['gemini|gemini-2.5-flash',             'Google · Gemini 2.5 Flash'],
+  ['gemini|gemini-2.5-pro',               'Google · Gemini 2.5 Pro (reasoning)'],
+  ['gemini|gemini-1.5-pro',               'Google · Gemini 1.5 Pro (long context)'],
+  ['deepseek|deepseek-chat',              'DeepSeek · deepseek-chat / V3 (cheap, strong)'],
+  ['deepseek|deepseek-reasoner',          'DeepSeek · deepseek-reasoner / R1'],
+  ['qwen|qwen-max',                       'Qwen · qwen-max (strong)'],
+  ['qwen|qwen-plus',                      'Qwen · qwen-plus (balanced)'],
+  ['qwen|qwen-turbo',                     'Qwen · qwen-turbo (cheap)'],
+  ['mistral|mistral-large-latest',        'Mistral · Large'],
+  ['mistral|mistral-small-latest',        'Mistral · Small (cheap)'],
+  ['xai|grok-3',                          'xAI · Grok 3'],
+  ['xai|grok-3-mini',                     'xAI · Grok 3 mini (cheap)'],
+  ['openrouter|deepseek/deepseek-chat',   'OpenRouter · deepseek/deepseek-chat'],
+  ['openrouter|meta-llama/llama-3.3-70b-instruct', 'OpenRouter · llama-3.3-70b-instruct'],
+  ['openrouter|qwen/qwen-2.5-72b-instruct', 'OpenRouter · qwen-2.5-72b-instruct'],
+  ['groq|llama-3.3-70b-versatile',        'Groq · llama-3.3-70b (very fast)'],
 ];
 // Offline default if Notion has no routing block yet.
 const DEFAULT_ROUTING_UI = {
@@ -1800,43 +1831,52 @@ const DEFAULT_ROUTING_UI = {
   critic:{provider:'gemini',model:'gemini-2.0-flash',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
 };
 
-function routingSelect(kind, task, current) {
+// Combo box: free text + MODEL_CATALOG suggestions. value = "provider|model".
+function routingField(kind, task, current) {
   const cur = current ? `${current.provider}|${current.model}` : '';
-  const opts = MODEL_CHOICES.map(([v,label]) =>
-    `<option value="${v}"${v === cur ? ' selected' : ''}>${label}</option>`).join('');
-  const blank = kind === 'fallback' ? '<option value=""' + (cur ? '' : ' selected') + '>— none —</option>' : '';
-  return `<select data-route="${kind}" data-task="${task}" style="font-size:11px">${blank}${opts}</select>`;
+  return `<input data-route="${kind}" data-task="${task}" list="model-catalog"
+    value="${cur}" placeholder="${kind === 'fallback' ? 'provider|model (optional)' : 'provider|model'}"
+    autocomplete="off" spellcheck="false"
+    style="font-family:var(--font-mono);font-size:11px;width:100%;min-width:190px">`;
 }
 
 function renderRoutingTable() {
   const r = S.routing || DEFAULT_ROUTING_UI;
+  const datalist = `<datalist id="model-catalog">${
+    MODEL_CATALOG.map(([v, label]) => `<option value="${v}">${label}</option>`).join('')
+  }</datalist>`;
   const rows = ROUTING_TASKS.map(task => {
     const e = r[task] || {};
     return `<tr>
       <td style="font-size:12px">${task}</td>
-      <td>${routingSelect('primary', task, e.provider ? e : null)}</td>
-      <td>${routingSelect('fallback', task, e.fallback || null)}</td>
+      <td>${routingField('primary', task, e.provider ? e : null)}</td>
+      <td>${routingField('fallback', task, e.fallback || null)}</td>
     </tr>`;
   }).join('');
-  document.getElementById('models-table').innerHTML = `
+  document.getElementById('models-table').innerHTML = `${datalist}
     <table class="data-table">
       <thead><tr><th>Task</th><th>Primary</th><th>Fallback</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
 
+// "provider|model" -> { provider, model }; splits on the FIRST "|" only
+// (OpenRouter ids like "openrouter|vendor/model" are fine).
+function splitRoute(v) {
+  const s = (v || '').trim();
+  const i = s.indexOf('|');
+  if (i < 1 || i === s.length - 1) return null;
+  return { provider: s.slice(0, i).trim(), model: s.slice(i + 1).trim() };
+}
+
 function collectRouting() {
   const out = {};
   ROUTING_TASKS.forEach(task => {
-    const prim = document.querySelector(`[data-route="primary"][data-task="${task}"]`);
-    if (!prim || !prim.value) return;
-    const [provider, model] = prim.value.split('|');
-    const entry = { provider, model };
-    const fb = document.querySelector(`[data-route="fallback"][data-task="${task}"]`);
-    if (fb && fb.value) {
-      const [fp, fm] = fb.value.split('|');
-      entry.fallback = { provider: fp, model: fm };
-    }
+    const prim = splitRoute(document.querySelector(`[data-route="primary"][data-task="${task}"]`)?.value);
+    if (!prim) return;
+    const entry = { provider: prim.provider, model: prim.model };
+    const fb = splitRoute(document.querySelector(`[data-route="fallback"][data-task="${task}"]`)?.value);
+    if (fb) entry.fallback = fb;
     out[task] = entry;
   });
   return out;
