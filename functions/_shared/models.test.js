@@ -29,7 +29,7 @@ test('anthropic: shapes the request and normalizes the response', async () => {
   );
   assert.equal(r.text, 'hello');
   assert.equal(r.provider, 'anthropic');
-  assert.equal(r.model, 'claude-sonnet-4-6');
+  assert.equal(r.model, 'claude-sonnet-5');
   assert.deepEqual(r.usage, { inputTokens: 10, outputTokens: 20 });
   assert.ok(r.costUsd > 0);
 
@@ -148,7 +148,7 @@ test('500 -> provider_error, retried once (no fallback configured)', async () =>
     callModel(
       {
         provider: 'anthropic',
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
         messages: [{ role: 'user', content: 'x' }],
       },
       { fetch, env }
@@ -256,7 +256,7 @@ test('explicit req.fallback is honored on failover', async () => {
   const r = await callModel(
     {
       provider: 'anthropic',
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       fallback: { provider: 'openai', model: 'gpt-4o' },
       messages: [{ role: 'user', content: 'x' }],
     },
@@ -287,7 +287,7 @@ test('missing key -> invalid_request', async () => {
 });
 
 test('cost math', () => {
-  assert.equal(cost('claude-sonnet-4-6', { inputTokens: 1_000_000, outputTokens: 0 }), 3);
+  assert.equal(cost('claude-sonnet-5', { inputTokens: 1_000_000, outputTokens: 0 }), 3);
   assert.equal(cost('gemini-3.6-flash', { inputTokens: 0, outputTokens: 1_000_000 }), 0.4);
   assert.equal(cost('unknown-model', { inputTokens: 1, outputTokens: 1 }), null);
 });

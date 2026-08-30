@@ -14,7 +14,7 @@
 // `fallback` is tried once if the primary exhausts its retries with a
 // rate_limited / provider_error / network / content_filtered error.
 const HAIKU = { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' };
-const SONNET = { provider: 'anthropic', model: 'claude-sonnet-4-6' };
+const SONNET = { provider: 'anthropic', model: 'claude-sonnet-5' };
 const FLASH = { provider: 'gemini', model: 'gemini-3.6-flash' };
 const GPT_MINI = { provider: 'openai', model: 'gpt-4o-mini' };
 const GPT = { provider: 'openai', model: 'gpt-4o' };
@@ -37,11 +37,16 @@ const DEFAULT_ROUTING = {
 // placeholders and should be tuned once real Costs DB data exists.
 const PRICING = {
   'claude-haiku-4-5-20251001': { in: 1.0, out: 5.0 },
-  'claude-sonnet-4-6': { in: 3.0, out: 15.0 },
+  'claude-sonnet-5': { in: 3.0, out: 15.0 },
+  'claude-sonnet-4-6': { in: 3.0, out: 15.0 }, // legacy id, kept so old routing blocks still cost-log
+  'claude-opus-5': { in: 15.0, out: 75.0 },
+  'claude-fable-5': { in: 1.0, out: 5.0 },
   'gemini-3.6-flash': { in: 0.1, out: 0.4 },
   'gpt-4o-mini': { in: 0.15, out: 0.6 },
   'gpt-4o': { in: 2.5, out: 10.0 },
   'deepseek-chat': { in: 0.27, out: 1.1 },
+  'deepseek-v4-flash': { in: 0.27, out: 1.1 },
+  'deepseek-v4-pro': { in: 0.55, out: 2.19 },
   'deepseek-reasoner': { in: 0.55, out: 2.19 },
   // Anything not listed here logs costUsd: null — the call still works.
 };

@@ -74,8 +74,11 @@ thumbnail · metadata · critic`. Each routing entry is
 **"🔀 Active Routing"** JSON block on the App Settings Notion page (cached ~60s,
 edit = no deploy), falling back to `DEFAULT_ROUTING` in `_shared/models.js`. The
 block is editable from the app: **Stage 0 → Active Model Routing** — per-task
-`provider|model` **combo boxes** (free text + `MODEL_CATALOG` suggestions, not a
-closed list) + *Save Routing to Notion* (`PATCH`es the code block). Extra
+`provider|model` **`<select>` dropdowns** built from `MODEL_CATALOG` (a closed
+list; `<optgroup>` per provider) + *Save Routing to Notion* (`PATCH`es the code
+block). `MODEL_CATALOG` is the only place model ids are listed for the UI — keep
+it current (Anthropic Sonnet 5 / Opus 5 / Fable 5 / Haiku 4.5, DeepSeek V4,
+Gemini 3.x, etc.). Extra
 providers need their `<PROVIDER>_API_KEY` in Netlify env (`DEEPSEEK_API_KEY`,
 `DASHSCOPE_API_KEY` for Qwen, `MISTRAL_API_KEY`, `XAI_API_KEY`,
 `OPENROUTER_API_KEY`, `GROQ_API_KEY`).

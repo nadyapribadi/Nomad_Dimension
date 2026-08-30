@@ -1055,7 +1055,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Order confirmed places into the episode route. This becomes the section structure for Script Builder.</p>
         <div id="route-order-list"></div>
         <div class="btn-row">
-          <button class="btn btn-primary" onclick="saveConfirmedPlaces()">Push Confirmed Places to Notion →</button>
+          <button class="btn btn-primary" id="save-places-btn" onclick="saveConfirmedPlaces()">Push Confirmed Places to Notion →</button>
           <button class="btn" onclick="switchTab('ep','theme')">Next: Theme →</button>
         </div>
       </div>
@@ -1909,8 +1909,8 @@ const PROVIDER_LABEL = {
 };
 const MODEL_CATALOG = [
   ['anthropic|claude-haiku-4-5-20251001', 'Anthropic · Claude Haiku 4.5 (cheap, fast)'],
-  ['anthropic|claude-sonnet-4-6',         'Anthropic · Claude Sonnet 4.6 (strong, creative)'],
-  ['anthropic|claude-sonnet-5',           'Anthropic · Claude Sonnet 5 (frontier)'],
+  ['anthropic|claude-fable-5',            'Anthropic · Claude Fable 5 (fast, light)'],
+  ['anthropic|claude-sonnet-5',           'Anthropic · Claude Sonnet 5 (strong, creative)'],
   ['anthropic|claude-opus-5',             'Anthropic · Claude Opus 5 (frontier, deepest)'],
   ['openai|gpt-4o-mini',                  'OpenAI · GPT-4o mini (cheap, fast)'],
   ['openai|gpt-4o',                       'OpenAI · GPT-4o (strong)'],
@@ -1922,13 +1922,16 @@ const MODEL_CATALOG = [
   ['gemini|gemini-3.7-flash',             'Google · Gemini 3.7 Flash'],
   ['gemini|gemini-3.1-flash-lite',        'Google · Gemini 3.1 Flash-Lite (ultra-cheap)'],
   ['gemini|gemini-3.6-pro',               'Google · Gemini 3.6 Pro (reasoning)'],
-  ['deepseek|deepseek-chat',              'DeepSeek · deepseek-chat / V3 (cheap, strong)'],
-  ['deepseek|deepseek-reasoner',          'DeepSeek · deepseek-reasoner / R1'],
+  ['deepseek|deepseek-chat',              'DeepSeek · deepseek-chat (alias → latest V4, cheap)'],
+  ['deepseek|deepseek-v4-flash',          'DeepSeek · V4 Flash (cheap, fast)'],
+  ['deepseek|deepseek-v4-pro',            'DeepSeek · V4 Pro (agentic, reasoning)'],
+  ['deepseek|deepseek-reasoner',          'DeepSeek · deepseek-reasoner (thinking)'],
   ['qwen|qwen-max',                       'Qwen · qwen-max (strong)'],
   ['qwen|qwen-plus',                      'Qwen · qwen-plus (balanced)'],
   ['qwen|qwen-turbo',                     'Qwen · qwen-turbo (cheap)'],
   ['mistral|mistral-large-latest',        'Mistral · Large'],
   ['mistral|mistral-small-latest',        'Mistral · Small (cheap)'],
+  ['xai|grok-4',                          'xAI · Grok 4'],
   ['xai|grok-3',                          'xAI · Grok 3'],
   ['xai|grok-3-mini',                     'xAI · Grok 3 mini (cheap)'],
   ['openrouter|deepseek/deepseek-chat',   'OpenRouter · deepseek/deepseek-chat'],
@@ -1939,16 +1942,16 @@ const MODEL_CATALOG = [
 // Offline default if Notion has no routing block yet.
 const DEFAULT_ROUTING_UI = {
   angle:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'gemini',model:'gemini-3.6-flash'}},
-  theme:{provider:'anthropic',model:'claude-sonnet-4-6',fallback:{provider:'openai',model:'gpt-4o'}},
-  gap:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
+  theme:{provider:'anthropic',model:'claude-sonnet-5',fallback:{provider:'openai',model:'gpt-4o'}},
+  gap:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'anthropic',model:'claude-sonnet-5'}},
   outline:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
   translate:{provider:'gemini',model:'gemini-3.6-flash',fallback:{provider:'anthropic',model:'claude-haiku-4-5-20251001'}},
-  places:{provider:'gemini',model:'gemini-3.6-flash',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
-  dialogue:{provider:'anthropic',model:'claude-sonnet-4-6',fallback:{provider:'openai',model:'gpt-4o'}},
+  places:{provider:'gemini',model:'gemini-3.6-flash',fallback:{provider:'anthropic',model:'claude-sonnet-5'}},
+  dialogue:{provider:'anthropic',model:'claude-sonnet-5',fallback:{provider:'openai',model:'gpt-4o'}},
   thumbnail:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
   metadata:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
   handoff:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
-  critic:{provider:'gemini',model:'gemini-3.6-flash',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
+  critic:{provider:'gemini',model:'gemini-3.6-flash',fallback:{provider:'anthropic',model:'claude-sonnet-5'}},
 };
 
 // <optgroup>-grouped <option>s built from MODEL_CATALOG. `selected` = "provider|model".
@@ -3346,28 +3349,52 @@ function movePlaceDown(i) {
   renderRouteOrder();
 }
 
+let _savingPlaces = false;
 async function saveConfirmedPlaces() {
+  if (_savingPlaces) return;                       // guard double-click
   if (!S.confirmedPlaces.length) { toast('No confirmed places to save', 'error'); return; }
-  let saved = 0;
-  for (const p of S.confirmedPlaces.filter(p => !p.is_existing)) {
+  _savingPlaces = true;
+  const btn = document.getElementById('save-places-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+  let saved = 0, skipped = 0;
+  try {
+    // Re-read the DB now so a re-run (or a place already added by hand) never duplicates.
+    let existing = new Set();
     try {
-      await notionAPI('pages', 'POST', {
-        parent: { database_id: DB_IDS.places },
-        properties: {
-          'Name': { title: [{ text: { content: p.name } }] },
-          'Type': { select: { name: p.type || 'Other' } },
-          'Prefecture': { select: { name: p.prefecture || 'Unknown' } },
-          'Country': { select: { name: p.country || 'Japan' } },
-          'Google Maps URL': { url: p.google_maps_url || null },
-          'B-Roll Description': { rich_text: [{ text: { content: p.broll_description || '' } }] },
-          'Halal': { select: { name: p.halal_estimate || 'Unknown' } },
-          'Price Range': { select: { name: p.price_range || 'Unknown' } },
-        }
-      });
-      saved++;
-    } catch (err) { console.error('Place save error', p.name, err); }
+      const cur = await notionAPI(`databases/${DB_IDS.places}/query`, 'POST', { page_size: 100 });
+      existing = new Set((cur.results || []).map(
+        r => (r.properties?.Name?.title?.[0]?.plain_text || '').trim().toLowerCase()
+      ));
+    } catch (e) { console.warn('places dedupe pre-check failed:', e.message); }
+
+    for (const p of S.confirmedPlaces) {
+      const key = (p.name || '').trim().toLowerCase();
+      if (p.is_existing || p._saved || existing.has(key)) { skipped++; continue; }
+      try {
+        await notionAPI('pages', 'POST', {
+          parent: { database_id: DB_IDS.places },
+          properties: {
+            'Name': { title: [{ text: { content: p.name } }] },
+            'Type': { select: { name: p.type || 'Other' } },
+            'Prefecture': { select: { name: p.prefecture || 'Unknown' } },
+            'Country': { select: { name: p.country || 'Japan' } },
+            'Google Maps URL': { url: p.google_maps_url || null },
+            'B-Roll Description': { rich_text: [{ text: { content: p.broll_description || '' } }] },
+            'Halal': { select: { name: p.halal_estimate || 'Unknown' } },
+            'Price Range': { select: { name: p.price_range || 'Unknown' } },
+          }
+        });
+        p._saved = true;
+        existing.add(key);
+        saved++;
+      } catch (err) { console.error('Place save error', p.name, err); }
+    }
+    toast(`Saved ${saved} new place${saved === 1 ? '' : 's'}${skipped ? `, skipped ${skipped} already in Notion` : ''}`, 'success');
+  } finally {
+    _savingPlaces = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Push Confirmed Places to Notion →'; }
   }
-  toast(`Saved ${saved} new places to Notion`, 'success');
 }
 
 // ─── STAGE 4 — SCRIPT BUILDER ────────────────────────────────────────────────

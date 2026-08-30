@@ -98,6 +98,17 @@ Order` so sections belong to the active episode (and `loadSections` filters
 
 ### Changed
 
+- **Model catalog refresh.** `MODEL_CATALOG` (Stage 0 dropdowns): Anthropic
+  `claude-sonnet-4-6` → `claude-sonnet-5`, added `claude-fable-5`; DeepSeek
+  added `deepseek-v4-flash` / `deepseek-v4-pro` (V3 is retired; `deepseek-chat`
+  kept as the alias); added `xai|grok-4`. Routing defaults (`DEFAULT_ROUTING_UI`
+  in `index.html`, `DEFAULT_ROUTING` + `SONNET` in `models.js`) and `PRICING`
+  repointed `claude-sonnet-4-6` → `claude-sonnet-5`; the old id stays in
+  `PRICING` so pre-existing Notion routing blocks still cost-log.
+- **`saveConfirmedPlaces` no longer duplicates.** Re-entry guard + button
+  disable while saving; re-queries the Places DB and skips any confirmed place
+  whose name already exists (catches double-clicks and re-runs); marks saved
+  rows so a second push is a no-op. Toast now reports skipped count.
 - **Keys/tokens are Netlify env vars only** — the browser sends none. Proxies
   require their env var (`500` if missing); the request-body key path is gone.
   `connectNotion()` uses the server-side `NOTION_TOKEN` (no paste), runs on load.
