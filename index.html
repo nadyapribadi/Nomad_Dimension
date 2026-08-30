@@ -1127,22 +1127,30 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
   <div id="transcript-work-area" style="display:none">
     <div class="card">
-      <div class="card-title"><span class="icon">📄</span> SRT / Transcript Upload</div>
+      <div class="card-title"><span class="icon">📄</span> Transcript</div>
       <div class="field">
-        <label>Paste SRT content or plain transcript</label>
+        <label>Fetch from YouTube (optional)</label>
+        <div class="row">
+          <input type="text" id="yt-transcript-url" placeholder="Paste a YouTube URL or video ID…" style="flex:1;min-width:220px">
+          <button class="btn btn-sm btn-primary" onclick="fetchTranscript()" id="yt-transcript-btn">Fetch transcript</button>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Tries YouTube's own captions first (free, no quota). Falls back to youtube-transcript.io when <code style="font-family:var(--font-mono)">TRANSCRIPT_API_KEY</code> is set. Fills the box below — still editable, and you can paste manually instead.</div>
+      </div>
+      <div class="field">
+        <label>SRT / plain transcript</label>
         <textarea id="transcript-input" rows="10" placeholder="Paste SRT or transcript here… If none available, leave blank and a content outline is generated from video metadata."></textarea>
       </div>
       <div class="row" style="margin-bottom:10px">
         <div id="lang-detect-badge" class="badge">Language: auto-detect</div>
         <div id="translate-toggle" style="display:none">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
-            <input type="checkbox" id="translate-check" checked> Translate JP→EN (Gemini Flash)
+            <input type="checkbox" id="translate-check" checked> Translate JP→EN (translate route)
           </label>
         </div>
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="runPass1()">Run Pass 1 — Extract Outline →</button>
-        <div id="pass1-loading" style="display:none" class="loading-row"><div class="spinner"></div> Haiku extracting key moments and places…</div>
+        <div id="pass1-loading" style="display:none" class="loading-row"><div class="spinner"></div> Extracting key moments and places…</div>
       </div>
     </div>
 
@@ -2796,6 +2804,30 @@ function onTranscriptVideoSelect() {
   const val = document.getElementById('transcript-video-select').value;
   document.getElementById('transcript-work-area').style.display = val ? '' : 'none';
   document.getElementById('pass1-result-card').style.display = 'none';
+}
+
+async function fetchTranscript() {
+  const url = document.getElementById('yt-transcript-url').value.trim();
+  if (!url) { toast('Paste a YouTube URL or video ID first', 'error'); return; }
+  const btn = document.getElementById('yt-transcript-btn');
+  btn.disabled = true;
+  btn.textContent = 'Fetching…';
+  try {
+    const res = await fetch('/.netlify/functions/yt-transcript', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    document.getElementById('transcript-input').value = data.text;
+    toast(`Transcript loaded (${data.text.length.toLocaleString()} chars, via ${data.source})`, 'success');
+  } catch (e) {
+    toast(`Transcript fetch failed: ${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Fetch transcript';
+  }
 }
 
 async function runPass1() {

@@ -91,6 +91,24 @@ Forwards to `https://www.googleapis.com/youtube/v3/{path}`.
 
 `key` is appended to the query string. Returns the raw YouTube Data API response.
 
+## `yt-transcript.js`
+
+`POST { "url": "<youtube url or 11-char id>", "lang": "ja" }` (`lang` optional).
+
+Tries the free path first — fetch the watch page, pull the caption track from
+`ytInitialPlayerResponse`, fetch it as `json3`, flatten to text. If that yields
+nothing and `TRANSCRIPT_API_KEY` (a youtube-transcript.io token) is set, falls
+back to `POST https://www.youtube-transcript.io/api/transcripts`.
+
+```jsonc
+// 200
+{ "text": "…", "videoId": "…", "lang": "ja", "source": "scrape" | "youtube-transcript.io" }
+// 404 { "error": "No transcript found…", "code": "not_found" }
+```
+
+No env var is required (free path only); `TRANSCRIPT_API_KEY` just enables the
+fallback.
+
 ## Contract stability
 
 The browser (`index.html`) depends on these shapes. Change them additively only;
