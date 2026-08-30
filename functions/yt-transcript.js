@@ -172,28 +172,35 @@ async function fetchFromTranscriptIo(videoId, key) {
   return text ? { text, lang: '' } : null;
 }
 
-// Response shape isn't documented — dig for the transcript defensively.
+// youtube-transcript.io returns [{ text: "<flat>", tracks: [{ language, transcript: [{start,dur,text}] }] }].
 function digTranscriptText(data) {
   const rec = Array.isArray(data) ? data[0] : data && (data[0] || data);
   if (!rec) return '';
-  if (typeof rec.transcript === 'string') return rec.transcript.trim();
-  const segs =
-    rec.transcript ||
-    rec.tracks ||
-    rec.segments ||
-    (rec.tracks && rec.tracks[0] && rec.tracks[0].transcript) ||
-    [];
-  const flat = Array.isArray(segs)
-    ? segs
-    : Array.isArray(segs && segs[0] && segs[0].transcript)
-      ? segs[0].transcript
-      : [];
-  const text = flat
-    .map((s) => (typeof s === 'string' ? s : s.text || s.utf8 || s.snippet || ''))
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return text;
+
+  // Preferred: the per-segment track (cleanest, language-tagged).
+  const track = Array.isArray(rec.tracks)
+    ? rec.tracks.find((t) => Array.isArray(t.transcript) && t.transcript.length)
+    : null;
+  if (track) {
+    const t = track.transcript
+      .map((s) => (s && (s.text || s.utf8 || s.snippet)) || '')
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (t) return t;
+  }
+
+  // Fallbacks: a flat string, or a bare segment array.
+  if (typeof rec.text === 'string' && rec.text.trim()) return rec.text.trim();
+  if (typeof rec.transcript === 'string' && rec.transcript.trim()) return rec.transcript.trim();
+  if (Array.isArray(rec.transcript)) {
+    return rec.transcript
+      .map((s) => (typeof s === 'string' ? s : (s && (s.text || s.utf8)) || ''))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  return '';
 }
 
 // ─── shared ────────────────────────────────────────────────────────────────
