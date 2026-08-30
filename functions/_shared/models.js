@@ -17,6 +17,7 @@ const DEFAULT_ROUTING = {
   dialogue: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
   thumbnail: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
   metadata: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  handoff: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
   gap: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
   // Critic runs on a different family from the writer by default.
   critic: { provider: 'gemini', model: 'gemini-2.0-flash' },
