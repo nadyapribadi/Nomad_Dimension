@@ -931,7 +931,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     <div class="tab active" onclick="switchTab('res','youtube')">📺 YouTube</div>
     <div class="tab" onclick="switchTab('res','prep');renderPrepList()">🧪 Prep</div>
     <div class="tab" onclick="switchTab('res','places')">📍 Places</div>
-    <div class="tab" onclick="switchTab('res','web')">🌐 Web</div>
+    <div class="tab" onclick="switchTab('res','web');renderWebReview()">🌐 Web</div>
   </div>
 
   <div id="res-tab-youtube">
@@ -1030,7 +1030,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   <div id="res-tab-places" style="display:none">
     <div class="card">
       <div class="card-title"><span class="icon">📍</span> Places → Notion library</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Pulls the <code style="font-family:var(--font-mono)">places</code> list out of each Prep breakdown, enriches each via Google Maps, and <strong>pushes them to your Places DB</strong> (or <strong>refreshes</strong> ones already there — Maps data drifts). Sorted A–Z. Run <strong>Prep → Run breakdown</strong> first.</p>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Its own pass — extracts places straight from the <strong>ticked transcripts</strong> (independent of the breakdown), enriches each via Google Maps, and <strong>pushes them to your Places DB</strong> (or <strong>refreshes</strong> ones already there). Sorted A–Z. Tick videos + fetch transcripts in <strong>Prep</strong> first.</p>
       <button class="btn btn-primary" onclick="extractPlaces()">Collect Places →</button>
       <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Reading breakdowns…</div>
       <div id="places-error" class="info-box error" style="display:none;margin-top:12px"></div>
@@ -1051,11 +1051,27 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     </div>
   </div>
 
-  <!-- WEB TAB — stub (R4) -->
+  <!-- WEB TAB -->
   <div id="res-tab-web" style="display:none">
     <div class="card">
       <div class="card-title"><span class="icon">🌐</span> Web research</div>
-      <p style="color:var(--text2);font-size:13px">Coming next (R4): enter a place, category, or region → web search → drafts rows for the Research / Places / Data / Glossary stores → review → push.</p>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Ask a question — a place, a category, a region, a "why". Grounded Google search → drafts rows for the Research / Prices / Data / Glossary / Places stores with real source URLs. Every claim carries its source; review and push below.</p>
+      <div class="field">
+        <label>Research question</label>
+        <input type="text" id="web-query" placeholder="e.g. history of Lake Tanuki · onsen etiquette for tattoos · why is rural Iwate depopulating">
+      </div>
+      <div class="field">
+        <label>Focus (optional)</label>
+        <input type="text" id="web-focus" placeholder="e.g. primary sources only · figures with year · Japanese-language sources">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="runWebResearch(this)">Research →</button>
+      </div>
+      <div id="web-status" style="font-size:12px;color:var(--text3);margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="icon">📤</span> Review &amp; push</div>
+      <div id="web-review"><div class="empty-state"><div class="icon">🌐</div><p>Run a search above.</p></div></div>
     </div>
   </div>
 </div>
@@ -2792,8 +2808,18 @@ async function prepFetchTranscript(i) {
 // Every field is something a travel-vlog transcript actually contains. Lists come
 // back [] when the source is silent. prefecture_guess / area_guess are the only
 // inferred fields.
+// Note: places are NOT in the breakdown — they get their own transcript pass in
+// the Places tab (PLACES_SHAPE), so each is independently re-runnable.
 const EXTRACT_SHAPE_1 = `{
   "summary": "2-3 sentences — what happens",
+  "activities": [ { "activity": "e.g. sunrise hike to the ridge", "type": "Hike | Water | Scenic Drive | Festival | Food Experience | Craft | Stargazing | Other", "place": "where, or \\"\\"", "season": "if mentioned, else \\"\\"", "difficulty": "Easy | Moderate | Hard | \\"\\"", "duration": "if mentioned", "cost": "if mentioned" } ],
+  "food": [ { "dish": "romanised name", "japanese_name": "kanji/kana or \\"\\"", "romaji": "", "category": "Noodle | Rice | Seafood | Sweet | Street | Drink | Other", "region": "region of origin if known, else \\"\\"", "halal": "Yes | Partial | No | Unknown", "description": "taste / what it is", "where": "place or \\"\\"" } ],
+  "transport": [ { "route": "From → To", "mode": "Drive | Ferry | Train | Ropeway | Walk", "from": "", "to": "", "distance_km": 0, "duration": "if mentioned", "fare": "if mentioned", "scenic": false } ],
+  "beats": [ { "moment": "a scene/turn", "why_it_matters": "one line", "type": "discovery | problem | scenic | human | food" } ],
+  "tips": ["practical advice the vlogger gives"],
+  "quotes": [ { "text": "memorable line, translated to English", "speaker": "who said it, or \\"\\"" } ]
+}`;
+const PLACES_SHAPE = `{
   "places": [
     {
       "name": "romanised place name",
@@ -2805,14 +2831,7 @@ const EXTRACT_SHAPE_1 = `{
       "prefecture_guess": "best guess of the Japanese prefecture, else \\"\\"",
       "area_guess": "city / town / area, else \\"\\""
     }
-  ],
-  "route": ["place name in visit order", "..."],
-  "activities": [ { "activity": "e.g. sunrise hike to the ridge", "type": "Hike | Water | Scenic Drive | Festival | Food Experience | Craft | Stargazing | Other", "place": "where, or \\"\\"", "season": "if mentioned, else \\"\\"", "difficulty": "Easy | Moderate | Hard | \\"\\"", "duration": "if mentioned", "cost": "if mentioned" } ],
-  "food": [ { "dish": "romanised name", "japanese_name": "kanji/kana or \\"\\"", "romaji": "", "category": "Noodle | Rice | Seafood | Sweet | Street | Drink | Other", "region": "region of origin if known, else \\"\\"", "halal": "Yes | Partial | No | Unknown", "description": "taste / what it is", "where": "place or \\"\\"" } ],
-  "transport": [ { "route": "From → To", "mode": "Drive | Ferry | Train | Ropeway | Walk", "from": "", "to": "", "distance_km": 0, "duration": "if mentioned", "fare": "if mentioned", "scenic": false } ],
-  "beats": [ { "moment": "a scene/turn", "why_it_matters": "one line", "type": "discovery | problem | scenic | human | food" } ],
-  "tips": ["practical advice the vlogger gives"],
-  "quotes": [ { "text": "memorable line, translated to English", "speaker": "who said it, or \\"\\"" } ]
+  ]
 }`;
 const EXTRACT_SHAPE_2 = `{
   "research": [ { "statement": "one checkable claim, one sentence", "kind": "fact | connection | dispute | misconception | sentiment | etiquette | access | timing", "confidence": "low", "as_of_date": "YYYY-MM-DD or \\"\\"", "prefecture": "if known, else \\"\\"", "topic": "short topic tag" } ],
@@ -3060,59 +3079,76 @@ const RESEARCH_STORES = {
       'English': _txt(it.english), 'Usage Note': _txt(it.usage_note),
     }),
   },
+  // Web-sourced places (no Maps enrichment on this path — the Places tab is the
+  // rich route). titleProp 'Name' matches the Places DB.
+  places: {
+    db: () => DB_IDS.places, label: 'Places', titleProp: 'Name',
+    name: (it) => it.name,
+    props: (it) => ({
+      'Name': { title: [{ text: { content: it.name || '' } }] },
+      'Type': { select: { name: normPlaceType(it.type) } },
+      'Prefecture': { select: { name: PREFECTURES.includes(it.prefecture_guess) ? it.prefecture_guess : 'Unknown' } },
+      'Country': { select: { name: 'Japan' } },
+      'B-Roll Description': _txt(it.what_happens_here),
+      'Google Maps URL': { url: 'https://www.google.com/maps/search/' + encodeURIComponent([it.name, it.area_guess, 'Japan'].filter(Boolean).join(' ')) },
+      'Date Added': { date: { start: _today() } }, 'Last Verified': { date: { start: _today() } },
+    }),
+  },
 };
 
-// Flatten one array across the ticked videos' breakdowns, dedup by name.
-function extractPool(key) {
-  const seen = new Set();
-  const out = [];
-  for (const b of (S.episodeBreakdowns || [])) {
-    for (const it of (b[key] || [])) {
-      const nm = String(RESEARCH_STORES[key].name(it) || '').trim();
-      if (!nm || seen.has(nm.toLowerCase())) continue;
-      seen.add(nm.toLowerCase());
-      out.push({ ...it, _key: `${key}:${nm.toLowerCase()}` });
-    }
+// Flatten one array from a source (Prep breakdowns or the Web result), dedup by name.
+function poolFor(key, src) {
+  const rows = src === 'web'
+    ? ((S.webExtract && S.webExtract[key]) || [])
+    : (S.episodeBreakdowns || []).flatMap(b => b[key] || []);
+  const seen = new Set(); const out = [];
+  for (const it of rows) {
+    const nm = String(RESEARCH_STORES[key].name(it) || '').trim();
+    if (!nm || seen.has(nm.toLowerCase())) continue;
+    seen.add(nm.toLowerCase());
+    out.push({ ...it, _key: `${src}:${key}:${nm.toLowerCase()}` });
   }
   return out;
 }
+const _skipSet = (src) => (S[src === 'web' ? '_webSkip' : '_extractSkip'] ||= new Set());
 
-function renderExtractReview() {
-  rebuildCombinedOutline();
-  const el = document.getElementById('extract-review');
+function renderReviewInto(elId, src) {
+  const el = document.getElementById(elId);
   if (!el) return;
-  const keys = Object.keys(RESEARCH_STORES).filter(k => extractPool(k).length);
+  const keys = Object.keys(RESEARCH_STORES).filter(k => poolFor(k, src).length);
   if (!keys.length) {
-    el.innerHTML = '<div class="empty-state"><div class="icon">📤</div><p>Nothing extracted yet — run a breakdown above.</p></div>';
+    el.innerHTML = `<div class="empty-state"><div class="icon">📤</div><p>${src === 'web' ? 'Run a search above.' : 'Run a breakdown above.'}</p></div>`;
     return;
   }
-  S._extractSkip = S._extractSkip || new Set();
+  const skip = _skipSet(src);
   el.innerHTML = keys.map(k => {
-    const pool = extractPool(k);
+    const pool = poolFor(k, src);
     return `<div style="margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <span style="font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">${RESEARCH_STORES[k].label} · ${pool.length}</span>
-        <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${k}',this)">Push ticked →</button>
+        <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${k}',this,'${src}')">Push ticked →</button>
       </div>
-      ${pool.map((it, i) => {
-        const off = S._extractSkip.has(it._key);
+      ${pool.map(it => {
+        const off = skip.has(it._key);
         return `<label style="display:flex;gap:8px;align-items:flex-start;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:3px;opacity:${off ? 0.4 : 1};font-size:12px">
-          <input type="checkbox" ${off ? '' : 'checked'} onchange="toggleExtract('${it._key}')" style="width:14px;flex:none;margin-top:2px">
+          <input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview('${it._key}','${src}')" style="width:14px;flex:none;margin-top:2px">
           <span>${RESEARCH_STORES[k].name(it) || '(unnamed)'}</span>
         </label>`;
       }).join('')}
     </div>`;
   }).join('');
 }
-function toggleExtract(key) {
-  S._extractSkip = S._extractSkip || new Set();
-  if (S._extractSkip.has(key)) S._extractSkip.delete(key); else S._extractSkip.add(key);
-  renderExtractReview();
+function renderExtractReview() { rebuildCombinedOutline(); renderReviewInto('extract-review', 'prep'); }
+function renderWebReview() { renderReviewInto('web-review', 'web'); }
+function toggleReview(key, src) {
+  const s = _skipSet(src);
+  if (s.has(key)) s.delete(key); else s.add(key);
+  renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
 }
 
-async function pushStore(key, btn) {
+async function pushStore(key, btn, src) {
   const cfg = RESEARCH_STORES[key];
-  const items = extractPool(key).filter(it => !(S._extractSkip || new Set()).has(it._key));
+  const items = poolFor(key, src).filter(it => !_skipSet(src).has(it._key));
   if (!items.length) { toast('Nothing ticked', 'error'); return; }
   if (btn) { btn.disabled = true; btn.textContent = 'Pushing…'; }
   let added = 0, skipped = 0, failed = 0;
@@ -3135,6 +3171,35 @@ async function pushStore(key, btn) {
       .filter(Boolean).join(' · ') || 'nothing to push', failed ? 'error' : 'success');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Push ticked →'; }
+  }
+}
+
+async function runWebResearch(btn) {
+  const q = document.getElementById('web-query').value.trim();
+  if (!q) { toast('Type what to research', 'error'); return; }
+  const focus = document.getElementById('web-focus').value.trim();
+  const statusEl = document.getElementById('web-status');
+  if (btn) { btn.disabled = true; btn.textContent = 'Searching…'; }
+  statusEl.textContent = 'Searching the web…';
+  try {
+    const res = await fetch('/.netlify/functions/web-research', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: q, focus }),
+    });
+    const body = await res.text();
+    let d; try { d = JSON.parse(body); } catch { throw new Error(`web-research ${res.status} — ${body.slice(0, 160)}`); }
+    if (!res.ok) throw new Error(d.error || `web-research ${res.status}`);
+    S.webExtract = d.extract || {};
+    S._webSkip = new Set();
+    const n = Object.values(S.webExtract).reduce((a, v) => a + (Array.isArray(v) ? v.length : 0), 0);
+    statusEl.innerHTML = `${n} items from ${(d.sources || []).length} sources. ` +
+      (d.sources || []).slice(0, 6).map(s => `<a href="${s.url}" target="_blank" rel="noopener" style="color:var(--blue)">${s.title || 'source'}</a>`).join(' · ');
+    renderWebReview();
+  } catch (e) {
+    statusEl.textContent = `Failed: ${e.message}`;
+    toast(`Web research failed: ${e.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Research →'; }
   }
 }
 
@@ -3728,14 +3793,14 @@ const priceRange = (s) => {
 async function extractPlaces() {
   const errEl = document.getElementById('places-error');
   errEl.style.display = 'none';
-  rebuildCombinedOutline();
-  if (!S.episodeBreakdowns.length) {
-    errEl.textContent = 'No breakdowns yet. In the Prep tab, run "Run breakdown" on your selected source video(s) first.';
+  const vids = [...S.epSelected].map(i => S.epQueue[i]).filter(v => v && v.transcript);
+  if (!vids.length) {
+    errEl.textContent = 'No transcripts. In the Prep tab, tick source videos and fetch their transcripts first.';
     errEl.style.display = '';
     return;
   }
   const loadEl = document.getElementById('places-loading');
-  loadEl.innerHTML = '<div class="spinner"></div> Reading breakdowns…';
+  loadEl.innerHTML = `<div class="spinner"></div> Extracting places from ${vids.length} transcript${vids.length > 1 ? 's' : ''}…`;
   loadEl.style.display = 'flex';
 
   try {
@@ -3746,10 +3811,18 @@ async function extractPlaces() {
       if (nm) existingByName.set(nm, { id: r.id, prefecture: r.properties?.Prefecture?.select?.name || '' });
     }
 
-    // Flatten every breakdown's places; merge repeats within the batch by name.
+    // One places-only extraction per transcript; merge repeats by name.
+    const guard = 'Find EVERY location visited or named. prefecture_guess / area_guess may be inferred from the name.';
+    const perVideo = await Promise.all(vids.map(async v => {
+      try {
+        const r = await runExtractCall(v.transcript, PLACES_SHAPE, guard);
+        return { title: v.title, places: (r && r.places) || [] };
+      } catch (e) { console.warn('places extract failed for', v.title, e.message); return { title: v.title, places: [] }; }
+    }));
+
     const byKey = new Map();
-    for (const b of S.episodeBreakdowns) {
-      for (const p of (b.places || [])) {
+    for (const b of perVideo) {
+      for (const p of b.places) {
         const name = (p.name || '').trim();
         if (!name) continue;
         const key = name.toLowerCase();
@@ -3785,15 +3858,14 @@ async function extractPlaces() {
     }
     S.extractedPlaces = [...byKey.values()].sort((a, z) => a.name.localeCompare(z.name));
     S.confirmedPlaces = [];
-    if (!S.extractedPlaces.length) throw new Error('the breakdowns list no places');
+    if (!S.extractedPlaces.length) throw new Error('no places found in the transcript(s)');
 
     loadEl.innerHTML = '<div class="spinner"></div> Looking up places on Google Maps…';
     const enriched = await enrichPlacesFromMaps();
 
     renderPlacesReview();
     document.getElementById('places-review-area').style.display = '';
-    const n = S.episodeBreakdowns.length;
-    toast(`${S.extractedPlaces.length} places from ${n} breakdown${n > 1 ? 's' : ''}` +
+    toast(`${S.extractedPlaces.length} places from ${vids.length} transcript${vids.length > 1 ? 's' : ''}` +
       (enriched ? ` · ${enriched} matched on Google Maps` : ''), 'success');
   } catch (err) {
     errEl.textContent = `Places failed: ${err.message}`;
