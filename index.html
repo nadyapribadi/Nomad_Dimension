@@ -1001,6 +1001,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         <button class="btn btn-sm" onclick="loadSourceQueue()">↻ Load from Notion</button>
         <div style="flex:1"></div>
         <span id="ep-sel-count" style="font-size:12px;color:var(--text2)">0 selected</span>
+        <button class="btn btn-sm btn-ghost" onclick="selectAllQueue()">Select shown</button>
         <button class="btn btn-sm btn-ghost" onclick="clearEpSelection()">Clear</button>
       </div>
       <div class="row" id="ep-q-filters" style="flex-wrap:wrap;gap:6px;margin-bottom:10px;display:none">
@@ -1057,7 +1058,11 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     </div>
     <div id="places-review-area" style="display:none">
       <div class="card">
-        <div class="card-title"><span class="icon">🗂️</span> Places to Review</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div class="card-title" style="margin:0"><span class="icon">🗂️</span> Places to Review</div>
+          <div style="flex:1"></div>
+          <button class="btn btn-sm btn-ghost" onclick="confirmAllPlaces()">Confirm all</button>
+        </div>
         <div id="places-list"></div>
       </div>
       <div class="card">
@@ -2718,17 +2723,15 @@ async function loadSourceQueue() {
 
 const _prepState = (v) => (!v.transcript ? 'none' : !v.breakdown ? 'tx' : 'done');
 
-function renderQueue() {
-  const area = document.getElementById('ep-queue-area');
-  if (!area || !S.epQueue.length) return;
-  const q = (document.getElementById('ep-q-search').value || '').trim().toLowerCase();
-  const rg = (document.getElementById('ep-q-region').value || '').trim().toLowerCase();
-  const ch = document.getElementById('ep-q-channel').value;
-  const pp = document.getElementById('ep-q-prep').value;
-  const st = document.getElementById('ep-q-status').value;
-  const sort = document.getElementById('ep-q-sort').value;
-
-  let rows = S.epQueue.map((v, i) => ({ v, i })).filter(({ v }) =>
+// the current filter/sort applied to S.epQueue → [{v,i}]
+function queueFiltered() {
+  const g = (id) => (document.getElementById(id)?.value || '').trim().toLowerCase();
+  const q = g('ep-q-search'), rg = g('ep-q-region');
+  const ch = document.getElementById('ep-q-channel')?.value || '';
+  const pp = document.getElementById('ep-q-prep')?.value || '';
+  const st = document.getElementById('ep-q-status')?.value || '';
+  const sort = document.getElementById('ep-q-sort')?.value || 'new';
+  const rows = S.epQueue.map((v, i) => ({ v, i })).filter(({ v }) =>
     (!q || `${v.title} ${v.channel} ${v.angle} ${v.tags.join(' ')}`.toLowerCase().includes(q)) &&
     (!rg || `${v.region} ${v.country}`.toLowerCase().includes(rg)) &&
     (!ch || v.channel === ch) &&
@@ -2736,6 +2739,20 @@ function renderQueue() {
     (!st || v.status === st));
   if (sort === 'title') rows.sort((a, b) => a.v.title.localeCompare(b.v.title));
   else if (sort === 'channel') rows.sort((a, b) => (a.v.channel || '').localeCompare(b.v.channel || '') || a.v.title.localeCompare(b.v.title));
+  return rows;
+}
+
+function selectAllQueue() {
+  for (const { i } of queueFiltered()) S.epSelected.add(i);
+  document.getElementById('ep-sel-count').textContent = `${S.epSelected.size} selected`;
+  renderQueue();
+  renderPrepList();
+}
+
+function renderQueue() {
+  const area = document.getElementById('ep-queue-area');
+  if (!area || !S.epQueue.length) return;
+  const rows = queueFiltered();
 
   const statusBadge = { 'Available': 'badge-green', 'Partially Used': 'badge-amber', 'Fully Used': 'badge' };
   const clip = (s) => (s && s.length > 130 ? s.slice(0, 129) + '…' : s || '');
@@ -4165,6 +4182,16 @@ function confirmPlace(i) {
 function skipPlace(i) {
   const el = document.getElementById(`place-${i}`);
   if (el) { el.style.opacity = '.3'; el.style.pointerEvents = 'none'; }
+}
+
+function confirmAllPlaces() {
+  S.extractedPlaces.forEach((p, i) => {
+    if (!S.confirmedPlaces.find(cp => cp.name === p.name)) S.confirmedPlaces.push(p);
+    const el = document.getElementById(`place-${i}`);
+    if (el) { el.style.opacity = '.5'; el.style.pointerEvents = 'none'; }
+  });
+  renderConfirmedList();
+  toast(`${S.confirmedPlaces.length} queued`, 'success');
 }
 
 function renderConfirmedList() {
