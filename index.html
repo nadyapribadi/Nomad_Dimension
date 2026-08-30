@@ -1025,9 +1025,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     <div class="card">
       <div class="card-title"><span class="icon">🧪</span> Prep Ingredients</div>
       <p style="font-size:12px;color:var(--text3);margin-bottom:12px">
-        Fetch each video's transcript and extract an outline — saved to its Notion row.
-        The <strong>Theme</strong> step reads these outlines, so the concept is grounded in
-        what the videos actually contain (not just the title).
+        Fetch each video's transcript, then <strong>Run breakdown</strong> — one AI pass
+        pulls a structured object (summary · places · route · beats · food · tips · quotes)
+        from what's actually said, and saves it as JSON to the video's Notion row.
+        Places and Assemble both read this.
       </p>
       <div id="ep-prep-list"></div>
       <div class="btn-row">
@@ -1502,8 +1503,10 @@ const S = {
   audioBuffers: {},
   audioCtx: null,
   currentTranscriptOutline: '',
+  episodeBreakdowns: [],
   extractedPlaces: [],
   confirmedPlaces: [],
+  includeItems: [],
   handoffDoc: null,
 };
 
@@ -2592,7 +2595,7 @@ async function loadSourceQueue() {
         url: pr['userDefined:YouTube URL']?.url || '',
         // carried so Prep shows what's already done
         transcript: pr['Transcript']?.rich_text?.map(r => r.plain_text).join('') || '',
-        outline: pr['Content Outline']?.rich_text?.map(r => r.plain_text).join('') || '',
+        ...parseStoredBreakdown(pr['Content Outline']?.rich_text?.map(r => r.plain_text).join('') || ''),
       };
     });
 
@@ -2611,7 +2614,7 @@ async function loadSourceQueue() {
               <td><input type="checkbox" id="ep-cb-${i}" ${S.epSelected.has(i)?'checked':''}></td>
               <td style="font-weight:500">${v.title}<div style="font-size:11px;color:var(--text3);font-weight:400">${v.angle}</div></td>
               <td style="font-size:12px;color:var(--text2)">${v.channel}</td>
-              <td style="font-size:11px;color:var(--text3)">${v.transcript ? '📄' : '·'} ${v.outline ? '📋' : '·'}</td>
+              <td style="font-size:11px;color:var(--text3)">${v.transcript ? '📄' : '·'} ${v.breakdown ? '📋' : '·'}</td>
               <td><span class="badge ${statusBadge[v.status] || 'badge'}">${v.status}</span></td>
             </tr>`).join('')}
         </tbody>
@@ -2652,14 +2655,14 @@ function renderPrepList() {
       <div style="font-weight:500;margin-bottom:8px">${v.title}</div>
       <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
         <span class="badge ${v.transcript ? 'badge-green' : ''}">📄 transcript ${v.transcript ? '✓' : '—'}</span>
-        <span class="badge ${v.outline ? 'badge-green' : ''}">📋 outline ${v.outline ? '✓' : '—'}</span>
+        <span class="badge ${v.breakdown ? 'badge-green' : ''}">📋 breakdown ${v.breakdown ? '✓' : '—'}</span>
       </div>
       <div class="row" style="flex-wrap:wrap;gap:8px">
         <button class="btn btn-sm" onclick="prepFetchTranscript(${i})" id="prep-tx-btn-${i}">${v.transcript ? 'Re-fetch transcript' : 'Fetch transcript'}</button>
         <button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'paste')">paste transcript</button>
-        <button class="btn btn-sm" onclick="prepRunOutline(${i})" id="prep-ol-btn-${i}" ${v.transcript ? '' : 'disabled'}>${v.outline ? 'Re-run outline' : 'Run outline'}</button>
+        <button class="btn btn-sm" onclick="prepRunBreakdown(${i})" id="prep-ol-btn-${i}" ${v.transcript ? '' : 'disabled'}>${v.breakdown ? 'Re-run breakdown' : 'Run breakdown'}</button>
         ${v.transcript ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'tx')">view transcript</button>` : ''}
-        ${v.outline ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'ol')">view outline</button>` : ''}
+        ${v.breakdown ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'ol')">view breakdown</button>` : ''}
         <a class="btn btn-sm btn-ghost" href="${v.url || '#'}" target="_blank" rel="noopener">▶ open video</a>
       </div>
       <div id="prep-paste-${i}" style="display:none;margin-top:8px">
@@ -2746,53 +2749,128 @@ async function prepFetchTranscript(i) {
   prepStatus(i, msg);    // then restore the message on the fresh node
 }
 
-async function prepRunOutline(i) {
+// The one place the transcript-extraction schema is defined. Every field is
+// something a travel-vlog transcript actually contains — no prefecture, no
+// timestamps, no halal. Lists come back empty when the video is silent.
+const BREAKDOWN_SHAPE = `{
+  "summary": "2-3 sentences — what happens in this video",
+  "places": [
+    {
+      "name": "romanised place name",
+      "name_local": "local-script name or \\"\\"",
+      "type": "Restaurant | Food Stall | Onsen / Wellness | Michi-no-eki | Nature / Landscape | Cultural / Historic | Accommodation | Viewpoint | Attraction | Shop | Other",
+      "what_happens_here": "1-2 sentences",
+      "food_here": "dishes eaten here, or \\"\\"",
+      "price_if_spoken": "e.g. ¥500 / free — \\"\\" if not stated on camera"
+    }
+  ],
+  "route": ["place name in visit order", "..."],
+  "beats": [ { "moment": "a scene/turn", "why_it_matters": "one line", "type": "discovery | problem | scenic | human | food" } ],
+  "food": [ { "dish": "name", "where": "place or \\"\\"" } ],
+  "tips": ["practical advice the vlogger actually gives"],
+  "quotes": ["memorable line, translated to English"]
+}`;
+
+// Stored breakdown JSON (or a legacy prose outline) -> { breakdown, outline }.
+function parseStoredBreakdown(raw) {
+  const text = (raw || '').trim();
+  if (text) {
+    try {
+      const o = JSON.parse(text);
+      if (o && typeof o === 'object' && !Array.isArray(o)) {
+        return { breakdown: o, outline: renderBreakdownText(o) };
+      }
+    } catch { /* legacy prose outline */ }
+  }
+  return { breakdown: null, outline: text };
+}
+
+// breakdown object -> human-readable text (view pane + downstream AI prompts).
+function renderBreakdownText(b) {
+  if (!b || typeof b !== 'object') return '';
+  const L = [];
+  if (b.summary) L.push(b.summary, '');
+  if (b.route && b.route.length) L.push('ROUTE: ' + b.route.join(' → '), '');
+  if (b.places && b.places.length) {
+    L.push('PLACES:');
+    for (const p of b.places) {
+      L.push(`• ${p.name}${p.name_local ? ` (${p.name_local})` : ''} — ${p.type || 'Other'}` +
+        `${p.price_if_spoken ? ` · ${p.price_if_spoken}` : ''}`);
+      if (p.what_happens_here) L.push(`  ${p.what_happens_here}`);
+      if (p.food_here) L.push(`  food: ${p.food_here}`);
+    }
+    L.push('');
+  }
+  if (b.beats && b.beats.length) {
+    L.push('BEATS:');
+    for (const x of b.beats) L.push(`• [${x.type || '—'}] ${x.moment} — ${x.why_it_matters}`);
+    L.push('');
+  }
+  if (b.food && b.food.length) {
+    L.push('FOOD:');
+    for (const f of b.food) L.push(`• ${f.dish}${f.where ? ` @ ${f.where}` : ''}`);
+    L.push('');
+  }
+  if (b.tips && b.tips.length) { L.push('TIPS:'); for (const t of b.tips) L.push(`• ${t}`); L.push(''); }
+  if (b.quotes && b.quotes.length) { L.push('QUOTES:'); for (const q of b.quotes) L.push(`• "${q}"`); }
+  return L.join('\n').trim();
+}
+
+async function prepRunBreakdown(i) {
   const v = S.epQueue[i];
   if (!v.transcript) { prepStatus(i, 'Fetch the transcript first.'); return; }
   const btn = document.getElementById(`prep-ol-btn-${i}`);
   btn.disabled = true; btn.textContent = 'Running…';
   let msg = '';
   try {
-    const prompt = `Analyse this video transcript for the Nomad Dimension channel.
-The transcript may be in any language (or a rough machine translation). Work out the
-actual meaning, translate/interpret it into natural English, then analyse. Keep place
-names in their correct local romanisation.
+    const prompt = `Break down this source-video transcript for the Nomad Dimension channel.
+The transcript may be in any language or a rough machine translation — work out the
+real meaning and render everything in natural English. Romanise place names.
+Record ONLY what the transcript actually supports. Use "" or [] wherever it is
+silent — never invent a price, a location, or an event that isn't there.
 
 <transcript>
-${v.transcript.slice(0, 8000)}
+${v.transcript.slice(0, 12000)}
 </transcript>
 
-Return a structured outline:
-1. KEY MOMENTS — 5-8 significant scenes/beats
-2. PLACES MENTIONED — every location (name, type, context)
-3. NARRATIVE ARC — one paragraph
-4. EPISODE POTENTIAL — how it fits the Nomad Dimension format
-Use clear headers.`;
-    const out = (await aiRun('outline', { system: buildDNASystem(), messages: [{ role: 'user', content: prompt }] })).text;
-    v.outline = out;
+Return ONLY this JSON shape, no markdown:
+${BREAKDOWN_SHAPE}`;
+    const raw = (await aiRun('outline', {
+      system: buildDNASystem(),
+      maxTokens: 6000,
+      messages: [{ role: 'user', content: prompt }],
+    })).text;
+
+    let parsed;
+    try { parsed = parseJsonLoose(raw); }
+    catch { console.error('breakdown raw reply:', raw); throw new Error('the model’s reply was not valid JSON — Re-run (see console)'); }
+    if (!parsed || typeof parsed !== 'object') throw new Error('the breakdown came back empty');
+
+    v.breakdown = parsed;
+    v.outline = renderBreakdownText(parsed);
     rebuildCombinedOutline();
     let saveErr = null;
     await notionAPI(`pages/${v.id}`, 'PATCH', {
-      properties: { 'Content Outline': { rich_text: codeBlockRichText(out.slice(0, 190000)) } },
+      properties: { 'Content Outline': { rich_text: codeBlockRichText(JSON.stringify(parsed, null, 2).slice(0, 190000)) } },
     }).catch(e => { saveErr = e; });
     msg = saveErr
-      ? `⚠ Outline generated but NOT saved to Notion: ${saveErr.message}. Click Re-run to retry.`
-      : 'Outline saved to Notion (Content Outline).';
+      ? `⚠ Breakdown generated but NOT saved to Notion: ${saveErr.message}. Click Re-run to retry.`
+      : `Breakdown saved to Notion — ${(parsed.places || []).length} places, ${(parsed.beats || []).length} beats.`;
   } catch (e) {
-    msg = `Outline failed: ${e.message}`;
+    msg = `Breakdown failed: ${e.message}`;
   } finally {
     renderPrepList();
     prepStatus(i, msg);
   }
 }
 
-// Concatenate every prepped outline so Stage 3B (extractPlaces) has episode-wide material.
+// Aggregate the selected videos' breakdowns for the episode-wide consumers
+// (Places extraction, Assemble's Include checklist) + a combined text blob.
 function rebuildCombinedOutline() {
-  const parts = [...S.epSelected]
-    .map(i => S.epQueue[i])
-    .filter(v => v && v.outline)
-    .map(v => `### ${v.title}\n${v.outline}`);
-  if (parts.length) S.currentTranscriptOutline = parts.join('\n\n');
+  const sel = [...S.epSelected].map(i => S.epQueue[i]).filter(Boolean);
+  S.episodeBreakdowns = sel.filter(v => v.breakdown).map(v => ({ title: v.title, ...v.breakdown }));
+  const parts = sel.filter(v => v.outline).map(v => `### ${v.title}\n${v.outline}`);
+  S.currentTranscriptOutline = parts.length ? parts.join('\n\n') : '';
 }
 
 async function generateThemes() {
