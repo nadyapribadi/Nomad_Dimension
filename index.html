@@ -997,11 +997,31 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
   <div id="res-tab-prep" style="display:none">
     <div class="card">
       <div class="card-title"><span class="icon">📋</span> 1 · Pick source videos</div>
-      <div class="btn-row" style="margin-top:0;margin-bottom:12px">
+      <div class="btn-row" style="margin-top:0;margin-bottom:10px">
         <button class="btn btn-sm" onclick="loadSourceQueue()">↻ Load from Notion</button>
         <div style="flex:1"></div>
         <span id="ep-sel-count" style="font-size:12px;color:var(--text2)">0 selected</span>
         <button class="btn btn-sm btn-ghost" onclick="clearEpSelection()">Clear</button>
+      </div>
+      <div class="row" id="ep-q-filters" style="flex-wrap:wrap;gap:6px;margin-bottom:10px;display:none">
+        <input type="text" id="ep-q-search" oninput="renderQueue()" placeholder="title / channel / angle…" style="flex:1;min-width:160px">
+        <input type="text" id="ep-q-region" oninput="renderQueue()" placeholder="region / prefecture" style="width:150px">
+        <select id="ep-q-channel" onchange="renderQueue()" style="width:150px"><option value="">all channels</option></select>
+        <select id="ep-q-prep" onchange="renderQueue()" style="width:150px">
+          <option value="">any prep state</option>
+          <option value="none">needs transcript</option>
+          <option value="tx">has transcript, no breakdown</option>
+          <option value="done">has breakdown</option>
+        </select>
+        <select id="ep-q-status" onchange="renderQueue()" style="width:140px">
+          <option value="">any status</option>
+          <option>Available</option><option>Partially Used</option>
+        </select>
+        <select id="ep-q-sort" onchange="renderQueue()" style="width:130px">
+          <option value="new">newest</option>
+          <option value="title">title A–Z</option>
+          <option value="channel">by channel</option>
+        </select>
       </div>
       <div id="ep-queue-area">
         <div class="empty-state">
@@ -2670,39 +2690,70 @@ async function loadSourceQueue() {
         channel: pr['Source Channel']?.rich_text?.[0]?.plain_text || '',
         angle: pr['Content Angle']?.rich_text?.[0]?.plain_text || '',
         country: pr['Country']?.select?.name || '',
+        region: pr['Region / Prefecture']?.rich_text?.map(r => r.plain_text).join('') || '',
+        tags: (pr['Content Type']?.multi_select || []).map(t => t.name),
         status: pr['B-Roll Status']?.select?.name || 'Available',
         url: pr['userDefined:YouTube URL']?.url || '',
-        // carried so Prep shows what's already done
         transcript: pr['Transcript']?.rich_text?.map(r => r.plain_text).join('') || '',
         ...parseStoredBreakdown(pr['Content Outline']?.rich_text?.map(r => r.plain_text).join('') || ''),
       };
     });
 
     if (!S.epQueue.length) {
-      area.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>No videos in queue. Push videos from Stage 1 first.</p></div>';
+      area.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>No videos in queue. Push videos from the YouTube tab first.</p></div>';
       return;
     }
 
-    const statusBadge = { 'Available': 'badge-green', 'Partially Used': 'badge-amber', 'Fully Used': 'badge' };
-    area.innerHTML = `
-      <table class="data-table">
-        <thead><tr><th></th><th>Title</th><th>Channel</th><th>Prep</th><th>Status</th></tr></thead>
-        <tbody>
-          ${S.epQueue.map((v, i) => `
-            <tr onclick="toggleEpVideo(${i})" style="cursor:pointer" id="ep-row-${i}">
-              <td><input type="checkbox" id="ep-cb-${i}" ${S.epSelected.has(i)?'checked':''}></td>
-              <td style="font-weight:500">${v.title}<div style="font-size:11px;color:var(--text3);font-weight:400">${v.angle}</div></td>
-              <td style="font-size:12px;color:var(--text2)">${v.channel}</td>
-              <td style="font-size:11px;color:var(--text3)">${v.transcript ? '📄' : '·'} ${v.breakdown ? '📋' : '·'}</td>
-              <td><span class="badge ${statusBadge[v.status] || 'badge'}">${v.status}</span></td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`;
-
-    toast(`Loaded ${S.epQueue.length} videos from queue`, 'success');
+    // populate the channel filter
+    const chSel = document.getElementById('ep-q-channel');
+    const channels = [...new Set(S.epQueue.map(v => v.channel).filter(Boolean))].sort();
+    chSel.innerHTML = '<option value="">all channels</option>' + channels.map(c => `<option>${c}</option>`).join('');
+    document.getElementById('ep-q-filters').style.display = 'flex';
+    renderQueue();
+    toast(`Loaded ${S.epQueue.length} videos`, 'success');
   } catch (err) {
     area.innerHTML = `<div class="info-box error">Failed to load: ${err.message}</div>`;
   }
+}
+
+const _prepState = (v) => (!v.transcript ? 'none' : !v.breakdown ? 'tx' : 'done');
+
+function renderQueue() {
+  const area = document.getElementById('ep-queue-area');
+  if (!area || !S.epQueue.length) return;
+  const q = (document.getElementById('ep-q-search').value || '').trim().toLowerCase();
+  const rg = (document.getElementById('ep-q-region').value || '').trim().toLowerCase();
+  const ch = document.getElementById('ep-q-channel').value;
+  const pp = document.getElementById('ep-q-prep').value;
+  const st = document.getElementById('ep-q-status').value;
+  const sort = document.getElementById('ep-q-sort').value;
+
+  let rows = S.epQueue.map((v, i) => ({ v, i })).filter(({ v }) =>
+    (!q || `${v.title} ${v.channel} ${v.angle} ${v.tags.join(' ')}`.toLowerCase().includes(q)) &&
+    (!rg || `${v.region} ${v.country}`.toLowerCase().includes(rg)) &&
+    (!ch || v.channel === ch) &&
+    (!pp || _prepState(v) === pp) &&
+    (!st || v.status === st));
+  if (sort === 'title') rows.sort((a, b) => a.v.title.localeCompare(b.v.title));
+  else if (sort === 'channel') rows.sort((a, b) => (a.v.channel || '').localeCompare(b.v.channel || '') || a.v.title.localeCompare(b.v.title));
+
+  const statusBadge = { 'Available': 'badge-green', 'Partially Used': 'badge-amber', 'Fully Used': 'badge' };
+  const clip = (s) => (s && s.length > 130 ? s.slice(0, 129) + '…' : s || '');
+  area.innerHTML = `
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">${rows.length} / ${S.epQueue.length}</div>
+    <table class="data-table">
+      <thead><tr><th></th><th>Title</th><th>Channel</th><th>Prep</th><th>Status</th></tr></thead>
+      <tbody>
+        ${rows.map(({ v, i }) => `
+          <tr onclick="toggleEpVideo(${i})" style="cursor:pointer" id="ep-row-${i}">
+            <td><input type="checkbox" id="ep-cb-${i}" ${S.epSelected.has(i) ? 'checked' : ''}></td>
+            <td style="font-weight:500">${v.title}<div style="font-size:11px;color:var(--text3);font-weight:400">${clip(v.angle)}</div>${v.region ? `<div style="font-size:10px;color:var(--text3)">📍 ${v.region}</div>` : ''}</td>
+            <td style="font-size:12px;color:var(--text2)">${v.channel}</td>
+            <td style="font-size:11px;color:var(--text3)">${v.transcript ? '📄' : '·'} ${v.breakdown ? '📋' : '·'}</td>
+            <td><span class="badge ${statusBadge[v.status] || 'badge'}">${v.status}</span></td>
+          </tr>`).join('') || '<tr><td colspan="5" style="color:var(--text3);font-size:12px;padding:10px">No videos match.</td></tr>'}
+      </tbody>
+    </table>`;
 }
 
 function toggleEpVideo(i) {
