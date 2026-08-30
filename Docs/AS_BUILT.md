@@ -23,6 +23,7 @@ map, where the **code diverges from the spec**, and the **forward plan**
 | `index.html` | The whole app — inline `<style>` + `<script>`, ~3,300 lines, no build step |
 | `functions/notion-proxy.js` `youtube-proxy.js` `tts-proxy.js` | thin CORS proxies; keys from Netlify env only — see `../functions/README.md` |
 | `functions/ai-run.js` | LLM entry point: routes via `_shared/models.js`, logs cost to the Costs DB |
+| `functions/yt-transcript.js` | `{url}` → transcript text. Free watch-page caption scrape first; falls back to youtube-transcript.io if `TRANSCRIPT_API_KEY` is set. Pure-fn helpers unit-tested |
 | `functions/_shared/models.js` | `callModel()` — provider-agnostic router. Dedicated adapters for Anthropic + Gemini; one table-driven `openaiCompatibleAdapter` (`OPENAI_COMPAT`) covers OpenAI / DeepSeek / Qwen / Mistral / xAI / OpenRouter / Groq. Per-task `fallback`, `PRICING`. `_shared` is not deployed as a function |
 | `functions/**/*.test.js` | `node --test` (mocked fetch); run by `npm test` + CI + pre-commit |
 | `netlify.toml` | `publish = "."`, `functions = "functions"`; push to `main` deploys |
@@ -53,7 +54,7 @@ reads or writes it. (App Settings is a page, handled via `APP_SETTINGS_PAGE_ID`.
 | 0 Settings | `connectNotion` · `loadSettingsFromNotion` · `parseAndApplySettings` · `parseSettingsPage` · `getPageBlocks` (paginated) · `renderSettingsUI` · `renderRoutingTable` · `saveRouting` · `renderDNAForm` · `saveDNA` · `runHealthCheck` · `resumeSession` · `writeAppState` · `saveLookups` |
 | 1 YouTube Browser | `renderChannelChips` · `addChannel` · `saveChannels` · `fetchYouTube` (order + `publishedAfter/Before`) · `filteredYTVideos` · `renderYTVideos` · `resetYTFilters` · `openReviewModal` · `pushToNotion` |
 | 2 Episode Builder | `loadSourceQueue` · `generateThemes` · `selectTheme` · `suggestEpisodeTitles` · `createEpisode` · `loadCalendar` · `runGapAnalysis` |
-| 3A Transcript | `loadTranscriptVideos` · `runPass1` · `saveOutlineToNotion` |
+| 3A Transcript | `loadTranscriptVideos` · `fetchTranscript` (→ `yt-transcript` fn) · `runPass1` · `saveOutlineToNotion` |
 | 3B Places | `extractPlaces` · `renderPlacesReview` · `confirmPlace` · `skipPlace` · `renderRouteOrder` · `movePlaceUp/Down` · `saveConfirmedPlaces` |
 | 4 Script Builder | `loadSections` · `renderSections` · `renderSectionCard` · `generateDialogue` · `lockSection` · `saveSection` · `applyTemplate` · `parseDialogue` · **`runScriptCheck`** (deterministic QA, added) |
 | 5 Audio TTS | `renderAllAudio` · `playSegment` · `playFullEpisode` · `exportAudio` |

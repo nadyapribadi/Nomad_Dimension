@@ -24,6 +24,11 @@ episode }` to the Production Costs DB.
   block (no deploy). Replaces the dead `S.models` panel / `saveModels`.
   Routing block updated to a multi-provider spread (OpenAI `gpt-4o` /
   `gpt-4o-mini`, Gemini `gemini-2.0-flash`, Claude Haiku/Sonnet) + fallbacks.
+- **Auto-transcript** (`functions/yt-transcript.js`). Stage 3A gets a "Fetch
+  transcript" button — paste a YouTube URL, it fills the transcript box. Free
+  watch-page caption scrape first (no key, no quota); falls back to
+  youtube-transcript.io when `TRANSCRIPT_API_KEY` is set. Pure-fn helpers
+  (id parse, player-response extraction, json3 → text) unit-tested. 30 tests.
 - **Stage 1 filtering + Notion source channels.**
   - Source channels are now a machine-read **"📺 Source Channels"** JSON block
     (`{ channels: [...] }`); parsed into `S.channels`, _Save to Notion_ button

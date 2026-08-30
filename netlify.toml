@@ -34,3 +34,8 @@
   from = "/api/ai-run"
   to = "/.netlify/functions/ai-run"
   status = 200
+
+[[redirects]]
+  from = "/api/yt-transcript"
+  to = "/.netlify/functions/yt-transcript"
+  status = 200
