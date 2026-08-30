@@ -51,11 +51,13 @@ exports.handler = async (event) => {
   // Resolve provider+model: explicit override > Notion "Active Routing" > DEFAULT_ROUTING.
   let p = provider;
   let m = model;
+  let fallback = null;
   if ((!p || !m) && task) {
     const routing = await getRouting().catch(() => null);
     const r = (routing && routing[task]) || DEFAULT_ROUTING[task] || {};
     p = p || r.provider;
     m = m || r.model;
+    fallback = r.fallback || null;
   }
 
   let result;
@@ -64,6 +66,7 @@ exports.handler = async (event) => {
       task,
       provider: p,
       model: m,
+      fallback,
       system,
       messages,
       maxTokens,

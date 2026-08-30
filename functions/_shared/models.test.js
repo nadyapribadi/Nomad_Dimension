@@ -142,10 +142,17 @@ test('400 -> invalid_request, not retried', async () => {
   assert.equal(fetch.calls.length, 1);
 });
 
-test('500 -> provider_error, retried', async () => {
+test('500 -> provider_error, retried once (no fallback configured)', async () => {
   const fetch = mockFetch(() => httpErr(500, {}));
   await assert.rejects(
-    callModel({ task: 'gap', messages: [{ role: 'user', content: 'x' }] }, { fetch, env }),
+    callModel(
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-6',
+        messages: [{ role: 'user', content: 'x' }],
+      },
+      { fetch, env }
+    ),
     (e) => e.code === 'provider_error'
   );
   assert.equal(fetch.calls.length, 2);
@@ -162,6 +169,54 @@ test('gemini SAFETY finishReason -> content_filtered', async () => {
     ),
     (e) => e.code === 'content_filtered'
   );
+});
+
+test('task fallback: provider_error on the primary fails over to the fallback provider', async () => {
+  // DEFAULT_ROUTING.angle = anthropic primary, gemini fallback.
+  const fetch = mockFetch((n) =>
+    n <= 2
+      ? httpErr(500, {})
+      : ok({
+          candidates: [{ content: { parts: [{ text: 'fb' }] }, finishReason: 'STOP' }],
+          usageMetadata: {},
+        })
+  );
+  const r = await callModel(
+    { task: 'angle', messages: [{ role: 'user', content: 'x' }] },
+    { fetch, env }
+  );
+  assert.equal(r.text, 'fb');
+  assert.equal(r.provider, 'gemini');
+  assert.equal(fetch.calls.length, 3); // primary + 1 retry, then fallback
+  assert.match(fetch.calls[2].url, /generativelanguage/);
+});
+
+test('task fallback: invalid_request on the primary is NOT failed over', async () => {
+  const fetch = mockFetch(() => httpErr(400, { error: { message: 'bad model' } }));
+  await assert.rejects(
+    callModel({ task: 'gap', messages: [{ role: 'user', content: 'x' }] }, { fetch, env }),
+    (e) => e.code === 'invalid_request'
+  );
+  assert.equal(fetch.calls.length, 1);
+});
+
+test('explicit req.fallback is honored on failover', async () => {
+  const fetch = mockFetch((n) =>
+    n <= 2
+      ? httpErr(503, {})
+      : ok({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }], usage: {} })
+  );
+  const r = await callModel(
+    {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      fallback: { provider: 'openai', model: 'gpt-4o' },
+      messages: [{ role: 'user', content: 'x' }],
+    },
+    { fetch, env }
+  );
+  assert.equal(r.provider, 'openai');
+  assert.equal(fetch.calls.length, 3);
 });
 
 test('unknown task -> invalid_request', async () => {

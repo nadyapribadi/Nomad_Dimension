@@ -10,14 +10,20 @@ Human-readable, updated per milestone. Format loosely follows
 - **Model router** (`functions/_shared/models.js`) — `callModel()`, a
   provider-agnostic LLM router over **Anthropic / Gemini / OpenAI** adapters:
   normalized `{ text, provider, model, usage, costUsd }`, error taxonomy, one
-  retry. 17 unit tests (`node --test`, mocked fetch); `npm test` in CI +
-  pre-commit.
+  retry, then **one failover** to a per-task `fallback: { provider, model }` on
+  `rate_limited` / `provider_error` / `network` / `content_filtered`. 21 unit
+  tests (`node --test`, mocked fetch); `npm test` in CI + pre-commit.
 - **`functions/ai-run.js`** — HTTP entry point for all AI stages. Resolves
-  provider+model from the Notion **"🔀 Active Routing"** JSON block (cached
-  ~60s → edit with no deploy; falls back to `DEFAULT_ROUTING`), calls the
+  provider+model+fallback from the Notion **"🔀 Active Routing"** JSON block
+  (cached ~60s → edit with no deploy; falls back to `DEFAULT_ROUTING`), calls the
   router, and fire-and-forget logs `{ provider, model, tokens, costUsd, stage,
 episode }` to the Production Costs DB.
 - All 11 AI stages in `index.html` call `aiRun(task, …)` (was `claudeAPI`).
+- **Stage 0 "Active Model Routing"** — per-task `provider|model` + fallback
+  dropdowns; _Save Routing to Notion_ `PATCH`es the "🔀 Active Routing" code
+  block (no deploy). Replaces the dead `S.models` panel / `saveModels`.
+  Routing block updated to a multi-provider spread (OpenAI `gpt-4o` /
+  `gpt-4o-mini`, Gemini `gemini-2.0-flash`, Claude Haiku/Sonnet) + fallbacks.
 - Repo tooling: `package.json`, ESLint (flat) + Prettier, `.nvmrc`, GitHub
   Actions CI, git pre-commit hook.
 - `Docs/AS_BUILT.md` — code-side companion to the Notion System Documentation,

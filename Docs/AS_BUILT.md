@@ -50,7 +50,7 @@ reads or writes it. (App Settings is a page, handled via `APP_SETTINGS_PAGE_ID`.
 
 | Stage | Functions |
 | --- | --- |
-| 0 Settings | `connectNotion` · `loadSettingsFromNotion` · `parseAndApplySettings` · `parseSettingsPage` · `getPageBlocks` · `renderSettingsUI` · `runHealthCheck` · `resumeSession` · `writeAppState` · `saveModels` · `saveLookups` · `saveDNA` |
+| 0 Settings | `connectNotion` · `loadSettingsFromNotion` · `parseAndApplySettings` · `parseSettingsPage` · `getPageBlocks` · `renderSettingsUI` · `renderRoutingTable` · `saveRouting` · `runHealthCheck` · `resumeSession` · `writeAppState` · `saveLookups` · `saveDNA` |
 | 1 YouTube Browser | `fetchYouTube` · `renderYTVideos` · `openReviewModal` · `pushToNotion` |
 | 2 Episode Builder | `loadSourceQueue` · `generateThemes` · `selectTheme` · `suggestEpisodeTitles` · `createEpisode` · `loadCalendar` · `runGapAnalysis` |
 | 3A Transcript | `loadTranscriptVideos` · `runPass1` · `saveOutlineToNotion` |
@@ -62,9 +62,14 @@ reads or writes it. (App Settings is a page, handled via `APP_SETTINGS_PAGE_ID`.
 
 Every AI stage calls `aiRun(task, …)` → `functions/ai-run.js` → `callModel()`.
 Tasks: `angle · theme · outline · translate · places · dialogue · gap · handoff ·
-thumbnail · metadata · critic`. Provider + model per task come from the
+thumbnail · metadata · critic`. Each routing entry is
+`{ provider, model, fallback?: { provider, model } }`; `callModel` tries the
+`fallback` once if the primary exhausts its retries with a `rate_limited` /
+`provider_error` / `network` / `content_filtered` error. Routing comes from the
 **"🔀 Active Routing"** JSON block on the App Settings Notion page (cached ~60s,
-edit = no deploy), falling back to `DEFAULT_ROUTING` in `_shared/models.js`.
+edit = no deploy), falling back to `DEFAULT_ROUTING` in `_shared/models.js`. The
+block is editable from the app: **Stage 0 → Active Model Routing** — per-task
+`provider|model` dropdowns + *Save Routing to Notion* (`PATCH`es the code block).
 
 ## Code vs. spec — open gaps
 
