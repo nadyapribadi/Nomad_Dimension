@@ -15,6 +15,9 @@ const FIELD_MASK = [
   'places.primaryType',
   'places.priceLevel',
   'places.googleMapsUri',
+  'places.websiteUri',
+  'places.rating',
+  'places.userRatingCount',
 ].join(',');
 
 // Places API (New) priceLevel enum -> our Places DB "Price Range" select.
@@ -106,6 +109,9 @@ exports.handler = async (event) => {
     lat: place.location ? place.location.latitude : null,
     lng: place.location ? place.location.longitude : null,
     mapsUri: place.googleMapsUri || '',
+    website: place.websiteUri || '',
+    rating: typeof place.rating === 'number' ? place.rating : null,
+    ratingCount: place.userRatingCount || 0,
     primaryType: place.primaryType || '',
     priceLabel: price ? price.label : '',
     priceRange: price ? price.range : '',
