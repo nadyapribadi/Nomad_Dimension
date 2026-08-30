@@ -36,8 +36,18 @@ test('anthropic: shapes the request and normalizes the response', async () => {
   const sent = fetch.calls[0];
   assert.match(sent.url, /api\.anthropic\.com/);
   assert.equal(sent.opts.headers['x-api-key'], 'a');
+  assert.equal(sent.opts.headers['anthropic-workspace-id'], undefined);
   assert.equal(sent.body.system, 'sys');
   assert.equal(sent.body.messages[0].content, 'hi');
+});
+
+test('anthropic: sends anthropic-workspace-id when ANTHROPIC_WORKSPACE_ID is set', async () => {
+  const fetch = mockFetch(() => ok({ content: [{ type: 'text', text: 'x' }], usage: {} }));
+  await callModel(
+    { task: 'dialogue', messages: [{ role: 'user', content: 'hi' }] },
+    { fetch, env: { ...env, ANTHROPIC_WORKSPACE_ID: 'wrkspc_123' } }
+  );
+  assert.equal(fetch.calls[0].opts.headers['anthropic-workspace-id'], 'wrkspc_123');
 });
 
 test('gemini: maps roles, system instruction, and usage', async () => {

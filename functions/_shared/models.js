@@ -102,13 +102,17 @@ async function anthropicAdapter(req, { fetch, env }) {
   if (req.system) body.system = req.system;
   if (typeof req.temperature === 'number') body.temperature = req.temperature;
 
+  const headers = {
+    'x-api-key': key,
+    'anthropic-version': '2023-06-01',
+    'content-type': 'application/json',
+  };
+  // Identity-linked / workspace-scoped keys require this header.
+  if (env.ANTHROPIC_WORKSPACE_ID) headers['anthropic-workspace-id'] = env.ANTHROPIC_WORKSPACE_ID;
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
+    headers,
     body: JSON.stringify(body),
   }).catch((e) => {
     throw taxonomyError('network', e.message);
