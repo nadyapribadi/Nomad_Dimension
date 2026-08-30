@@ -37,12 +37,20 @@ APP_SETTINGS_PAGE_ID = '33c9ba2b-3900-8132-b172-f136389ac2e2'
 // Notion DATABASE ids (verified via /v1/search). The Notion doc's
 // "🗄️ Database IDs" table lists DATA-SOURCE ids — those 404 the REST API.
 DB_IDS = {
-  sourceVideos:   '54e269ed-6c2e-4e05-9211-82f9b274c2a6',
+  sourceVideos:   '54e269ed-6c2e-4e05-9211-82f9b274c2a6', // + Platform col (R2)
   episodes:       '93de54dc-6e36-459f-b2d0-0b9f02a1594b',
   scripts:        '81917620-d890-4383-9288-3b5136d0d438',
   places:         '3cc9ba2b-3900-81e6-a1ee-cb4f2a65e0be', // recreated 2026-08-30
   sourceChannels: 'ad90cd8a-276c-4cf6-9414-697401380388', // decommissioned (JSON block)
   costs:          '36962616-b115-4398-850d-40582b092973',
+  // R2 research stores — created 2026-08-31, each must be connected to the integration
+  activities:     '610c79a3-c885-409e-9ee3-b4c940911c2a',
+  research:       'b840c3a7-2b8a-4053-ab54-79b6fe2bd36f',
+  prices:         'aa002111-5601-435e-83a5-06cb10e8267e',
+  data:           '544a38bb-c080-498e-bcfc-6989d1abeb0a',
+  glossary:       'a38cc98b-231e-42d2-a568-afec9403781b',
+  food:           'd7c022de-6f37-42fc-8fc6-b6b2ea892020',
+  transport:      '0f40734b-8d5f-4549-ab58-ed816667bf3d',
 }
 ```
 

@@ -175,7 +175,7 @@ with a web-search tool and the prior claim as context.
 | # | Delivers | Key work |
 | --- | --- | --- |
 | R1 | nav re-parent: **Step 1 = Research** (tabs YouTube · Prep · Places · Web-stub); **Step 2 = Episode Builder** (Sections-stub · Assemble). Prep works on any Source Video. | move `#ep-tab-queue/prep/places` under Step 1; breakdown already persists to Notion |
-| R2 | the Notion stores exist; per-DB push paths | create Activities / Research / Prices / Data / Glossary / Food / Transport DBs; rename Source Videos → Sources + `Platform` |
+| R2 | Notion stores exist | **✅ 2026-08-31** — Activities / Research / Prices / Data / Glossary / Food / Transport DBs created, ids in `DB_IDS`; Source Videos got a `Platform` col (title not yet renamed). **Each new DB must be connected to the NomadDimension integration.** Per-DB push paths still to write. |
 | R3 | 2-pass extract on the new schema (replaces the single breakdown) | pass-1 / pass-2 prompts; per-type review + dedup + push |
 | R4 | **Web** tab: entry-B question + Verify & Enrich pass | `functions/web-research.js` (Gemini grounding); Review #2 UI |
 
