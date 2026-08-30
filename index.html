@@ -2511,7 +2511,14 @@ async function loadSourceQueue() {
 
   try {
     const data = await notionAPI(`databases/${DB_IDS.sourceVideos}/query`, 'POST', {
-      filter: { property: 'B-Roll Status', select: { equals: 'Available' } },
+      // "Available" or not-yet-triaged (blank) — a video you added but didn't
+      // touch the status on still belongs in the queue.
+      filter: {
+        or: [
+          { property: 'B-Roll Status', select: { equals: 'Available' } },
+          { property: 'B-Roll Status', select: { is_empty: true } },
+        ],
+      },
       page_size: 50,
     });
 
