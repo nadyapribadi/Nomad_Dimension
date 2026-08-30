@@ -46,9 +46,10 @@ episode }` to the Production Costs DB.
   (`OPENAI_COMPAT`) — one adapter for **OpenAI / DeepSeek / Qwen / Mistral / xAI /
   OpenRouter / Groq** (each keyed by its own `<PROVIDER>_API_KEY` env var).
   Reasoning models (`o3`, `*-reasoner`) get `max_completion_tokens` and no
-  temperature. The Stage 0 routing panel is now a **combo box** (free text +
-  ~30-entry `MODEL_CATALOG`, not a closed list) so any `provider|model` works
-  without a code change. `.env.example` lists the optional keys. 24 tests.
+  temperature. The Stage 0 routing panel is a **dropdown** per task, grouped by
+  provider, built from the `MODEL_CATALOG` lookup table in `index.html` (edit the
+  table to add/retire models). A saved value not in the catalog is kept as its
+  own option. `.env.example` lists the optional keys. 24 tests.
 - Repo tooling: `package.json`, ESLint (flat) + Prettier, `.nvmrc`, GitHub
   Actions CI, git pre-commit hook.
 - `Docs/AS_BUILT.md` — code-side companion to the Notion System Documentation,

@@ -813,14 +813,16 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <button class="btn btn-primary" onclick="saveRouting()">Save Routing to Notion →</button>
     </div>
     <div style="font-size:11px;color:var(--text3);margin-top:8px">
-      Type <code style="font-family:var(--font-mono)">provider|model</code> per task, or pick a
-      suggestion. Not a closed list — any id works. Providers:
+      Pick a model per task from the dropdown. The list is the lookup table
+      <code style="font-family:var(--font-mono)">MODEL_CATALOG</code> in
+      <code style="font-family:var(--font-mono)">index.html</code> — add or retire models there.
+      Providers:
       <code style="font-family:var(--font-mono)">anthropic · gemini · openai · deepseek · qwen · mistral · xai · openrouter · groq</code>,
       each needing its <code style="font-family:var(--font-mono)">&lt;PROVIDER&gt;_API_KEY</code> in
-      Netlify env. Verify model ids against the provider's own docs. Saving writes the
-      <strong>🔀 Active Routing</strong> block; <code style="font-family:var(--font-mono)">ai-run</code>
-      picks it up within ~60s — no deploy. <em>Fallback</em> runs automatically if the primary
-      is rate-limited, errors, or is content-filtered. No block yet → built-in
+      Netlify env. Saving writes the <strong>🔀 Active Routing</strong> block;
+      <code style="font-family:var(--font-mono)">ai-run</code> picks it up within ~60s — no deploy.
+      <em>Fallback</em> runs automatically if the primary is rate-limited, errors, or is
+      content-filtered. No block yet → built-in
       <code style="font-family:var(--font-mono)">DEFAULT_ROUTING</code>.
     </div>
   </div>
@@ -1781,11 +1783,16 @@ function saveLookups() {
 
 // Tasks ai-run.js knows about, in pipeline order.
 const ROUTING_TASKS = ['angle','theme','gap','outline','translate','places','dialogue','thumbnail','metadata','handoff','critic'];
-// Suggestions for the combo boxes. value = "provider|model". NOT a closed list —
-// you can type any "provider|model" string; these are just autocomplete hints.
+// Lookup table behind the routing dropdowns. value = "provider|model".
+// To add / retire a model, edit this list — the dropdowns rebuild from it.
 // Verify ids against each provider's own docs (they change often). Providers:
 // anthropic · gemini · openai · deepseek · qwen · mistral · xai · openrouter · groq
 // (each needs its <PROVIDER>_API_KEY set in Netlify env; see functions/_shared/models.js).
+const PROVIDER_LABEL = {
+  anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini',
+  deepseek: 'DeepSeek', qwen: 'Qwen', mistral: 'Mistral', xai: 'xAI',
+  openrouter: 'OpenRouter', groq: 'Groq',
+};
 const MODEL_CATALOG = [
   ['anthropic|claude-haiku-4-5-20251001', 'Anthropic · Claude Haiku 4.5 (cheap, fast)'],
   ['anthropic|claude-sonnet-4-6',         'Anthropic · Claude Sonnet 4.6 (strong, creative)'],
@@ -1831,29 +1838,49 @@ const DEFAULT_ROUTING_UI = {
   critic:{provider:'gemini',model:'gemini-2.0-flash',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
 };
 
-// Combo box: free text + MODEL_CATALOG suggestions. value = "provider|model".
-function routingField(kind, task, current) {
+// <optgroup>-grouped <option>s built from MODEL_CATALOG. `selected` = "provider|model".
+function modelOptGroups(selected) {
+  let html = '';
+  let group = '';
+  for (const [value, label] of MODEL_CATALOG) {
+    const prov = value.split('|')[0];
+    if (prov !== group) {
+      if (group) html += '</optgroup>';
+      html += `<optgroup label="${PROVIDER_LABEL[prov] || prov}">`;
+      group = prov;
+    }
+    html += `<option value="${value}"${value === selected ? ' selected' : ''}>${label}</option>`;
+  }
+  if (group) html += '</optgroup>';
+  return html;
+}
+
+// Pure dropdown. Fallback adds "— none —". A saved value that isn't in the
+// catalog is preserved as its own option so switching blocks never drops it.
+function routingSelect(kind, task, current) {
   const cur = current ? `${current.provider}|${current.model}` : '';
-  return `<input data-route="${kind}" data-task="${task}" list="model-catalog"
-    value="${cur}" placeholder="${kind === 'fallback' ? 'provider|model (optional)' : 'provider|model'}"
-    autocomplete="off" spellcheck="false"
-    style="font-family:var(--font-mono);font-size:11px;width:100%;min-width:190px">`;
+  const known = MODEL_CATALOG.some(([v]) => v === cur);
+  const none =
+    kind === 'fallback' ? `<option value=""${cur ? '' : ' selected'}>— none —</option>` : '';
+  const custom =
+    cur && !known
+      ? `<optgroup label="Current (not in catalog)"><option value="${cur}" selected>${cur}</option></optgroup>`
+      : '';
+  return `<select data-route="${kind}" data-task="${task}"
+    style="font-family:var(--font-mono);font-size:11px;width:100%">${none}${custom}${modelOptGroups(known ? cur : '')}</select>`;
 }
 
 function renderRoutingTable() {
   const r = S.routing || DEFAULT_ROUTING_UI;
-  const datalist = `<datalist id="model-catalog">${
-    MODEL_CATALOG.map(([v, label]) => `<option value="${v}">${label}</option>`).join('')
-  }</datalist>`;
   const rows = ROUTING_TASKS.map(task => {
     const e = r[task] || {};
     return `<tr>
       <td style="font-size:12px">${task}</td>
-      <td>${routingField('primary', task, e.provider ? e : null)}</td>
-      <td>${routingField('fallback', task, e.fallback || null)}</td>
+      <td>${routingSelect('primary', task, e.provider ? e : null)}</td>
+      <td>${routingSelect('fallback', task, e.fallback || null)}</td>
     </tr>`;
   }).join('');
-  document.getElementById('models-table').innerHTML = `${datalist}
+  document.getElementById('models-table').innerHTML = `
     <table class="data-table">
       <thead><tr><th>Task</th><th>Primary</th><th>Fallback</th></tr></thead>
       <tbody>${rows}</tbody>
