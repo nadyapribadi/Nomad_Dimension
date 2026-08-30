@@ -9,6 +9,10 @@
     git diff --name-only HEAD^ HEAD | grep -qvE '^(Docs/|\\.github/|[^/]*\\.md$|.*\\.test\\.js$)' && exit 1 || exit 0
   """
 
+# LLM calls can run long — give ai-run the max synchronous timeout.
+[functions."ai-run"]
+  timeout = 26
+
 [[headers]]
   for = "/*"
   [headers.values]

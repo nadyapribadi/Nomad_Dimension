@@ -22,7 +22,7 @@ const DEFAULT_ROUTING = {
   angle: { ...HAIKU, fallback: FLASH },
   translate: { ...FLASH, fallback: HAIKU },
   outline: { ...HAIKU, fallback: GPT_MINI },
-  places: { ...SONNET, fallback: GPT },
+  places: { ...FLASH, fallback: SONNET }, // fast structured extraction; Sonnet if it stumbles
   theme: { ...SONNET, fallback: GPT },
   dialogue: { ...SONNET, fallback: GPT },
   thumbnail: { ...HAIKU, fallback: GPT_MINI },

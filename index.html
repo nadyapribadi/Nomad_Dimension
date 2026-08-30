@@ -989,15 +989,16 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     <span class="subtitle">stage 2 · queue → prep → places → theme → create</span>
   </div>
 
+  <div class="row" style="justify-content:flex-end;gap:6px;margin-bottom:8px">
+    <button class="btn btn-sm btn-ghost" onclick="switchTab('ep','calendar')">📅 Calendar</button>
+    <button class="btn btn-sm btn-ghost" onclick="switchTab('ep','gap')">🔍 What's next?</button>
+  </div>
   <div class="tabs">
     <div class="tab active" onclick="switchTab('ep', 'queue')">📋 Source Queue</div>
     <div class="tab" onclick="switchTab('ep', 'prep');renderPrepList()">🧪 Prep</div>
     <div class="tab" onclick="switchTab('ep', 'places')">📍 Places</div>
     <div class="tab" onclick="switchTab('ep', 'theme')">🧭 Theme</div>
     <div class="tab" onclick="switchTab('ep', 'create')">🎬 Create Episode</div>
-    <div style="flex:1"></div>
-    <div class="tab" onclick="switchTab('ep', 'calendar')">📅 Calendar</div>
-    <div class="tab" onclick="switchTab('ep', 'gap')">🔍 What's Next?</div>
   </div>
 
   <!-- QUEUE TAB -->
@@ -1943,7 +1944,7 @@ const DEFAULT_ROUTING_UI = {
   gap:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
   outline:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
   translate:{provider:'gemini',model:'gemini-2.0-flash',fallback:{provider:'anthropic',model:'claude-haiku-4-5-20251001'}},
-  places:{provider:'anthropic',model:'claude-sonnet-4-6',fallback:{provider:'openai',model:'gpt-4o'}},
+  places:{provider:'gemini',model:'gemini-2.0-flash',fallback:{provider:'anthropic',model:'claude-sonnet-4-6'}},
   dialogue:{provider:'anthropic',model:'claude-sonnet-4-6',fallback:{provider:'openai',model:'gpt-4o'}},
   thumbnail:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
   metadata:{provider:'anthropic',model:'claude-haiku-4-5-20251001',fallback:{provider:'openai',model:'gpt-4o-mini'}},
@@ -3236,12 +3237,12 @@ async function extractPlaces() {
     }));
 
     const system = buildDNASystem();
-    const raw = (await aiRun('places', { system, maxTokens: 8000, messages: [{
+    const raw = (await aiRun('places', { system, maxTokens: 4000, messages: [{
       role: 'user',
       content: `Extract ALL places mentioned in this content outline. For each place, check against the existing places database and classify as existing or new.
 
 <outline>
-${S.currentTranscriptOutline}
+${(S.currentTranscriptOutline || '').slice(0, 6000)}
 </outline>
 
 <existing_places count="${existingPlaces.length}">
