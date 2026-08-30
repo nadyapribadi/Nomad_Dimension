@@ -1,7 +1,9 @@
 // netlify/functions/anthropic-proxy.js
 // Proxies Anthropic API /v1/messages requests.
-// Key resolution: process.env.ANTHROPIC_API_KEY, else payload.apiKey (legacy).
-// Browser sends: { model, max_tokens, system, messages, apiKey? }
+// Key: process.env.ANTHROPIC_API_KEY (required). Browser sends no keys.
+// NOTE: superseded by functions/ai-run.js + _shared/models.js once every stage
+// is migrated (evolution plan Phase 2). Delete this file then.
+// Browser sends: { model, max_tokens, system, messages }
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
@@ -18,9 +20,10 @@ exports.handler = async (event) => {
     return respond(400, { error: 'Invalid JSON' });
   }
 
-  const { model, max_tokens = 1000, system, messages, apiKey } = payload;
-  const key = process.env.ANTHROPIC_API_KEY || apiKey;
-  if (!messages || !key) return respond(400, { error: 'Missing messages or API key' });
+  const { model, max_tokens = 1000, system, messages } = payload;
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return respond(500, { error: 'ANTHROPIC_API_KEY not configured' });
+  if (!messages) return respond(400, { error: 'Missing messages' });
 
   const reqBody = { model: model || 'claude-haiku-4-5-20251001', max_tokens, messages };
   if (system) reqBody.system = system;

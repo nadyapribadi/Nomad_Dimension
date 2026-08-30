@@ -43,8 +43,7 @@ exports.handler = async (event) => {
     return respond(400, { error: 'Invalid JSON' });
   }
 
-  const { task, provider, model, system, messages, maxTokens, temperature, episode, notionToken } =
-    payload;
+  const { task, provider, model, system, messages, maxTokens, temperature, episode } = payload;
 
   let result;
   try {
@@ -56,7 +55,7 @@ exports.handler = async (event) => {
     });
   }
 
-  logCost({ result, task, episode, token: notionToken }).catch((e) =>
+  logCost({ result, task, episode, token: process.env.NOTION_TOKEN }).catch((e) =>
     console.warn('cost log failed:', e && e.message)
   );
 

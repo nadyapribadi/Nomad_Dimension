@@ -4,19 +4,20 @@ These four functions are the app's **provider boundary**. Each is a stateless
 CORS proxy: the browser sends the payload, the function forwards it to the
 upstream API and returns the JSON response unchanged.
 
-**Key resolution:** each function uses its Netlify environment variable first,
-falling back to the key in the request body (legacy path, being removed):
+**Keys are Netlify environment variables — the browser sends none.** Each
+function reads its key/token from `process.env` and returns `500` if it is not
+configured.
 
-| Function             | Env var              |
-| -------------------- | -------------------- |
-| `anthropic-proxy.js` | `ANTHROPIC_API_KEY`  |
-| `tts-proxy.js`       | `GOOGLE_TTS_API_KEY` |
-| `youtube-proxy.js`   | `YOUTUBE_API_KEY`    |
-| `notion-proxy.js`    | `NOTION_TOKEN`       |
+| Function             | Env var (required)                                                                 |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `anthropic-proxy.js` | `ANTHROPIC_API_KEY`                                                                |
+| `tts-proxy.js`       | `GOOGLE_TTS_API_KEY`                                                               |
+| `youtube-proxy.js`   | `YOUTUBE_API_KEY`                                                                  |
+| `notion-proxy.js`    | `NOTION_TOKEN`                                                                     |
+| `ai-run.js`          | `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `NOTION_TOKEN` (cost log) |
 
 Set these in the Netlify dashboard (Site settings → Environment variables) and,
-for local `netlify dev`, in a gitignored `.env` (see `.env.example`). Once set,
-the browser no longer needs to send keys.
+for local `netlify dev`, in a gitignored `.env` (see `.env.example`).
 
 `_shared/` (underscore prefix — not deployed as a function) holds the
 provider-agnostic model router `models.js` (`callModel()`), used from Phase 2
