@@ -18,6 +18,7 @@ const FIELD_MASK = [
   'places.websiteUri',
   'places.rating',
   'places.userRatingCount',
+  'places.editorialSummary',
 ].join(',');
 
 // Places API (New) priceLevel enum -> our Places DB "Price Range" select.
@@ -112,6 +113,7 @@ exports.handler = async (event) => {
     website: place.websiteUri || '',
     rating: typeof place.rating === 'number' ? place.rating : null,
     ratingCount: place.userRatingCount || 0,
+    summary: (place.editorialSummary && place.editorialSummary.text) || '',
     primaryType: place.primaryType || '',
     priceLabel: price ? price.label : '',
     priceRange: price ? price.range : '',

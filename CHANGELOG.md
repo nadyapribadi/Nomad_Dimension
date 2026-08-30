@@ -19,7 +19,14 @@ Human-readable, updated per milestone. Format loosely follows
   Prefecture starts as the breakdown's AI guess ("check it"); if
   `GOOGLE_MAPS_API_KEY` is set, **`functions/maps-proxy.js`** (Google Places API
   (New) Text Search) overrides it with the real `administrative_area_level_1`
-  plus lat/lng, address, Maps URL and price tier ("✓ Google Maps").
+  plus lat/lng, address, website, rating, editorial summary, Maps URL and price
+  tier ("✓ Google Maps"). Those land in dedicated **Places DB columns**
+  (Address / Coordinates / Website / Rating / Source Video), not crammed into
+  Notes.
+- **Route Order removed from Places.** Sequencing a "route" out of places from
+  unrelated source trips made no sense. Places just confirms + pushes now; the
+  running order is set in Assemble's Include list — default = on-camera order
+  (`breakdown.route`), with a ✨ "Suggest order" button for narrative flow.
 - **Assemble tab** merges the old Theme + Create tabs into one author-driven
   form: you write title/angle/hook/tone/notes, AI only behind two ✨ buttons.
   An **Include checklist** (places + beats + food from the breakdowns, tick +

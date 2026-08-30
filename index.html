@@ -3557,6 +3557,7 @@ async function enrichPlacesFromMaps() {
       if (d.address) p.address = d.address;
       if (d.mapsUri) p.google_maps_url = d.mapsUri;
       if (d.website) p.website = d.website;
+      if (d.summary) p.maps_summary = d.summary;
       if (typeof d.rating === 'number') { p.rating = d.rating; p.ratingCount = d.ratingCount || 0; }
       if (typeof d.lat === 'number') { p.lat = d.lat; p.lng = d.lng; }
       if (d.priceRange) p.maps_price = d.priceRange;      // DB "Price Range" fallback
@@ -3589,6 +3590,7 @@ function renderPlacesReview() {
         ${p.type}${p.prefecture && p.prefecture !== 'Unknown' ? ` · ${p.prefecture}` : ''}${p.area ? `, ${p.area}` : ''}
       </div>
       ${p.what_happens_here ? `<div style="font-size:12px;color:var(--text2);margin-top:6px">${p.what_happens_here}</div>` : ''}
+      ${p.maps_summary ? `<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic">“${p.maps_summary}” — Google</div>` : ''}
       ${p.address ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">📮 ${p.address}</div>` : ''}
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:11px">
         <a href="${p.google_maps_url}" target="_blank" rel="noopener" style="color:var(--blue)">📍 Maps ↗</a>
@@ -3676,13 +3678,16 @@ async function saveConfirmedPlaces() {
             'Halal': { select: { name: p.halal || 'Unknown' } },
             'Price Range': { select: { name:
               priceRange(p.price_if_spoken) !== 'Unknown' ? priceRange(p.price_if_spoken) : (p.maps_price || 'Unknown') } },
+            'Address': { rich_text: [{ text: { content: p.address || '' } }] },
+            'Coordinates': { rich_text: [{ text: { content: (typeof p.lat === 'number') ? `${p.lat},${p.lng}` : '' } }] },
+            'Website': { url: p.website || null },
+            ...(typeof p.rating === 'number' ? { 'Rating': { number: p.rating } } : {}),
+            'Source Video': { rich_text: [{ text: { content: (p.from || []).join(' · ').slice(0, 1900) } }] },
             'Notes': { rich_text: [{ text: { content: [
-              p.address && `address: ${p.address}`,
-              (typeof p.lat === 'number') && `pin: ${p.lat},${p.lng}`,
-              p.website && `web: ${p.website}`,
-              (typeof p.rating === 'number') && `rating: ${p.rating}${p.ratingCount ? `/${p.ratingCount}` : ''}`,
-              p.price_if_spoken && `price mentioned: ${p.price_if_spoken}`,
+              p.price_if_spoken && `price mentioned on camera: ${p.price_if_spoken}`,
               p.food_here && `food: ${p.food_here}`,
+              (typeof p.rating === 'number' && p.ratingCount) && `${p.ratingCount} Google reviews`,
+              p.maps_summary && `Google: ${p.maps_summary}`,
             ].filter(Boolean).join(' · ').slice(0, 1900) } }] },
           }
         });

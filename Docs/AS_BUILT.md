@@ -49,6 +49,10 @@ DB_IDS = {
 `ai-run.js` has its own `COSTS_DB_ID` (same value). The **Performance** DB is
 not referenced by any stage. The old **📍 Places** DB never existed for the
 integration; a fresh one was created (schema matches `saveConfirmedPlaces`).
+Places DB columns: Name · Type · Prefecture · Price Range · Halal · Country ·
+B-Roll Description · Google Maps URL · **Address · Coordinates · Website ·
+Rating · Source Video** (added for the Maps enrichment) · Used In Episodes ·
+Notes · Date Added.
 **Source Channels** was never a real DB — channels come from the App Settings
 JSON block.
 
@@ -59,7 +63,7 @@ JSON block.
 | 0 Settings | `connectNotion` · `loadSettingsFromNotion` · `parseAndApplySettings` · `parseSettingsPage` · `getPageBlocks` (paginated) · `renderSettingsUI` · `renderRoutingTable` · `saveRouting` · `renderDNAForm` · `saveDNA` · `runHealthCheck` · `resumeSession` · `writeAppState` · `saveLookups` |
 | Plan (nav 1 → `stage-7`) | `loadCalendar` · `runGapAnalysis` — calendar + "what's next", moved out of Episode Builder |
 | 1 YouTube Browser (nav 2) | `renderChannelChips` · `addChannel` · `saveChannels` · `fetchYouTube` (order + `publishedAfter/Before`) · `filteredYTVideos` · `renderYTVideos` · `resetYTFilters` · `openReviewModal` · `pushToNotion` |
-| 2 Episode Builder (nav 3) | tabs **Queue → Prep → Places → Assemble**. Queue: `loadSourceQueue` · `toggleEpVideo`. Prep: `renderPrepList` · `prepFetchTranscript` · `prepUsePasted` · `prepRunBreakdown` (structured JSON per video → `Content Outline`) · `parseStoredBreakdown` · `renderBreakdownText` · `rebuildCombinedOutline` (builds `S.episodeBreakdowns`). Places: `extractPlaces` (reads `breakdown.places`, no AI) · `enrichPlacesFromMaps` (→ `maps-proxy` fn, overrides the AI prefecture guess) · `setPlaceField` · `renderPlacesReview` · `confirmPlace` · `skipPlace` · `renderRouteOrder` · `movePlaceUp/Down` · `saveConfirmedPlaces` (dedupe guard). Assemble: `enterAssemble` · `buildIncludeList` / `renderIncludeList` / `toggleInclude` / `moveInclude` · `suggestTitles` (✨) · `draftAngle` (✨) · `episodeThemeOnly` · `updateEpisodePreview` · `createEpisode` (brief → Episode page body + seeds Scripts rows) |
+| 2 Episode Builder (nav 3) | tabs **Queue → Prep → Places → Assemble**. Queue: `loadSourceQueue` · `toggleEpVideo`. Prep: `renderPrepList` · `prepFetchTranscript` · `prepUsePasted` · `prepRunBreakdown` (structured JSON per video → `Content Outline`) · `parseStoredBreakdown` · `renderBreakdownText` · `rebuildCombinedOutline` (builds `S.episodeBreakdowns`). Places: `extractPlaces` (reads `breakdown.places`, no AI) · `enrichPlacesFromMaps` (→ `maps-proxy` fn: prefecture/area/address/lat-lng/website/rating/editorial summary) · `setPlaceField` · `renderPlacesReview` · `confirmPlace` · `skipPlace` · `renderConfirmedList` · `saveConfirmedPlaces` (writes Address / Coordinates / Website / Rating / Source Video columns; dedupe guard). No route-ordering UI here — sequencing is Assemble's Include list. Assemble: `enterAssemble` · `buildIncludeList` / `renderIncludeList` / `toggleInclude` / `moveInclude` · `suggestTitles` (✨) · `draftAngle` (✨) · `episodeThemeOnly` · `updateEpisodePreview` · `createEpisode` (brief → Episode page body + seeds Scripts rows) |
 | 3A Transcript (`stage-3`, unreachable) | `loadTranscriptVideos` · `fetchTranscript` (→ `yt-transcript` fn) · `runPass1` · `saveOutlineToNotion` — legacy, no nav entry |
 | 4 Script Builder | `loadSections` · `renderSections` · `renderSectionCard` · `generateDialogue` · `lockSection` · `saveSection` · `applyTemplate` · `parseDialogue` · **`runScriptCheck`** (deterministic QA, added) |
 | 5 Audio TTS | `renderAllAudio` · `playSegment` · `playFullEpisode` · `exportAudio` |
