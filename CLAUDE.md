@@ -27,14 +27,26 @@ assisting each step. Deployed on Netlify. **1 video/month.**
 
 ## Commands
 
-|                  |                                                               |
-| ---------------- | ------------------------------------------------------------- |
-| `npm install`    | deps + wires the pre-commit hook                              |
-| `npm run dev`    | `netlify dev` — local server + functions                      |
-| `npm run check`  | eslint + prettier --check (also runs on pre-commit and in CI) |
-| `npm run format` | apply prettier                                                |
+|                  |                                                                        |
+| ---------------- | ---------------------------------------------------------------------- |
+| `npm install`    | deps + wires the pre-commit hook                                       |
+| `npm run dev`    | `netlify dev` — local server + functions (needs a gitignored `.env`)   |
+| `npm run check`  | eslint + prettier --check + `index.html` script syntax + `node --test` |
+| `npm run format` | apply prettier                                                         |
 
-Node 22 (`.nvmrc`). **Push to `main` deploys to production** — don't push casually.
+Node 22 (`.nvmrc`).
+
+### Deploy flow (auto-deploy is OFF)
+
+Netlify auto-builds are **stopped**. Pushing to `main` no longer deploys.
+
+1. Make the change; `npm run check` must pass (also runs on pre-commit + CI).
+2. `npm run dev` and click through the affected stage(s) locally.
+3. Commit + push (history only — no deploy).
+4. Ship: `netlify deploy --prod` (run `netlify login` + `netlify link` once first).
+
+`netlify.toml` still carries a `build.ignore` guard in case auto-deploy is ever
+re-enabled.
 
 ## Conventions
 
