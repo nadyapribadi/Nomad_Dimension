@@ -60,7 +60,7 @@ test('gemini: maps roles, system instruction, and usage', async () => {
   const r = await callModel(
     {
       provider: 'gemini',
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.6-flash',
       system: 's',
       messages: [
         { role: 'user', content: 'hi' },
@@ -164,7 +164,7 @@ test('gemini SAFETY finishReason -> content_filtered', async () => {
   );
   await assert.rejects(
     callModel(
-      { provider: 'gemini', model: 'gemini-2.0-flash', messages: [{ role: 'user', content: 'x' }] },
+      { provider: 'gemini', model: 'gemini-3.6-flash', messages: [{ role: 'user', content: 'x' }] },
       { fetch, env }
     ),
     (e) => e.code === 'content_filtered'
@@ -288,6 +288,6 @@ test('missing key -> invalid_request', async () => {
 
 test('cost math', () => {
   assert.equal(cost('claude-sonnet-4-6', { inputTokens: 1_000_000, outputTokens: 0 }), 3);
-  assert.equal(cost('gemini-2.0-flash', { inputTokens: 0, outputTokens: 1_000_000 }), 0.4);
+  assert.equal(cost('gemini-3.6-flash', { inputTokens: 0, outputTokens: 1_000_000 }), 0.4);
   assert.equal(cost('unknown-model', { inputTokens: 1, outputTokens: 1 }), null);
 });

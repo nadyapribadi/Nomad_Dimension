@@ -15,7 +15,7 @@
 // rate_limited / provider_error / network / content_filtered error.
 const HAIKU = { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' };
 const SONNET = { provider: 'anthropic', model: 'claude-sonnet-4-6' };
-const FLASH = { provider: 'gemini', model: 'gemini-2.0-flash' };
+const FLASH = { provider: 'gemini', model: 'gemini-3.6-flash' };
 const GPT_MINI = { provider: 'openai', model: 'gpt-4o-mini' };
 const GPT = { provider: 'openai', model: 'gpt-4o' };
 const DEFAULT_ROUTING = {
@@ -38,7 +38,7 @@ const DEFAULT_ROUTING = {
 const PRICING = {
   'claude-haiku-4-5-20251001': { in: 1.0, out: 5.0 },
   'claude-sonnet-4-6': { in: 3.0, out: 15.0 },
-  'gemini-2.0-flash': { in: 0.1, out: 0.4 },
+  'gemini-3.6-flash': { in: 0.1, out: 0.4 },
   'gpt-4o-mini': { in: 0.15, out: 0.6 },
   'gpt-4o': { in: 2.5, out: 10.0 },
   'deepseek-chat': { in: 0.27, out: 1.1 },
