@@ -2829,6 +2829,18 @@ function renderBreakdownText(b) {
   return L.join('\n').trim();
 }
 
+// Fast model, explicit — no Notion routing round-trip. One retry on a second provider.
+async function runBreakdownCall(prompt) {
+  const sys = 'You extract structured data from travel-video transcripts. Output only valid JSON matching the requested shape.';
+  const req = { system: sys, maxTokens: 3500, messages: [{ role: 'user', content: prompt }] };
+  try {
+    return (await aiRun('outline', { ...req, provider: 'gemini', model: 'gemini-3.6-flash' })).text;
+  } catch (e1) {
+    console.warn('breakdown: gemini flash failed, retrying on haiku —', e1.message);
+    return (await aiRun('outline', { ...req, provider: 'anthropic', model: 'claude-haiku-4-5-20251001' })).text;
+  }
+}
+
 async function prepRunBreakdown(i) {
   const v = S.epQueue[i];
   if (!v.transcript) { prepStatus(i, 'Fetch the transcript first.'); return; }
@@ -2848,13 +2860,10 @@ ${v.transcript.slice(0, 9000)}
 
 Return ONLY this JSON shape, no markdown:
 ${BREAKDOWN_SHAPE}`;
-    // Small system prompt on purpose — extraction doesn't need the full brand DNA,
-    // and a lighter request is far less likely to hit the function timeout.
-    const raw = (await aiRun('outline', {
-      system: 'You extract structured data from travel-video transcripts. Output only valid JSON matching the requested shape.',
-      maxTokens: 3500,
-      messages: [{ role: 'user', content: prompt }],
-    })).text;
+    // Pin the model explicitly (gemini flash → haiku): fast, and it makes ai-run
+    // skip the Notion routing lookup that was blowing the 30s function timeout.
+    // Small system prompt on purpose — extraction doesn't need the full brand DNA.
+    const raw = await runBreakdownCall(prompt);
 
     let parsed;
     try { parsed = parseJsonLoose(raw); }
@@ -2953,7 +2962,7 @@ async function suggestTitles(btn) {
   const concept = document.getElementById('ep-concept').value.trim();
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
-    const raw = (await aiRun('theme', { system: buildDNASystem(), messages: [{
+    const raw = (await aiRun('theme', { provider: 'gemini', model: 'gemini-3.6-flash', system: buildDNASystem(), messages: [{
       role: 'user',
       content: `Suggest 5 episode theme phrases (3-7 words each) for the Nomad Dimension channel.
 Just the phrase — NO series name, NO "EP##", NO channel name.
@@ -2980,7 +2989,7 @@ async function draftAngle(btn) {
   if (!S.currentTranscriptOutline) { toast('Run Prep → Run breakdown first', 'error'); return; }
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
-    const raw = (await aiRun('theme', { system: buildDNASystem(), messages: [{
+    const raw = (await aiRun('theme', { provider: 'gemini', model: 'gemini-3.6-flash', system: buildDNASystem(), messages: [{
       role: 'user',
       content: `From this source material, propose ONE central question the episode answers
 (2-3 sentences) plus a one-line hook. Ground it in what the material shows — don't invent.
