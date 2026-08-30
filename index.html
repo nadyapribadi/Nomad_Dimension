@@ -2945,13 +2945,13 @@ function renderIncludeList() {
   const icon = { place: '📍', beat: '🎬', food: '🍜' };
   el.innerHTML = S.includeItems.map((it, i) => `
     <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;opacity:${it.checked ? 1 : 0.45}">
-      <input type="checkbox" ${it.checked ? 'checked' : ''} onchange="toggleInclude(${i})" style="margin-top:3px">
-      <div style="flex:1">
+      <input type="checkbox" ${it.checked ? 'checked' : ''} onchange="toggleInclude(${i})" style="width:16px;flex:none;margin-top:3px">
+      <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:500">${icon[it.kind] || ''} ${it.label}</div>
         ${it.detail ? `<div style="font-size:11px;color:var(--text3)">${it.detail}</div>` : ''}
       </div>
-      <button class="btn btn-sm btn-ghost" onclick="moveInclude(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
-      <button class="btn btn-sm btn-ghost" onclick="moveInclude(${i},1)" ${i === S.includeItems.length - 1 ? 'disabled' : ''}>↓</button>
+      <button class="btn btn-sm btn-ghost" style="flex:none" onclick="moveInclude(${i},-1)" ${i === 0 ? 'disabled' : ''}>↑</button>
+      <button class="btn btn-sm btn-ghost" style="flex:none" onclick="moveInclude(${i},1)" ${i === S.includeItems.length - 1 ? 'disabled' : ''}>↓</button>
     </div>`).join('');
 }
 function toggleInclude(i) { S.includeItems[i].checked = !S.includeItems[i].checked; renderIncludeList(); }
@@ -3529,7 +3529,7 @@ function renderPlacesReview() {
         <div style="margin-top:4px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <a href="${p.google_maps_url}" target="_blank" rel="noopener" style="font-size:11px;color:var(--blue)">Maps ↗</a>
           ${FOOD_TYPES.has(p.type) ? `<label style="font-size:10px;color:var(--text3)">halal
-            <select onchange="setPlaceField(${i},'halal',this.value)" style="font-size:10px;padding:1px 4px">
+            <select onchange="setPlaceField(${i},'halal',this.value)" style="font-size:10px;padding:1px 4px;width:auto">
               ${['Unknown', 'Yes', 'Partial', 'No'].map(o => `<option ${p.halal === o ? 'selected' : ''}>${o}</option>`).join('')}
             </select></label>` : ''}
         </div>
