@@ -1445,13 +1445,16 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 <script>
 // ─── CONSTANTS ─────────────────────────────────────────────────────────────
 const APP_SETTINGS_PAGE_ID = '33c9ba2b-3900-8132-b172-f136389ac2e2';
+// Notion DATABASE ids (not data-source/collection ids — those 404 the REST API).
+// Verified live via /v1/search. places + sourceChannels not yet connected to the
+// integration; sourceChannels is unused (channels come from the JSON block).
 const DB_IDS = {
-  sourceVideos:  '29429e5b-dd37-4ab8-93a5-b1e092df9e60',
-  episodes:      'b298e52a-19e1-47b5-bfa2-d846dbc69291',
-  scripts:       'be955033-cd95-4801-8e05-bcdce05cedc5',
-  places:        '9b03bb34-9d44-4eba-9744-5073bc881656',
+  sourceVideos:  '54e269ed-6c2e-4e05-9211-82f9b274c2a6',
+  episodes:      '93de54dc-6e36-459f-b2d0-0b9f02a1594b',
+  scripts:       '81917620-d890-4383-9288-3b5136d0d438',
+  places:        '9b03bb34-9d44-4eba-9744-5073bc881656', // TODO: real db id after connecting
   sourceChannels:'ad90cd8a-276c-4cf6-9414-697401380388',
-  costs:         '6c2855fd-38c8-4e81-8f4d-4c4070b3b82d',
+  costs:         '36962616-b115-4398-850d-40582b092973',
 };
 
 // ─── STATE ──────────────────────────────────────────────────────────────────
@@ -2442,8 +2445,8 @@ async function pushToNotion() {
     try {
       const props = {
         'Video Title': { title: [{ text: { content: v.title } }] },
-        // Notion property is "YouTube URL" (the MCP renders it "userDefined:…").
-        'YouTube URL': { url: v.url || null },
+        // The property is literally named "userDefined:YouTube URL" in this DB.
+        'userDefined:YouTube URL': { url: v.url || null },
         'Source Channel': { rich_text: [{ text: { content: v.channelName } }] },
         'Content Angle': { rich_text: [{ text: { content: v.angle } }] },
         'Country': { select: { name: v.country || 'Japan' } },
@@ -2494,7 +2497,7 @@ async function loadSourceQueue() {
   channel: p.properties?.['Source Channel']?.rich_text?.[0]?.plain_text || '',
   angle: p.properties?.['Content Angle']?.rich_text?.[0]?.plain_text || '',
   country: p.properties?.Country?.select?.name || '',
-  url: p.properties?.['YouTube URL']?.url || '',
+  url: p.properties?.['userDefined:YouTube URL']?.url || '',
     }));
 
     if (!S.epQueue.length) {
@@ -2813,7 +2816,7 @@ async function loadTranscriptVideos() {
       const pr = p.properties || {};
       S.transcriptVideos[p.id] = {
         title: pr['Video Title']?.title?.[0]?.plain_text || 'Untitled',
-        url: pr['YouTube URL']?.url || '',
+        url: pr['userDefined:YouTube URL']?.url || '',
         transcript: pr['Transcript']?.rich_text?.map(r => r.plain_text).join('') || '',
       };
     }

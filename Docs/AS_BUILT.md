@@ -33,19 +33,22 @@ map, where the **code diverges from the spec**, and the **forward plan**
 
 ```js
 APP_SETTINGS_PAGE_ID = '33c9ba2b-3900-8132-b172-f136389ac2e2'
+// Notion DATABASE ids (verified via /v1/search). The Notion doc's
+// "🗄️ Database IDs" table lists DATA-SOURCE ids — those 404 the REST API.
 DB_IDS = {
-  sourceVideos:   '29429e5b-dd37-4ab8-93a5-b1e092df9e60',
-  episodes:       'b298e52a-19e1-47b5-bfa2-d846dbc69291',
-  scripts:        'be955033-cd95-4801-8e05-bcdce05cedc5',
-  places:         '9b03bb34-9d44-4eba-9744-5073bc881656',
-  sourceChannels: 'ad90cd8a-276c-4cf6-9414-697401380388',
-  costs:          '6c2855fd-38c8-4e81-8f4d-4c4070b3b82d',
+  sourceVideos:   '54e269ed-6c2e-4e05-9211-82f9b274c2a6',
+  episodes:       '93de54dc-6e36-459f-b2d0-0b9f02a1594b',
+  scripts:        '81917620-d890-4383-9288-3b5136d0d438',
+  places:         '9b03bb34-9d44-4eba-9744-5073bc881656', // stale — DB not yet connected
+  sourceChannels: 'ad90cd8a-276c-4cf6-9414-697401380388', // unused (JSON block)
+  costs:          '36962616-b115-4398-850d-40582b092973',
 }
 ```
 
-The Notion doc lists **8 databases**; the code references **6**. Not in `DB_IDS`:
-the **Performance** database (`a488f781-ef28-4006-9b97-44b72d16d4ba`) — no stage
-reads or writes it. (App Settings is a page, handled via `APP_SETTINGS_PAGE_ID`.)
+`ai-run.js` has its own `COSTS_DB_ID` (same value). The **Performance** DB is
+not referenced by any stage. **Places** and **Source Channels** are not yet
+connected to the `NomadDimension` integration — their reads/writes 404 until
+they are (then `places` needs its real database id here).
 
 ## Function map (by stage)
 
