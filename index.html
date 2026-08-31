@@ -1066,7 +1066,6 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <div class="card-title" style="margin:0"><span class="icon">🗂️</span> Places to Review</div>
           <div style="flex:1"></div>
-          <button class="btn btn-sm btn-ghost" onclick="confirmAllPlaces()">Confirm all</button>
         </div>
         <div id="places-list"></div>
       </div>
@@ -4247,6 +4246,8 @@ async function extractPlaces() {
     }
     S.extractedPlaces = [...byKey.values()].sort((a, z) => a.name.localeCompare(z.name));
     S.confirmedPlaces = [];
+    // default: ones already in the DB start unticked
+    S.placeSkip = new Set(S.extractedPlaces.filter(p => p.is_existing).map(p => p.name.toLowerCase()));
     if (!S.extractedPlaces.length) throw new Error('no places found in the transcript(s)');
 
     loadEl.innerHTML = '<div class="spinner"></div> Looking up places on Google Maps…';
@@ -4311,75 +4312,72 @@ const hasCJK = (s) => /[぀-ヿ㐀-鿿ｦ-ﾟ]/.test(s || '');
 const shortFrom = (arr) => (arr || [])
   .map(t => t.length > 34 ? t.slice(0, 33) + '…' : t).join(' · ');
 
+// names (lowercased) that are UNticked in the Places review. Seeded with the
+// ones already in the DB so a blind "Queue" won't re-push them.
 function renderPlacesReview() {
   const listEl = document.getElementById('places-list');
-  listEl.innerHTML = S.extractedPlaces.map((p, i) => {
-    const localName = hasCJK(p.name_local) ? p.name_local : '';   // drop MT'd non-Japanese
-    const price = p.price_if_spoken || p.price_display || (p.maps_price !== 'Unknown' ? p.maps_price : '') || '';
-    const prefNote = p.prefFromMaps
-      ? '<span style="color:var(--accent3)">✓ from Google Maps</span>'
-      : p.prefFromGuess ? '<span style="color:var(--accent2)">AI guess — check it</span>' : '';
-    return `
-    <div id="place-${i}" style="border:1px solid ${p.is_existing ? 'var(--border)' : 'rgba(91,143,212,.35)'};border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;background:${p.is_existing ? 'transparent' : 'rgba(91,143,212,.04)'}">
-      <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
-        <span style="font-weight:600;font-size:14px">${p.name}</span>
-        ${localName ? `<span style="color:var(--text3)">${localName}</span>` : ''}
-        <span class="badge ${p.is_existing ? 'badge-green' : 'badge-blue'}" style="font-size:9px">${p.is_existing ? '✓ already in DB' : '🆕 new'}</span>
-      </div>
-      <div style="font-size:11px;color:var(--text3);font-family:var(--font-mono);margin-top:2px">
-        ${p.type}${p.prefecture && p.prefecture !== 'Unknown' ? ` · ${p.prefecture}` : ''}${p.area ? `, ${p.area}` : ''}
-      </div>
-      ${p.what_happens_here ? `<div style="font-size:12px;color:var(--text2);margin-top:6px">${p.what_happens_here}</div>` : ''}
-      ${p.maps_summary ? `<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic">“${p.maps_summary}” — Google</div>` : ''}
-      ${p.address ? `<div style="font-size:11px;color:var(--text3);margin-top:4px">📮 ${p.address}</div>` : ''}
-      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:11px">
-        <a href="${p.google_maps_url}" target="_blank" rel="noopener" style="color:var(--blue)">📍 Maps ↗</a>
-        ${p.website ? `<a href="${p.website}" target="_blank" rel="noopener" style="color:var(--blue)">🌐 Website ↗</a>` : ''}
-        ${typeof p.rating === 'number' ? `<span style="color:var(--text2)">★ ${p.rating}${p.ratingCount ? ` (${p.ratingCount})` : ''}</span>` : ''}
-        ${price ? `<span style="color:var(--text2);font-family:var(--font-mono)">💴 ${price}</span>` : ''}
-        ${p.from && p.from.length ? `<span style="color:var(--text3)">from: ${shortFrom(p.from)}</span>` : ''}
-      </div>
-      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-        <label style="font-size:10px;color:var(--text3);margin:0">prefecture
-          <select onchange="setPlaceField(${i},'prefecture',this.value);setPlaceField(${i},'prefFromGuess',false);setPlaceField(${i},'prefFromMaps',false)" style="font-size:11px;padding:3px 4px;width:auto;margin-left:4px">
+  const rows = S.extractedPlaces;
+  const skip = (S.placeSkip ||= new Set());
+  const dbN = rows.filter(p => p.is_existing).length;
+  listEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="queuePlaces()">Queue ticked → Notion</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="placesPick('new')">new only</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="placesPick('all')">all</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="placesPick('none')">none</button>
+      <span style="font-size:11px;color:var(--text3)">${rows.length} place${rows.length === 1 ? '' : 's'}${dbN ? ` · <span style="color:var(--amber)">${dbN} already in DB</span>` : ''}</span>
+    </div>
+    <div style="overflow:auto;max-height:60vh;border:1px solid var(--border);border-radius:var(--radius)">
+    <table class="data-table" style="font-size:12px">
+      <thead><tr><th style="width:24px"></th><th>Name</th><th>Type</th><th>Prefecture</th><th>Halal</th><th>Area</th><th>What happens here</th><th>★</th><th>💴</th><th>From</th><th></th></tr></thead>
+      <tbody>
+      ${rows.map((p, i) => {
+        const off = skip.has(p.name.toLowerCase());
+        const localName = hasCJK(p.name_local) ? p.name_local : '';
+        const price = p.price_if_spoken || p.price_display || (p.maps_price && p.maps_price !== 'Unknown' ? p.maps_price : '') || '';
+        const prefNote = p.prefFromMaps ? ' <span style="color:var(--accent3);font-size:10px">✓Maps</span>'
+          : p.prefFromGuess ? ' <span style="color:var(--accent2);font-size:10px">AI?</span>' : '';
+        return `<tr style="opacity:${off ? 0.45 : 1}">
+          <td><input type="checkbox" ${off ? '' : 'checked'} onchange="togglePlace(${i})" style="width:14px;flex:none"></td>
+          <td style="max-width:190px;white-space:normal;font-weight:600">${_esc(p.name)}${localName ? ` <span style="font-weight:400;color:var(--text3)">${_esc(localName)}</span>` : ''}
+            <div style="font-weight:400;font-size:10px;margin-top:2px"><a href="${p.google_maps_url}" target="_blank" rel="noopener" style="color:var(--blue)">Maps ↗</a>${p.website ? ` · <a href="${p.website}" target="_blank" rel="noopener" style="color:var(--blue)">Web ↗</a>` : ''}</div></td>
+          <td>${_esc(p.type)}</td>
+          <td><select onchange="setPlaceField(${i},'prefecture',this.value);setPlaceField(${i},'prefFromGuess',false);setPlaceField(${i},'prefFromMaps',false)" style="font-size:11px;padding:2px 3px;width:auto">
             ${PREFECTURES.map(o => `<option ${p.prefecture === o ? 'selected' : ''}>${o}</option>`).join('')}
-          </select>
-        </label>
-        ${prefNote ? `<span style="font-size:10px">${prefNote}</span>` : ''}
-        ${FOOD_TYPES.has(p.type) ? `<label style="font-size:10px;color:var(--text3);margin:0">halal
-          <select onchange="setPlaceField(${i},'halal',this.value)" style="font-size:11px;padding:3px 4px;width:auto;margin-left:4px">
-            ${['Unknown', 'Yes', 'Partial', 'No'].map(o => `<option ${p.halal === o ? 'selected' : ''}>${o}</option>`).join('')}
-          </select></label>` : ''}
-        <div style="flex:1"></div>
-        <button class="btn btn-sm btn-primary" onclick="confirmPlace(${i})">${p.is_existing ? '↻ Update in DB' : '✓ Push to Notion'}</button>
-        <button class="btn btn-sm btn-ghost" onclick="skipPlace(${i})">Skip</button>
-      </div>
-    </div>`;
-  }).join('');
+          </select>${prefNote}</td>
+          <td>${FOOD_TYPES.has(p.type) ? `<select onchange="setPlaceField(${i},'halal',this.value)" style="font-size:11px;padding:2px 3px;width:auto">${['Unknown', 'Yes', 'Partial', 'No'].map(o => `<option ${p.halal === o ? 'selected' : ''}>${o}</option>`).join('')}</select>` : ''}</td>
+          <td style="max-width:110px;white-space:normal">${_esc(p.area || '')}</td>
+          <td style="max-width:230px;white-space:normal">${_esc(p.what_happens_here || '')}${p.maps_summary ? `<div style="color:var(--text3);font-style:italic;margin-top:3px">“${_esc(p.maps_summary)}”</div>` : ''}</td>
+          <td style="white-space:nowrap">${typeof p.rating === 'number' ? `${p.rating}${p.ratingCount ? ` (${p.ratingCount})` : ''}` : ''}</td>
+          <td style="white-space:nowrap">${_esc(price)}</td>
+          <td style="max-width:130px;white-space:normal;color:var(--text3)">${_esc(shortFrom(p.from))}</td>
+          <td>${p.is_existing ? '<span class="badge badge-green" style="font-size:9px">in DB</span>' : '<span class="badge badge-blue" style="font-size:9px">new</span>'}</td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table></div>`;
 }
 
-function confirmPlace(i) {
-  const p = S.extractedPlaces[i];
-  if (!S.confirmedPlaces.find(cp => cp.name === p.name)) {
-    S.confirmedPlaces.push(p);
-  }
-  const el = document.getElementById(`place-${i}`);
-  if (el) { el.style.opacity = '.5'; el.style.pointerEvents = 'none'; }
-  renderConfirmedList();
-  toast(`${p.is_existing ? '↻' : '✓'} ${p.name} queued`);
+function togglePlace(i) {
+  const nm = S.extractedPlaces[i].name.toLowerCase();
+  if (S.placeSkip.has(nm)) S.placeSkip.delete(nm); else S.placeSkip.add(nm);
+  renderPlacesReview();
 }
 
-function skipPlace(i) {
-  const el = document.getElementById(`place-${i}`);
-  if (el) { el.style.opacity = '.3'; el.style.pointerEvents = 'none'; }
+// 'new' = only ones not in the DB · 'all' = everything · 'none'
+function placesPick(mode) {
+  const lc = (p) => p.name.toLowerCase();
+  S.placeSkip = new Set(
+    mode === 'none' ? S.extractedPlaces.map(lc)
+      : mode === 'new' ? S.extractedPlaces.filter(p => p.is_existing).map(lc)
+        : []
+  );
+  renderPlacesReview();
 }
 
-function confirmAllPlaces() {
-  S.extractedPlaces.forEach((p, i) => {
-    if (!S.confirmedPlaces.find(cp => cp.name === p.name)) S.confirmedPlaces.push(p);
-    const el = document.getElementById(`place-${i}`);
-    if (el) { el.style.opacity = '.5'; el.style.pointerEvents = 'none'; }
-  });
+function queuePlaces() {
+  S.confirmedPlaces = S.extractedPlaces.filter(p => !S.placeSkip.has(p.name.toLowerCase()));
+  if (!S.confirmedPlaces.length) { toast('Nothing ticked', 'error'); return; }
   renderConfirmedList();
   toast(`${S.confirmedPlaces.length} queued`, 'success');
 }
