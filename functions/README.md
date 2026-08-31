@@ -129,6 +129,28 @@ Text Search (`places:searchText`, `maxResultCount: 1`, `regionCode: JP`).
 `prefecture` = the `administrative_area_level_1` component, trimmed of a trailing
 "Prefecture". Used by Stage 2 → Places to override the AI's prefecture guess.
 
+## `web-research.js`
+
+Gemini (`gemini-3.6-flash`) + Google Search grounding. Two modes:
+
+```jsonc
+// open question
+POST { "query": "onsen etiquette for tattoos", "focus": "primary sources" }
+  -> { "extract": { "places":[…], "research":[…], "prices":[…], "data":[…], "glossary":[…] },
+       "sources": [{ "title": "…", "url": "…" }], "model": "gemini-3.6-flash" }
+
+// verify collected rows (Research → Web → "Verify collected")
+POST { "mode": "verify", "store": "research",
+       "items": [{ "name": "…", "detail": "kind: fact · prefecture: Iwate" }] }   // ≤40
+  -> { "verified": [{ "name", "verdict": "confirmed|corrected|unsupported",
+                      "confidence": "low|medium|high", "source_url", "as_of_date",
+                      "corrected_value", "note" }],
+       "sources": […], "model": "gemini-3.6-flash" }
+```
+
+Bails at 23 s → `504 { error }` (before Netlify's 26 s hard kill). `502` on
+provider/network failure, `500` if `GEMINI_API_KEY` is unset.
+
 ## Contract stability
 
 The browser (`index.html`) depends on these shapes. Change them additively only;
