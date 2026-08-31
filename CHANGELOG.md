@@ -5,6 +5,16 @@ Human-readable, updated per milestone. Format loosely follows
 
 ## Unreleased
 
+### Fixed — hung request could freeze a button forever
+
+- `web-research` / `notion-proxy` calls now carry a **client-side timeout**
+  (`_postJSON` / an `AbortController` in `notionAPI`, 30 s). Before, when
+  Netlify's edge didn't cleanly close a slow connection the browser `fetch`
+  hung, so `runLibVerify`'s `finally` never ran and its `_libVerifying` lock
+  stayed set — **"Verify ticked" stopped responding** and unticking rows
+  didn't help. Now the request rejects, the lock clears, and a re-entrant
+  click toasts "still verifying — hang on" instead of silently no-op'ing.
+
 ### Changed — Review table flags rows already in Notion
 
 - Opening a store tab in "3 · Review & push" now fetches that DB's existing
