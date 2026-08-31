@@ -3056,9 +3056,11 @@ async function prepRunBreakdown(i) {
         console.warn('extract pass 2 failed:', e.message); return {};
       });
 
-    // Stamp source provenance onto every pushable array.
+    // Stamp source provenance onto every pushable array. source_page_id drives
+    // the real Notion "Source Video" relation (see RESEARCH_STORES).
     const stamp = (arr) => (arr || []).map(x => ({
-      source_url: v.url || '', source_name: v.channel || '', source_title: v.title || '', needs_verification: true, ...x,
+      source_url: v.url || '', source_name: v.channel || '', source_title: v.title || '',
+      source_page_id: v.id || '', needs_verification: true, ...x,
     }));
     const parsed = {
       summary: p1.summary || '',
@@ -3107,6 +3109,8 @@ function rebuildCombinedOutline() {
 // ─── Research · generic "review & push" for the non-Places stores ────────────
 const _today = () => new Date().toISOString().slice(0, 10);
 const _txt = (s) => ({ rich_text: [{ text: { content: String(s || '').slice(0, 1900) } }] });
+// Notion relation payload, or undefined so JSON.stringify drops the key.
+const _rel = (id) => (id ? { relation: [{ id }] } : undefined);
 const _esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // Flatten one Notion property payload to a display string (for the review table).
 function _propText(v) {
@@ -3139,7 +3143,7 @@ const RESEARCH_STORES = {
       'Place': _txt(it.place), 'Season': _txt(it.season),
       ...(it.difficulty && ['Easy', 'Moderate', 'Hard'].includes(it.difficulty) ? { 'Difficulty': { select: { name: it.difficulty } } } : {}),
       'Duration': _txt(it.duration), 'Cost': _txt(it.cost),
-      'Source URL': { url: it.source_url || null }, 'Source Video': _txt(it.source_title),
+      'Source URL': { url: it.source_url || null }, 'Source Video': _rel(it.source_page_id),
       'Date Added': { date: { start: _today() } },
     }),
   },
@@ -3153,7 +3157,7 @@ const RESEARCH_STORES = {
       'Region of Origin': _txt(it.region),
       'Halal': { select: { name: _clamp(it.halal, ['Yes', 'Partial', 'No', 'Unknown'], 'Unknown') } },
       'Taste / Description': _txt(it.description), 'Where Tried': _txt(it.where),
-      'Source URL': { url: it.source_url || null }, 'Source Video': _txt(it.source_title),
+      'Source URL': { url: it.source_url || null }, 'Source Video': _rel(it.source_page_id),
       'Date Added': { date: { start: _today() } },
     }),
   },
@@ -3167,7 +3171,7 @@ const RESEARCH_STORES = {
       ...(typeof it.distance_km === 'number' && it.distance_km > 0 ? { 'Distance km': { number: it.distance_km } } : {}),
       'Duration': _txt(it.duration), 'Fare or Toll': _txt(it.fare),
       'Scenic': { checkbox: !!it.scenic },
-      'Source URL': { url: it.source_url || null }, 'Source Video': _txt(it.source_title),
+      'Source URL': { url: it.source_url || null }, 'Source Video': _rel(it.source_page_id),
       'Date Added': { date: { start: _today() } },
     }),
   },
@@ -3182,7 +3186,7 @@ const RESEARCH_STORES = {
       ...(it.as_of_date ? { 'As-of Date': { date: { start: it.as_of_date } } } : {}),
       'Retrieved Date': { date: { start: _today() } },
       'Prefecture': { select: { name: it.prefecture || 'Unknown' } }, 'Topic': _txt(it.topic),
-      'Source Video': _txt(it.source_title),
+      'Source Video': _rel(it.source_page_id),
     }),
   },
   prices: {
@@ -3193,6 +3197,7 @@ const RESEARCH_STORES = {
       ...(typeof it.amount === 'number' ? { 'Amount': { number: it.amount } } : {}),
       'Currency': { select: { name: _clamp(it.currency, ['JPY', 'USD', 'Other'], 'JPY') } },
       'Place': _txt(it.place), 'Source URL': { url: it.source_url || null },
+      'Source Video': _rel(it.source_page_id),
       ...(it.as_of_date ? { 'As-of Date': { date: { start: it.as_of_date } } } : {}),
     }),
   },
@@ -3205,6 +3210,7 @@ const RESEARCH_STORES = {
       'Unit': _txt(it.unit),
       ...(typeof it.year === 'number' && it.year > 0 ? { 'Year': { number: it.year } } : {}),
       'Place or Region': _txt(it.place_or_region), 'Source URL': { url: it.source_url || null },
+      'Source Video': _rel(it.source_page_id),
     }),
   },
   glossary: {
