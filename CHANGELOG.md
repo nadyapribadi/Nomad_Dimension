@@ -5,6 +5,19 @@ Human-readable, updated per milestone. Format loosely follows
 
 ## Unreleased
 
+### Changed — Research tab navigability
+
+- **Prep tab is a 3-step strip** (`prepStep`): Pick videos · Break down · Review
+  & push — one card visible at a time, auto-advances to step 2 on "Select
+  shown". No more long scroll.
+- **Review & push is now a table**, not a name list. Columns are derived
+  generically from each store's `props()` payload (`_propText` flattener), so
+  you see the actual field values that will be written to Notion. Scrolls
+  inside a 60vh box.
+- **`web-research.js`**: 23s `AbortController` so a slow grounded search
+  returns a clean `504 {error}` ("narrow the question…") instead of Netlify's
+  opaque HTML Inactivity-Timeout page. Output budget trimmed 4000→2500 tokens.
+
 ### Added — Step 1 / Step 2 restructure (`Docs/PIPELINE.md`)
 
 - **R1** — `#stage-1` → **Research** (tabs YouTube · Prep · Places · Web);
