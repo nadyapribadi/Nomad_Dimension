@@ -1631,11 +1631,22 @@ const S = {
 // Keys/tokens live only in Netlify env vars — the browser never sends them.
 async function notionAPI(endpoint, method = 'GET', body = null) {
   for (let attempt = 0; ; attempt++) {
-    const res = await fetch('/.netlify/functions/notion-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ endpoint, method, body }),
-    });
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 30000);   // never hang a caller's lock
+    let res;
+    try {
+      res = await fetch('/.netlify/functions/notion-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint, method, body }),
+        signal: ac.signal,
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error(`Notion request timed out (${endpoint})`);
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
     if (res.ok) return res.json();
     // Notion allows ~3 req/s — back off and retry a rate-limited call twice.
     if (res.status === 429 && attempt < 2) {
@@ -3476,13 +3487,7 @@ async function runWebResearch(btn) {
   if (btn) { btn.disabled = true; btn.textContent = 'Searching…'; }
   statusEl.textContent = 'Searching the web…';
   try {
-    const res = await fetch('/.netlify/functions/web-research', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: q, focus }),
-    });
-    const body = await res.text();
-    let d; try { d = JSON.parse(body); } catch { throw new Error(`web-research ${res.status} — ${body.slice(0, 160)}`); }
-    if (!res.ok) throw new Error(d.error || `web-research ${res.status}`);
+    const d = await _postJSON('/.netlify/functions/web-research', { query: q, focus });
     S.webExtract = d.extract || {};
     S._webSkip = new Set();
     const n = Object.values(S.webExtract).reduce((a, v) => a + (Array.isArray(v) ? v.length : 0), 0);
@@ -3506,15 +3511,31 @@ function webMode(m) {
   if (m === 'verify') { renderVerifyStores(); renderVlibPicker(); }
 }
 
+// fetch + parse JSON with a hard client-side timeout, so a hung Netlify
+// connection can never leave a caller's re-entry lock stuck.
+async function _postJSON(url, body, ms = 30000) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  try {
+    const res = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body), signal: ac.signal,
+    });
+    const raw = await res.text();
+    let d; try { d = JSON.parse(raw); } catch { throw new Error(`${url.split('/').pop()} ${res.status} — ${raw.slice(0, 160)}`); }
+    if (!res.ok) throw new Error(d.error || `${url.split('/').pop()} ${res.status}`);
+    return d;
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`timed out after ${ms / 1000}s — try fewer rows / a narrower query`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // One grounded verify call. Returns { verified:[], sources:[] } or throws.
 async function _verifyBatch(store, items) {
-  const res = await fetch('/.netlify/functions/web-research', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode: 'verify', store, items }),
-  });
-  const raw = await res.text();
-  let d; try { d = JSON.parse(raw); } catch { throw new Error(`web-research ${res.status} — ${raw.slice(0, 160)}`); }
-  if (!res.ok) throw new Error(d.error || `web-research ${res.status}`);
+  const d = await _postJSON('/.netlify/functions/web-research', { mode: 'verify', store, items });
   return { verified: d.verified || [], sources: d.sources || [] };
 }
 
@@ -3755,7 +3776,7 @@ async function archiveVlib(btn) {
 
 let _libVerifying = false;
 async function runLibVerify(btn) {
-  if (_libVerifying) return;
+  if (_libVerifying) { toast('Still verifying the last batch — hang on', 'error'); return; }
   const rows = (S.vlib || []).filter(r => !S._vlibSkip.has(r.id));
   if (!rows.length) { toast('Nothing ticked', 'error'); return; }
   _libVerifying = true;
