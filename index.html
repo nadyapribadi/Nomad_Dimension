@@ -995,7 +995,12 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
   <!-- PREP TAB — pick source videos, then break each down -->
   <div id="res-tab-prep" style="display:none">
-    <div class="card">
+    <div class="tabs" style="margin-bottom:12px">
+      <div class="tab active" id="prep-step-1" onclick="prepStep(1)">1 · Pick videos</div>
+      <div class="tab" id="prep-step-2" onclick="prepStep(2)">2 · Break down</div>
+      <div class="tab" id="prep-step-3" onclick="prepStep(3)">3 · Review &amp; push</div>
+    </div>
+    <div class="card" id="prep-card-1">
       <div class="card-title"><span class="icon">📋</span> 1 · Pick source videos</div>
       <div class="btn-row" style="margin-top:0;margin-bottom:10px">
         <button class="btn btn-sm" onclick="loadSourceQueue()">↻ Load from Notion</button>
@@ -1031,7 +1036,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         </div>
       </div>
     </div>
-    <div class="card">
+    <div class="card" id="prep-card-2" style="display:none">
       <div class="card-title"><span class="icon">🧪</span> 2 · Break down each</div>
       <p style="font-size:12px;color:var(--text3);margin-bottom:12px">
         Fetch the transcript, then <strong>Run breakdown</strong> — two AI passes pull a
@@ -1040,7 +1045,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       </p>
       <div id="ep-prep-list"></div>
     </div>
-    <div class="card">
+    <div class="card" id="prep-card-3" style="display:none">
       <div class="card-title"><span class="icon">📤</span> 3 · Review &amp; push to the stores</div>
       <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Places go via the <strong>Places</strong> tab (Maps enrichment). Everything else is pushed here — tick what's worth keeping. All of it is low-confidence until the <strong>Web</strong> tab verifies it.</p>
       <div id="extract-review"><div class="empty-state"><div class="icon">📤</div><p>Run a breakdown above first.</p></div></div>
@@ -2747,6 +2752,7 @@ function selectAllQueue() {
   document.getElementById('ep-sel-count').textContent = `${S.epSelected.size} selected`;
   renderQueue();
   renderPrepList();
+  if (S.epSelected.size) prepStep(2);
 }
 
 function renderQueue() {
@@ -2789,6 +2795,18 @@ function clearEpSelection() {
 }
 
 // ─── Research · Prep (transcript + breakdown per ticked source video) ────────
+// Three-step strip inside the Prep tab — one card visible at a time.
+function prepStep(n) {
+  for (let k = 1; k <= 3; k++) {
+    const card = document.getElementById(`prep-card-${k}`);
+    const tab = document.getElementById(`prep-step-${k}`);
+    if (card) card.style.display = k === n ? '' : 'none';
+    if (tab) tab.classList.toggle('active', k === n);
+  }
+  if (n === 2) renderPrepList();
+  if (n === 3) renderExtractReview();
+}
+
 function renderPrepList() {
   const el = document.getElementById('ep-prep-list');
   if (!el) return;
@@ -3089,6 +3107,21 @@ function rebuildCombinedOutline() {
 // ─── Research · generic "review & push" for the non-Places stores ────────────
 const _today = () => new Date().toISOString().slice(0, 10);
 const _txt = (s) => ({ rich_text: [{ text: { content: String(s || '').slice(0, 1900) } }] });
+const _esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// Flatten one Notion property payload to a display string (for the review table).
+function _propText(v) {
+  if (v == null || typeof v !== 'object') return '';
+  if (v.title) return v.title.map(t => t.text?.content || '').join('');
+  if (v.rich_text) return v.rich_text.map(t => t.text?.content || t.plain_text || '').join('');
+  if (v.select) return v.select.name || '';
+  if (v.multi_select) return v.multi_select.map(s => s.name).join(', ');
+  if (typeof v.number === 'number') return String(v.number);
+  if (typeof v.checkbox === 'boolean') return v.checkbox ? '✓' : '';
+  if (v.date) return v.date.start || '';
+  if (v.url) return v.url || '';
+  if (v.relation) return v.relation.length ? `↗ ${v.relation.length}` : '';
+  return '';
+}
 const _clamp = (v, opts, fallback) => (opts.includes(v) ? v : fallback);
 const ACT_TYPES = ['Hike', 'Water', 'Scenic Drive', 'Festival', 'Food Experience', 'Craft', 'Stargazing', 'Other'];
 const FOOD_CATS = ['Noodle', 'Rice', 'Seafood', 'Sweet', 'Street', 'Drink', 'Other'];
@@ -3235,20 +3268,35 @@ function renderReviewInto(elId, src) {
   const tabs = keys.map(k =>
     `<div class="tab ${k === active ? 'active' : ''}" onclick="switchReviewTab('${src}','${k}')">${RESEARCH_STORES[k].label} · ${poolFor(k, src).length}</div>`
   ).join('');
+  const cfg = RESEARCH_STORES[active];
+  // Build the row payloads once, derive the columns from them (agnostic — no
+  // per-store column config). Hide the always-identical / title columns.
+  const built = pool.map(it => ({ it, p: cfg.props(it) }));
+  const HIDE = new Set(['Date Added', 'Retrieved Date', 'Country', 'Last Verified', cfg.titleProp]);
+  const cols = [];
+  for (const { p } of built) for (const k of Object.keys(p)) if (!HIDE.has(k) && !cols.includes(k)) cols.push(k);
   el.innerHTML = `
     <div class="tabs" style="margin-bottom:10px">${tabs}</div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${active}',this,'${src}')">Push ticked → ${RESEARCH_STORES[active].label}</button>
+      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${active}',this,'${src}')">Push ticked → ${cfg.label}</button>
       <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',true)">all</button>
       <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',false)">none</button>
+      <span style="font-size:11px;color:var(--text3)">${built.length} row${built.length === 1 ? '' : 's'}</span>
     </div>
-    ${pool.map(it => {
-      const off = skip.has(it._key);
-      return `<label style="display:flex;gap:8px;align-items:flex-start;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:3px;opacity:${off ? 0.4 : 1};font-size:12px">
-        <input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview('${it._key}','${src}')" style="width:14px;flex:none;margin-top:2px">
-        <span>${RESEARCH_STORES[active].name(it) || '(unnamed)'}</span>
-      </label>`;
-    }).join('')}`;
+    <div style="overflow:auto;max-height:60vh;border:1px solid var(--border);border-radius:var(--radius)">
+    <table class="data-table" style="font-size:12px">
+      <thead><tr><th style="width:24px"></th><th>${_esc(cfg.titleProp)}</th>${cols.map(c => `<th>${_esc(c)}</th>`).join('')}</tr></thead>
+      <tbody>
+      ${built.map(({ it, p }) => {
+        const off = skip.has(it._key);
+        return `<tr style="opacity:${off ? 0.4 : 1}">
+          <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview('${it._key}','${src}')" style="width:14px;flex:none"></td>
+          <td style="font-weight:500;max-width:220px;white-space:normal">${_esc(cfg.name(it) || '(unnamed)')}</td>
+          ${cols.map(c => `<td style="max-width:240px;white-space:normal">${_esc(_propText(p[c]))}</td>`).join('')}
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table></div>`;
 }
 function switchReviewTab(src, key) {
   _reviewTab[src] = key;

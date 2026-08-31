@@ -42,6 +42,10 @@ Numbers go in "data" with unit + year. Prices go in "prices" with as_of_date.
 Return ONLY this JSON shape, no markdown:
 ${SHAPE}`;
 
+  // Grounded generation is slow; bail at 23s so we return clean JSON before
+  // Netlify's 26s hard kill turns it into an opaque 504 HTML page.
+  const ac = new AbortController();
+  const killer = setTimeout(() => ac.abort(), 23000);
   let data;
   try {
     const res = await fetch(
@@ -52,8 +56,9 @@ ${SHAPE}`;
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           tools: [{ google_search: {} }],
-          generationConfig: { maxOutputTokens: 4000, temperature: 0.2 },
+          generationConfig: { maxOutputTokens: 2500, temperature: 0.2 },
         }),
+        signal: ac.signal,
       }
     );
     data = await res.json().catch(() => ({}));
@@ -61,7 +66,14 @@ ${SHAPE}`;
       return respond(502, { error: (data.error && data.error.message) || `HTTP ${res.status}` });
     }
   } catch (e) {
+    if (e.name === 'AbortError') {
+      return respond(504, {
+        error: 'Search took too long. Narrow the question, or add a Focus to scope it.',
+      });
+    }
     return respond(502, { error: e.message });
+  } finally {
+    clearTimeout(killer);
   }
 
   const cand = (data.candidates || [])[0] || {};
