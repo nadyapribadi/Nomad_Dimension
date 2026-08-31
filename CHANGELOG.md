@@ -14,6 +14,18 @@ Human-readable, updated per milestone. Format loosely follows
   accidental re-pushes before they happen (the push-time dedupe stays as a
   backstop).
 
+### Added — Web tab: Tidy (deterministic dedup)
+
+- The library table gets a **🧹 Tidy** mode. Leave the keyword blank, load a
+  table (or several), hit Tidy: rows are clustered per store by
+  normalized-title Jaccard ≥ 0.5 (`_normTokens` drops stop-words like
+  "the/vlogger/trip"), the redundant members of each cluster + any **thin**
+  rows (`_thinName` — ≤2 content words, or "successfully…/it is claimed…"
+  filler) are pre-checked. Pick keepers by unchecking; **Archive checked** →
+  confirm → `archived:true` (Notion trash, reversible). No AI, nothing
+  auto-deletes. New Notion `Notes` column on the 5 breakdown stores for manual
+  dedup annotations.
+
 ### Added — Web tab: "Verify" (two paths)
 
 - **Ask a question** — unchanged.
