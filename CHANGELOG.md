@@ -33,14 +33,17 @@ Human-readable, updated per milestone. Format loosely follows
 
 ### Changed — Notion relations (the stores link back)
 
-- **`Source Video` is now a real Notion relation** on Activities · Food ·
-  Transport · Research · Prices · Data (→ 🎞️ Source Videos, `DUAL` so each
-  video page gets an auto back-list). Push code stamps `source_page_id` and
-  emits `{ relation: [{ id }] }` (`_rel` helper); web-sourced rows have no page
-  id so the relation is simply omitted. Old free-text `Source Video` columns
-  renamed `Source Video (old text)` — delete in the Notion UI once happy.
-- Still text (next pass): `Used In Episode(s)`, Places → Source Video,
-  Activities/Food → Place.
+- **`Source Video` is a real Notion relation** on Activities · Food ·
+  Transport · Research · Prices · Data · **Places** (→ 🎞️ Source Videos,
+  `DUAL` back-lists). Breakdown push stamps `source_page_id` → `_rel` helper;
+  Places carries `fromIds` through `extractPlaces` → `saveConfirmedPlaces`.
+- **`Used In Episode` / `Used In Episodes` are relations** (→ 🎬 Episodes,
+  `DUAL`) on Activities · Food · Research · Transport · Places. `createEpisode`
+  captures the new page id and links each assigned row; the material browser's
+  "unused" filter reads `relation.length`.
+- Old free-text columns kept as `… (old text)` — delete in the Notion UI.
+- Still text by design: `Place` cross-refs (free-text place names, no reliable
+  match) and Scripts → Episode (Stage 4 subsystem).
 
 ### Changed — Research tab navigability
 
@@ -74,8 +77,8 @@ Human-readable, updated per milestone. Format loosely follows
 - **E2/E3** — `✨ Order` (`suggestSectionOrder`), `✨ Distribute`
   (`autoDistribute`), `✨ Gap check` (`epGapCheck`).
 
-Deferred: Sources DB rename, Episode/Place relations (still text),
-refresh-stale, angle-first-from-Plan, TikTok/IG fetchers.
+Deferred: Sources DB rename, refresh-stale, angle-first-from-Plan,
+TikTok/IG fetchers.
 
 ### Added
 

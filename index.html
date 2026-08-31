@@ -3662,13 +3662,7 @@ async function runWebVerify(key, btn) {
   statusEl.textContent = `Checking ${Math.min(items.length, 40)} ${cfg.label} rows against the web…`;
   try {
     const payload = items.slice(0, 40).map(it => ({ name: cfg.name(it), detail: _verifyDetail(key, it) }));
-    const res = await fetch('/.netlify/functions/web-research', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: 'verify', store: key, items: payload }),
-    });
-    const raw = await res.text();
-    let d; try { d = JSON.parse(raw); } catch { throw new Error(`web-research ${res.status} — ${raw.slice(0, 160)}`); }
-    if (!res.ok) throw new Error(d.error || `web-research ${res.status}`);
+    const d = await _verifyBatch(key, payload);
     const verdicts = { confirmed: 0, corrected: 0, unsupported: 0 };
     for (const v of (d.verified || [])) {
       const nm = String(v.name || '').trim().toLowerCase();
@@ -3793,7 +3787,7 @@ async function epLoadMaterial() {
         id: r.id, _cat: cat,
         _name: pr[cfg.title]?.title?.[0]?.plain_text || '(unnamed)',
         prefecture: cfg.pref ? (pr[cfg.pref]?.select?.name || '') : '',
-        used: !!(pr[cfg.usedProp]?.rich_text?.[0]?.plain_text),
+        used: !!(pr[cfg.usedProp]?.relation?.length),
         type: pr['Type']?.select?.name || pr['Kind']?.select?.name || '',
       };
     });
@@ -4045,7 +4039,7 @@ async function createEpisode() {
     if (date) props['Target Publish Date'] = { date: { start: date } };
     if (sourceTitles.length) props['Source Videos List'] = { rich_text: [{ text: { content: sourceTitles.join('\n') } }] };
 
-    await notionAPI('pages', 'POST', {
+    const epRes = await notionAPI('pages', 'POST', {
       parent: { database_id: DB_IDS.episodes },
       properties: props,
       children: body.slice(0, 100),
@@ -4071,12 +4065,12 @@ async function createEpisode() {
       } catch (e) { console.warn('seed section failed:', s.type, e.message); }
     }
 
-    // ── stamp Used In Episode on every assigned material row ──
+    // ── link every assigned material row to the new episode (relation) ──
     for (const it of assigned) {
       const prop = it._cat === 'places' ? 'Used In Episodes' : 'Used In Episode';
       try {
         await notionAPI(`pages/${it.id}`, 'PATCH', {
-          properties: { [prop]: { rich_text: [{ text: { content: epName } }] } },
+          properties: { [prop]: { relation: [{ id: epRes.id }] } },
         });
       } catch { /* best effort */ }
     }
@@ -4389,8 +4383,8 @@ async function extractPlaces() {
     const perVideo = await Promise.all(vids.map(async v => {
       try {
         const r = await runExtractCall(v.transcript, PLACES_SHAPE, guard);
-        return { title: v.title, places: (r && r.places) || [] };
-      } catch (e) { console.warn('places extract failed for', v.title, e.message); return { title: v.title, places: [] }; }
+        return { title: v.title, id: v.id, places: (r && r.places) || [] };
+      } catch (e) { console.warn('places extract failed for', v.title, e.message); return { title: v.title, id: v.id, places: [] }; }
     }));
 
     const byKey = new Map();
@@ -4406,6 +4400,7 @@ async function extractPlaces() {
           if (!e.price_if_spoken && p.price_if_spoken) e.price_if_spoken = p.price_if_spoken;
           if (!e.area && p.area_guess) e.area = p.area_guess;
           if (!e.from.includes(b.title)) e.from.push(b.title);
+          if (b.id && !e.fromIds.includes(b.id)) e.fromIds.push(b.id);
           continue;
         }
         const hit = existingByName.get(key);
@@ -4426,6 +4421,7 @@ async function extractPlaces() {
           is_existing: !!hit,
           existing_id: hit ? hit.id : '',
           from: [b.title],
+          fromIds: b.id ? [b.id] : [],
         });
       }
     }
@@ -4606,7 +4602,7 @@ async function saveConfirmedPlaces() {
     'Summary': { rich_text: [{ text: { content: (p.maps_summary || '').slice(0, 1900) } }] },
     ...(typeof p.rating === 'number' ? { 'Rating': { number: p.rating } } : {}),
     ...(p.ratingCount ? { 'Review Count': { number: p.ratingCount } } : {}),
-    'Source Video': { rich_text: [{ text: { content: (p.from || []).join(' · ').slice(0, 1900) } }] },
+    ...(p.fromIds?.length ? { 'Source Video': { relation: p.fromIds.map(id => ({ id })) } } : {}),
     'Last Verified': { date: { start: today } },
   });
 
