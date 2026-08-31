@@ -14,17 +14,22 @@ Human-readable, updated per milestone. Format loosely follows
   accidental re-pushes before they happen (the push-time dedupe stays as a
   backstop).
 
-### Added — Web tab: "Verify collected" mode
+### Added — Web tab: "Verify" (two paths)
 
-- The Web tab now has two modes. **Ask a question** is unchanged. **Verify
-  collected** runs the low-confidence rows you extracted in Prep (per store)
-  through grounded Google search: each is confirmed / corrected / unsupported
-  and gets a real `source_url` + `as_of_date` + note, **merged back onto the
-  same rows** (`S.verify` decoration layer in `poolFor`) — no duplicate rows.
-  Verified rows show ✅ in the Prep review table and push with raised
-  Confidence.
-- `web-research.js` gains `mode:'verify'` (`buildVerifyPrompt`, caps at 40
-  rows/call). Shared `runGemini` helper; open-question path unchanged.
+- **Ask a question** — unchanged.
+- **Verify from library** — keyword box + table checkboxes. Searches rows
+  **already in your Notion stores** across any of the 8 tables (fetch 100/table,
+  client-filter on title + all fields), shows matches in one merged table, and
+  grounded-checks the ticked ones. Results are written straight back to each
+  Notion page as **`Verify Status`** (confirmed / corrected / unsupported) +
+  **`Verify Note`** (correction · source · date · context). **The fact itself
+  is never overwritten** — corrections land in the note for you to apply.
+- **Verify fresh extract** — the earlier per-store path (this session's
+  not-yet-pushed Prep rows → `S.verify` decorations, ✅ in the Prep review)
+  stays, below a divider.
+- `web-research.js` `mode:'verify'` (`buildVerifyPrompt`, 40 rows/call) serves
+  both; new `_verifyBatch` helper in the browser. New Notion columns
+  `Verify Status` (select) + `Verify Note` (text) on all 8 stores.
 
 ### Changed — Notion relations (the stores link back)
 
