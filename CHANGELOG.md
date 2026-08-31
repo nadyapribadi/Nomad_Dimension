@@ -29,6 +29,11 @@ Human-readable, updated per milestone. Format loosely follows
   row's `Source Video` relation; a pending row whose name _and_ source video
   match an existing Notion row is struck through and tagged **"already from
   this video"** (vs the softer "in Notion" for a name-only match).
+- **Places tab gets the same treatment** — `extractPlaces` is cache-first
+  (`_placesHash` stored in the video's `Content Outline`; 0 tokens when it
+  matches), with a **↻ Re-collect (fresh)** button. Its review reads existing
+  Places rows' `Source Video` relation and strikes through places already
+  pushed from the same video. The picker's `⛏N` count already includes Places.
 
 ### Added — Web tab: Tidy (deterministic dedup)
 
