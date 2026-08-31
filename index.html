@@ -1106,12 +1106,12 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <div class="card-title"><span class="icon">✅</span> Verify from library</div>
       <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Keyword-search rows <strong>already in your Notion stores</strong> — across any tables — and grounded-check the ones you tick. Results are written back as <strong>Verify Status</strong> + <strong>Verify Note</strong> on each row; the fact itself is never overwritten.</p>
       <div class="field" style="margin-bottom:8px">
-        <label>Keyword</label>
+        <label>Keyword <span style="color:var(--text3);font-weight:400">— blank = load everything, then hit Tidy</span></label>
         <input type="text" id="vlib-q" placeholder="place · region · dish · topic — matches any field" onkeydown="if(event.key==='Enter')searchLibrary(this)">
       </div>
       <div id="vlib-stores-pick" style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-bottom:10px"></div>
       <div class="btn-row" style="margin-bottom:10px">
-        <button class="btn btn-sm btn-primary" onclick="searchLibrary(this)">Search library →</button>
+        <button class="btn btn-sm btn-primary" onclick="searchLibrary(this)">Load / search →</button>
       </div>
       <div id="vlib-results"></div>
       <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
@@ -3497,8 +3497,7 @@ function renderVlibPicker() {
 }
 
 async function searchLibrary(btn) {
-  const q = document.getElementById('vlib-q').value.trim().toLowerCase();
-  if (!q) { toast('Type a keyword', 'error'); return; }
+  const q = document.getElementById('vlib-q').value.trim().toLowerCase();   // blank = fetch all (for Tidy)
   const stores = LIB_STORES.filter(k => document.getElementById(`vlib-pick-${k}`)?.checked);
   if (!stores.length) { toast('Tick at least one table', 'error'); return; }
   const el = document.getElementById('vlib-results');
@@ -3528,19 +3527,51 @@ async function searchLibrary(btn) {
     }
     S.vlib = out;
     S._vlibSkip = new Set();
+    S._vlibTidy = false; S._vlibArch = new Set();
     renderVlibResults();
-    toast(`${out.length} match${out.length === 1 ? '' : 'es'} across ${stores.length} table${stores.length === 1 ? '' : 's'}`, out.length ? 'success' : 'error');
+    toast(`${out.length} ${q ? 'match' : 'row'}${out.length === 1 ? '' : q ? 'es' : 's'} across ${stores.length} table${stores.length === 1 ? '' : 's'}`, out.length ? 'success' : 'error');
   } catch (e) {
     el.innerHTML = `<div class="info-box error">Search failed: ${e.message}</div>`;
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Search library →'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Load / search →'; }
   }
+}
+
+// ─── deterministic near-duplicate + thin-row detection (no AI) ──────────────
+const _JUNK_WORDS = new Set(['the', 'a', 'an', 'at', 'in', 'on', 'to', 'of', 'and', 'or', 'with', 'from', 'for', 'is', 'was', 'it', 'they', 'their', 'vlogger', 'trip', 'journey', 'during', 'some', 'this', 'that', 'by', 'as', 'be', 'been']);
+function _normTokens(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/).filter(w => w.length > 1 && !_JUNK_WORDS.has(w));
+}
+function _sim(a, b) {                                   // Jaccard on content tokens
+  const A = new Set(_normTokens(a)), B = new Set(_normTokens(b));
+  if (!A.size || !B.size) return 0;
+  let inter = 0; for (const t of A) if (B.has(t)) inter++;
+  return inter / (A.size + B.size - inter);
+}
+function _thinName(name) {
+  if (_normTokens(name).length <= 2) return true;
+  return /\bsuccessfully\b|\bit is (claimed|said|mentioned)\b|\bmay have been\b|\bduring (the|their) (trip|journey)\b/i.test(name);
+}
+// greedy single-link clustering within one store's rows; returns array of {rows[], keepId}
+function _clusterRows(rows, thr = 0.5) {
+  const clusters = [];
+  for (const r of rows) {
+    let hit = null;
+    for (const c of clusters) if (c.rows.some(x => _sim(x.name, r.name) >= thr)) { hit = c; break; }
+    if (hit) hit.rows.push(r); else clusters.push({ rows: [r] });
+  }
+  for (const c of clusters) {                            // keep the most-detailed row
+    c.keepId = c.rows.slice().sort((a, b) => (b.fields || '').length - (a.fields || '').length)[0].id;
+  }
+  return clusters;
 }
 
 function renderVlibResults() {
   const el = document.getElementById('vlib-results');
   const rows = S.vlib || [];
-  if (!rows.length) { el.innerHTML = '<div class="empty-state" style="padding:20px"><p>No matches — try a broader keyword.</p></div>'; return; }
+  if (!rows.length) { el.innerHTML = '<div class="empty-state" style="padding:20px"><p>Nothing loaded — search a keyword, or leave it blank and load a table to Tidy.</p></div>'; return; }
+  if (S._vlibTidy) return renderVlibTidy(el, rows);
   const skip = (S._vlibSkip ||= new Set());
   const n = rows.filter(r => !skip.has(r.id)).length;
   el.innerHTML = `
@@ -3548,6 +3579,7 @@ function renderVlibResults() {
       <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="runLibVerify(this)">Verify ticked (${n}) →</button>
       <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(true)">all</button>
       <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(false)">none</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">🧹 Tidy</button>
       <span style="font-size:11px;color:var(--text3)">${rows.length} row${rows.length === 1 ? '' : 's'}</span>
     </div>
     <div style="overflow:auto;max-height:55vh;border:1px solid var(--border);border-radius:var(--radius)">
@@ -3577,6 +3609,98 @@ function toggleVlib(id) {
 function vlibAll(on) {
   S._vlibSkip = on ? new Set() : new Set((S.vlib || []).map(r => r.id));
   renderVlibResults();
+}
+
+// ─── Tidy mode: cluster near-dupes per store, pre-check the redundant/thin ───
+function tidyVlib() {
+  S._vlibTidy = !S._vlibTidy;
+  if (S._vlibTidy) {
+    const arch = new Set();
+    const byStore = {};
+    for (const r of S.vlib) (byStore[r.store] ||= []).push(r);
+    for (const list of Object.values(byStore)) {
+      for (const c of _clusterRows(list)) {
+        if (c.rows.length > 1) for (const r of c.rows) if (r.id !== c.keepId) arch.add(r.id);
+      }
+      for (const r of list) if (_thinName(r.name)) arch.add(r.id);
+    }
+    S._vlibArch = arch;
+    S._vlibConfirm = false;
+  }
+  renderVlibResults();
+}
+function toggleArch(id) {
+  (S._vlibArch ||= new Set());
+  if (S._vlibArch.has(id)) S._vlibArch.delete(id); else S._vlibArch.add(id);
+  S._vlibConfirm = false;
+  renderVlibResults();
+}
+
+function renderVlibTidy(el, rows) {
+  const arch = (S._vlibArch ||= new Set());
+  const byStore = {};
+  for (const r of rows) (byStore[r.store] ||= []).push(r);
+  const blocks = [];
+  let dupN = 0, thinN = 0;
+  for (const [store, list] of Object.entries(byStore)) {
+    const clusters = _clusterRows(list);
+    const rowHtml = (r, inCluster) => {
+      const on = arch.has(r.id);
+      if (on && inCluster) dupN++;
+      const thin = _thinName(r.name);
+      return `<tr style="opacity:${on ? 0.4 : 1}">
+        <td><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleArch('${r.id}')" style="width:14px;flex:none"></td>
+        <td style="max-width:230px;white-space:normal;font-weight:500">${_esc(r.name)}${thin ? ' <span class="badge" style="font-size:9px">thin</span>' : ''}</td>
+        <td style="max-width:340px;white-space:normal;color:var(--text2)">${_esc(r.fields)}</td>
+      </tr>`;
+    };
+    const parts = [];
+    for (const c of clusters) {
+      if (c.rows.length > 1) {
+        parts.push(`<tr><td colspan="3" style="background:var(--bg2);font-size:10px;color:var(--text3);padding:3px 8px">≈ ${c.rows.length} similar — keeping the unchecked one</td></tr>`);
+        parts.push(c.rows.slice().sort((a, b) => (a.id === c.keepId ? -1 : b.id === c.keepId ? 1 : 0)).map(r => rowHtml(r, true)).join(''));
+      } else if (_thinName(c.rows[0].name)) {
+        thinN++;
+        parts.push(rowHtml(c.rows[0], false));
+      }
+    }
+    if (parts.length) blocks.push(`<div style="font-weight:600;font-size:11px;color:var(--text2);margin:10px 0 4px">${RESEARCH_STORES[store].label}</div>
+      <table class="data-table" style="font-size:12px"><tbody>${parts.join('')}</tbody></table>`);
+  }
+  const total = arch.size;
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+      <button class="btn btn-sm ${S._vlibConfirm ? 'btn-danger' : 'btn-primary'}" style="padding:2px 10px" onclick="archiveVlib(this)" ${total ? '' : 'disabled'}>${S._vlibConfirm ? `Confirm — archive ${total}` : `Archive checked (${total}) →`}</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">✕ exit Tidy</button>
+      <span style="font-size:11px;color:var(--text3)">${dupN} redundant · ${thinN} thin · archives to Notion trash (reversible)</span>
+    </div>
+    <div style="overflow:auto;max-height:55vh;border:1px solid var(--border);border-radius:var(--radius);padding:0 8px 8px">
+      ${blocks.join('') || '<div class="empty-state" style="padding:20px"><p>No near-duplicates or thin rows found. 🎉</p></div>'}
+    </div>`;
+}
+
+let _vlibArchiving = false;
+async function archiveVlib(btn) {
+  if (_vlibArchiving) return;
+  const ids = [...(S._vlibArch || [])];
+  if (!ids.length) return;
+  if (!S._vlibConfirm) { S._vlibConfirm = true; renderVlibResults(); return; }
+  _vlibArchiving = true;
+  if (btn) { btn.disabled = true; btn.textContent = 'Archiving…'; }
+  let done = 0, failed = 0;
+  try {
+    for (const id of ids) {
+      try { await notionAPI(`pages/${id}`, 'PATCH', { archived: true }); done++; }
+      catch (e) { failed++; console.error('archive failed', id, e); }
+    }
+    S.vlib = (S.vlib || []).filter(r => !S._vlibArch.has(r.id));
+    S._vlibArch = new Set();
+    S._vlibConfirm = false;
+    toast(`${done} archived${failed ? ` · ${failed} failed` : ''}`, failed ? 'error' : 'success');
+  } finally {
+    _vlibArchiving = false;
+    renderVlibResults();
+  }
 }
 
 let _libVerifying = false;
