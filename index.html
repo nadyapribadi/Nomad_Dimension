@@ -2725,6 +2725,16 @@ async function loadSourceQueue() {
         status: pr['B-Roll Status']?.select?.name || 'Available',
         url: pr['userDefined:YouTube URL']?.url || '',
         transcript: pr['Transcript']?.rich_text?.map(r => r.plain_text).join('') || '',
+        // rows already pushed from this video, counted straight off the DUAL back-relations
+        mined: {
+          activities: pr['Activities']?.relation?.length || 0,
+          food: pr['Food']?.relation?.length || 0,
+          transport: pr['Transport']?.relation?.length || 0,
+          research: pr['Research']?.relation?.length || 0,
+          prices: pr['Prices']?.relation?.length || 0,
+          data: pr['Data']?.relation?.length || 0,
+          places: pr['Places']?.relation?.length || 0,
+        },
         ...parseStoredBreakdown(pr['Content Outline']?.rich_text?.map(r => r.plain_text).join('') || ''),
       };
     });
@@ -2792,7 +2802,7 @@ function renderQueue() {
             <td><input type="checkbox" id="ep-cb-${i}" ${S.epSelected.has(i) ? 'checked' : ''}></td>
             <td style="font-weight:500">${v.title}<div style="font-size:11px;color:var(--text3);font-weight:400">${clip(v.angle)}</div>${v.region ? `<div style="font-size:10px;color:var(--text3)">📍 ${v.region}</div>` : ''}</td>
             <td style="font-size:12px;color:var(--text2)">${v.channel}</td>
-            <td style="font-size:11px;color:var(--text3)">${v.transcript ? '📄' : '·'} ${v.breakdown ? '📋' : '·'}</td>
+            <td style="font-size:11px;color:var(--text3)">${v.transcript ? '📄' : '·'} ${v.breakdown ? '📋' : '·'}${(() => { const m = Object.values(v.mined || {}).reduce((a, b) => a + b, 0); return m ? ` <span style="color:var(--amber)">⛏${m}</span>` : ''; })()}</td>
             <td><span class="badge ${statusBadge[v.status] || 'badge'}">${v.status}</span></td>
           </tr>`).join('') || '<tr><td colspan="5" style="color:var(--text3);font-size:12px;padding:10px">No videos match.</td></tr>'}
       </tbody>
@@ -2835,17 +2845,25 @@ function renderPrepList() {
     el.innerHTML = '<div class="empty-state"><div class="icon">🧪</div><p>Tick source videos in <strong>1 · Pick source videos</strong> above.</p></div>';
     return;
   }
-  el.innerHTML = sel.map(({ i, v }) => `
+  el.innerHTML = sel.map(({ i, v }) => {
+    const cached = !!(v.breakdown && v.transcript && v.breakdown._hash === _cheapHash(v.transcript));
+    const stale = !!(v.breakdown && v.transcript && !cached);            // transcript changed since last extract
+    const mined = v.mined || {};
+    const minedTotal = Object.values(mined).reduce((a, b) => a + b, 0);
+    const minedStr = Object.entries(mined).filter(([, n]) => n).map(([k, n]) => `${RESEARCH_STORES[k]?.label || k} ${n}`).join(' · ');
+    return `
     <div class="card" style="margin-bottom:10px">
       <div style="font-weight:500;margin-bottom:8px">${v.title}</div>
       <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
         <span class="badge ${v.transcript ? 'badge-green' : ''}">📄 transcript ${v.transcript ? '✓' : '—'}</span>
-        <span class="badge ${v.breakdown ? 'badge-green' : ''}">📋 breakdown ${v.breakdown ? '✓' : '—'}</span>
+        <span class="badge ${cached ? 'badge-green' : stale ? 'badge-amber' : ''}">📋 breakdown ${cached ? '✓ cached' : stale ? '⚠ transcript changed' : v.breakdown ? '✓' : '—'}</span>
+        ${minedTotal ? `<span class="badge" title="${minedStr}">⛏ ${minedTotal} row${minedTotal === 1 ? '' : 's'} in stores</span>` : ''}
       </div>
       <div class="row" style="flex-wrap:wrap;gap:8px">
         <button class="btn btn-sm" onclick="prepFetchTranscript(${i})" id="prep-tx-btn-${i}">${v.transcript ? 'Re-fetch transcript' : 'Fetch transcript'}</button>
         <button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'paste')">paste transcript</button>
-        <button class="btn btn-sm" onclick="prepRunBreakdown(${i})" id="prep-ol-btn-${i}" ${v.transcript ? '' : 'disabled'}>${v.breakdown ? 'Re-run breakdown' : 'Run breakdown'}</button>
+        <button class="btn btn-sm" onclick="prepRunBreakdown(${i})" id="prep-ol-btn-${i}" ${v.transcript ? '' : 'disabled'}>${cached ? '✓ Review cached (0 tokens)' : stale ? 'Re-run breakdown' : v.breakdown ? 'Re-run breakdown' : 'Run breakdown'}</button>
+        ${v.breakdown ? `<button class="btn btn-sm btn-ghost" onclick="prepRunBreakdown(${i},true)" title="Fresh AI pass — spends tokens">↻ Re-extract (fresh)</button>` : ''}
         ${v.transcript ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'tx')">view transcript</button>` : ''}
         ${v.breakdown ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'ol')">view breakdown</button>` : ''}
         <a class="btn btn-sm btn-ghost" href="${v.url || '#'}" target="_blank" rel="noopener">▶ open video</a>
@@ -2856,7 +2874,8 @@ function renderPrepList() {
       </div>
       <div id="prep-status-${i}" style="font-size:11px;color:var(--text3);margin-top:6px"></div>
       <pre id="prep-view-${i}" style="display:none;white-space:pre-wrap;font-size:11px;color:var(--text2);background:var(--surface2);border-radius:var(--radius);padding:10px;margin-top:8px;max-height:320px;overflow:auto"></pre>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   renderExtractReview();
 }
 
@@ -3060,9 +3079,26 @@ ${shape}`;
   catch { console.error('extract raw reply:', raw); throw new Error('the model’s reply was not valid JSON'); }
 }
 
-async function prepRunBreakdown(i) {
+// cheap deterministic string hash (djb2) — used to tell if a transcript changed
+function _cheapHash(s) {
+  let h = 5381;
+  for (let k = 0; k < s.length; k++) h = ((h << 5) + h + s.charCodeAt(k)) | 0;
+  return String(h >>> 0);
+}
+
+async function prepRunBreakdown(i, force) {
   const v = S.epQueue[i];
   if (!v.transcript) { prepStatus(i, 'Fetch the transcript first.'); return; }
+  const hash = _cheapHash(v.transcript);
+  // Cache-first: a stored breakdown for this exact transcript costs 0 tokens.
+  if (!force && v.breakdown && v.breakdown._hash === hash) {
+    rebuildCombinedOutline();
+    renderExtractReview();
+    prepStep(3);
+    const n = (k) => (v.breakdown[k] || []).length;
+    prepStatus(i, `Loaded from cache — 0 tokens · ${n('activities')} act · ${n('food')} food · ${n('research')} claims. Use “Re-extract” to force a fresh AI pass.`);
+    return;
+  }
   const btn = document.getElementById(`prep-ol-btn-${i}`);
   btn.disabled = true; btn.textContent = 'Running…';
   let msg = '';
@@ -3083,6 +3119,7 @@ async function prepRunBreakdown(i) {
       source_page_id: v.id || '', needs_verification: true, ...x,
     }));
     const parsed = {
+      _hash: hash,
       summary: p1.summary || '',
       route: p1.route || [],
       beats: p1.beats || [],
@@ -3302,10 +3339,13 @@ function renderReviewInto(elId, src) {
   const cfg = RESEARCH_STORES[active];
   ensureExisting(active, src);   // fetch what's already in this Notion DB, then re-render
   const existing = S._existing[active] || new Set();
-  const isDup = (it) => existing.has(String(cfg.name(it) || '').trim().toLowerCase());
+  const existingVid = (S._existingVid || {})[active] || new Map();
+  const lcName = (it) => String(cfg.name(it) || '').trim().toLowerCase();
+  const isDup = (it) => existing.has(lcName(it));
+  const sameVid = (it) => it.source_page_id && (existingVid.get(lcName(it)) || new Set()).has(it.source_page_id);
   // Build the row payloads once, derive the columns from them (agnostic — no
   // per-store column config). Hide the always-identical / title columns.
-  const built = pool.map(it => ({ it, p: cfg.props(it), dup: isDup(it) }));
+  const built = pool.map(it => ({ it, p: cfg.props(it), dup: isDup(it), same: sameVid(it) }));
   const dupN = built.filter(b => b.dup).length;
   const HIDE = new Set(['Date Added', 'Retrieved Date', 'Country', 'Last Verified', cfg.titleProp]);
   const cols = [];
@@ -3322,11 +3362,14 @@ function renderReviewInto(elId, src) {
     <table class="data-table" style="font-size:12px">
       <thead><tr><th style="width:24px"></th><th>${_esc(cfg.titleProp)}</th>${cols.map(c => `<th>${_esc(c)}</th>`).join('')}</tr></thead>
       <tbody>
-      ${built.map(({ it, p, dup }) => {
+      ${built.map(({ it, p, dup, same }) => {
         const off = skip.has(it._key);
+        const tag = same
+          ? ' <span style="font-size:10px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:0 4px;white-space:nowrap">already from this video</span>'
+          : dup ? ' <span style="font-size:10px;color:var(--text3);border:1px solid var(--border);border-radius:4px;padding:0 4px;white-space:nowrap">in Notion</span>' : '';
         return `<tr style="opacity:${off ? 0.4 : 1}">
           <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview('${it._key}','${src}')" style="width:14px;flex:none"></td>
-          <td style="font-weight:500;max-width:220px;white-space:normal" title="${_esc(it.verify_note || '')}">${it._verified ? '✅ ' : ''}${_esc(cfg.name(it) || '(unnamed)')}${dup ? ' <span style="font-size:10px;color:var(--text3);border:1px solid var(--border);border-radius:4px;padding:0 4px;white-space:nowrap">in Notion</span>' : ''}</td>
+          <td style="font-weight:500;max-width:220px;white-space:normal;${same ? 'text-decoration:line-through' : ''}" title="${_esc(it.verify_note || '')}">${it._verified ? '✅ ' : ''}${_esc(cfg.name(it) || '(unnamed)')}${tag}</td>
           ${cols.map(c => `<td style="max-width:240px;white-space:normal">${_esc(_propText(p[c]))}</td>`).join('')}
         </tr>`;
       }).join('')}
@@ -3339,20 +3382,26 @@ function renderReviewInto(elId, src) {
 async function ensureExisting(key, src) {
   if (S._existing[key]) return;
   S._existing[key] = new Set();          // in-flight guard
+  S._existingVid = S._existingVid || {};
   try {
     const cfg = RESEARCH_STORES[key];
     const titles = new Set();
+    const byVid = new Map();             // lc title -> Set(source-video page ids on the existing row)
     let cursor;
     do {
       const body = cursor ? { page_size: 100, start_cursor: cursor } : { page_size: 100 };
       const r = await notionAPI(`databases/${cfg.db()}/query`, 'POST', body);
       for (const row of (r.results || [])) {
         const t = (row.properties?.[cfg.titleProp]?.title?.[0]?.plain_text || '').trim().toLowerCase();
-        if (t) titles.add(t);
+        if (!t) continue;
+        titles.add(t);
+        const vids = (row.properties?.['Source Video']?.relation || []).map(x => x.id);
+        if (vids.length) byVid.set(t, new Set([...(byVid.get(t) || []), ...vids]));
       }
       cursor = r.has_more ? r.next_cursor : null;
     } while (cursor);
     S._existing[key] = titles;
+    S._existingVid[key] = byVid;
     const skip = _skipSet(src);
     for (const it of poolFor(key, src)) {
       if (titles.has(String(cfg.name(it) || '').trim().toLowerCase())) skip.add(it._key);
