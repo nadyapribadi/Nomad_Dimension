@@ -5,6 +5,17 @@ Human-readable, updated per milestone. Format loosely follows
 
 ## Unreleased
 
+### Changed — Notion relations (the stores link back)
+
+- **`Source Video` is now a real Notion relation** on Activities · Food ·
+  Transport · Research · Prices · Data (→ 🎞️ Source Videos, `DUAL` so each
+  video page gets an auto back-list). Push code stamps `source_page_id` and
+  emits `{ relation: [{ id }] }` (`_rel` helper); web-sourced rows have no page
+  id so the relation is simply omitted. Old free-text `Source Video` columns
+  renamed `Source Video (old text)` — delete in the Notion UI once happy.
+- Still text (next pass): `Used In Episode(s)`, Places → Source Video,
+  Activities/Food → Place.
+
 ### Changed — Research tab navigability
 
 - **Prep tab is a 3-step strip** (`prepStep`): Pick videos · Break down · Review
@@ -37,7 +48,7 @@ Human-readable, updated per milestone. Format loosely follows
 - **E2/E3** — `✨ Order` (`suggestSectionOrder`), `✨ Distribute`
   (`autoDistribute`), `✨ Gap check` (`epGapCheck`).
 
-Deferred: Sources DB rename, relations (cross-refs are text), Web verify-mode,
+Deferred: Sources DB rename, Episode/Place relations (still text), Web verify-mode,
 refresh-stale, angle-first-from-Plan, TikTok/IG fetchers.
 
 ### Added
