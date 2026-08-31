@@ -14,6 +14,22 @@ Human-readable, updated per milestone. Format loosely follows
   accidental re-pushes before they happen (the push-time dedupe stays as a
   backstop).
 
+### Changed — Prep: cache-first breakdown + per-video "mined" count
+
+- **`prepRunBreakdown` no longer re-calls the AI** when a stored breakdown
+  matches the current transcript. The breakdown JSON carries a `_hash` (djb2 of
+  the transcript); a match → rows load from cache, **0 tokens**, status says so.
+  A separate **↻ Re-extract (fresh)** button forces a real AI pass; the main
+  button shows `✓ Review cached` / `⚠ transcript changed` accordingly.
+- **Per-video "mined" count** — `loadSourceQueue` reads the `DUAL` back-relations
+  on Source Videos (`Activities`, `Food`, … arrays) so the picker shows
+  `⛏N` and the Prep card shows `Activities 12 · Food 8 · …` — you can see at a
+  glance what's already in the stores from that video, per table.
+- **Review is video-aware** — `ensureExisting` now also reads each existing
+  row's `Source Video` relation; a pending row whose name _and_ source video
+  match an existing Notion row is struck through and tagged **"already from
+  this video"** (vs the softer "in Notion" for a name-only match).
+
 ### Added — Web tab: Tidy (deterministic dedup)
 
 - The library table gets a **🧹 Tidy** mode. Leave the keyword blank, load a
