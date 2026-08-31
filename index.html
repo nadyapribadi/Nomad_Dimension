@@ -3252,6 +3252,7 @@ const RESEARCH_STORES = {
 // Flatten one array from a source (Prep breakdowns or the Web result), dedup by name.
 S._pushed = S._pushed || new Set();
 S.verify = S.verify || {};   // "<store>:<name>" -> { confidence, source_url, as_of_date, verify_note, _verified }
+S._existing = S._existing || {};   // store key -> Set of lowercased titles already in that Notion DB
 function poolFor(key, src) {
   const rows = src === 'web'
     ? ((S.webExtract && S.webExtract[key]) || [])
@@ -3289,9 +3290,13 @@ function renderReviewInto(elId, src) {
     `<div class="tab ${k === active ? 'active' : ''}" onclick="switchReviewTab('${src}','${k}')">${RESEARCH_STORES[k].label} · ${poolFor(k, src).length}</div>`
   ).join('');
   const cfg = RESEARCH_STORES[active];
+  ensureExisting(active, src);   // fetch what's already in this Notion DB, then re-render
+  const existing = S._existing[active] || new Set();
+  const isDup = (it) => existing.has(String(cfg.name(it) || '').trim().toLowerCase());
   // Build the row payloads once, derive the columns from them (agnostic — no
   // per-store column config). Hide the always-identical / title columns.
-  const built = pool.map(it => ({ it, p: cfg.props(it) }));
+  const built = pool.map(it => ({ it, p: cfg.props(it), dup: isDup(it) }));
+  const dupN = built.filter(b => b.dup).length;
   const HIDE = new Set(['Date Added', 'Retrieved Date', 'Country', 'Last Verified', cfg.titleProp]);
   const cols = [];
   for (const { p } of built) for (const k of Object.keys(p)) if (!HIDE.has(k) && !cols.includes(k)) cols.push(k);
@@ -3301,22 +3306,52 @@ function renderReviewInto(elId, src) {
       <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${active}',this,'${src}')">Push ticked → ${cfg.label}</button>
       <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',true)">all</button>
       <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',false)">none</button>
-      <span style="font-size:11px;color:var(--text3)">${built.length} row${built.length === 1 ? '' : 's'}</span>
+      <span style="font-size:11px;color:var(--text3)">${built.length} row${built.length === 1 ? '' : 's'}${dupN ? ` · <span style="color:var(--amber)">${dupN} already in Notion</span>` : ''}</span>
     </div>
     <div style="overflow:auto;max-height:60vh;border:1px solid var(--border);border-radius:var(--radius)">
     <table class="data-table" style="font-size:12px">
       <thead><tr><th style="width:24px"></th><th>${_esc(cfg.titleProp)}</th>${cols.map(c => `<th>${_esc(c)}</th>`).join('')}</tr></thead>
       <tbody>
-      ${built.map(({ it, p }) => {
+      ${built.map(({ it, p, dup }) => {
         const off = skip.has(it._key);
         return `<tr style="opacity:${off ? 0.4 : 1}">
           <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview('${it._key}','${src}')" style="width:14px;flex:none"></td>
-          <td style="font-weight:500;max-width:220px;white-space:normal" title="${_esc(it.verify_note || '')}">${it._verified ? '✅ ' : ''}${_esc(cfg.name(it) || '(unnamed)')}</td>
+          <td style="font-weight:500;max-width:220px;white-space:normal" title="${_esc(it.verify_note || '')}">${it._verified ? '✅ ' : ''}${_esc(cfg.name(it) || '(unnamed)')}${dup ? ' <span style="font-size:10px;color:var(--text3);border:1px solid var(--border);border-radius:4px;padding:0 4px;white-space:nowrap">in Notion</span>' : ''}</td>
           ${cols.map(c => `<td style="max-width:240px;white-space:normal">${_esc(_propText(p[c]))}</td>`).join('')}
         </tr>`;
       }).join('')}
       </tbody>
     </table></div>`;
+}
+
+// Fetch every title already in a store's Notion DB (paginated), cache it, then
+// re-render with duplicates flagged + unticked so a blind push can't re-send them.
+async function ensureExisting(key, src) {
+  if (S._existing[key]) return;
+  S._existing[key] = new Set();          // in-flight guard
+  try {
+    const cfg = RESEARCH_STORES[key];
+    const titles = new Set();
+    let cursor;
+    do {
+      const body = cursor ? { page_size: 100, start_cursor: cursor } : { page_size: 100 };
+      const r = await notionAPI(`databases/${cfg.db()}/query`, 'POST', body);
+      for (const row of (r.results || [])) {
+        const t = (row.properties?.[cfg.titleProp]?.title?.[0]?.plain_text || '').trim().toLowerCase();
+        if (t) titles.add(t);
+      }
+      cursor = r.has_more ? r.next_cursor : null;
+    } while (cursor);
+    S._existing[key] = titles;
+    const skip = _skipSet(src);
+    for (const it of poolFor(key, src)) {
+      if (titles.has(String(cfg.name(it) || '').trim().toLowerCase())) skip.add(it._key);
+    }
+    renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
+  } catch (e) {
+    console.warn('existing-rows check failed for', key, e.message);
+    S._existing[key] = new Set();
+  }
 }
 function switchReviewTab(src, key) {
   _reviewTab[src] = key;
@@ -3324,7 +3359,12 @@ function switchReviewTab(src, key) {
 }
 function reviewAll(src, key, on) {
   const s = _skipSet(src);
-  for (const it of poolFor(key, src)) { if (on) s.delete(it._key); else s.add(it._key); }
+  const existing = S._existing[key] || new Set();
+  const nm = (it) => String(RESEARCH_STORES[key].name(it) || '').trim().toLowerCase();
+  for (const it of poolFor(key, src)) {
+    if (on && !existing.has(nm(it))) s.delete(it._key);   // "all" = all that aren't already in Notion
+    else s.add(it._key);
+  }
   renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
 }
 function renderExtractReview() { rebuildCombinedOutline(); renderReviewInto('extract-review', 'prep'); }
