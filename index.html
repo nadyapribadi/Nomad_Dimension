@@ -1058,6 +1058,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <div class="card-title"><span class="icon">📍</span> Places → Notion library</div>
       <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Its own pass — extracts places straight from the <strong>ticked transcripts</strong> (independent of the breakdown), enriches each via Google Maps, and <strong>pushes them to your Places DB</strong> (or <strong>refreshes</strong> ones already there). Sorted A–Z. Tick videos + fetch transcripts in <strong>Prep</strong> first.</p>
       <button class="btn btn-primary" onclick="extractPlaces()">Collect Places →</button>
+      <button class="btn btn-ghost btn-sm" onclick="extractPlaces(true)" title="Fresh AI pass on every selected transcript — spends tokens">↻ Re-collect (fresh)</button>
       <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Reading breakdowns…</div>
       <div id="places-error" class="info-box error" style="display:none;margin-top:12px"></div>
     </div>
@@ -4530,7 +4531,7 @@ const priceRange = (s) => {
   return '¥';
 };
 
-async function extractPlaces() {
+async function extractPlaces(force) {
   const errEl = document.getElementById('places-error');
   errEl.style.display = 'none';
   const vids = [...S.epSelected].map(i => S.epQueue[i]).filter(v => v && v.transcript);
@@ -4548,15 +4549,33 @@ async function extractPlaces() {
     const existingByName = new Map();
     for (const r of (existingData.results || [])) {
       const nm = (r.properties?.Name?.title?.[0]?.plain_text || '').trim().toLowerCase();
-      if (nm) existingByName.set(nm, { id: r.id, prefecture: r.properties?.Prefecture?.select?.name || '' });
+      if (nm) existingByName.set(nm, {
+        id: r.id,
+        prefecture: r.properties?.Prefecture?.select?.name || '',
+        vids: (r.properties?.['Source Video']?.relation || []).map(x => x.id),
+      });
     }
 
-    // One places-only extraction per transcript; merge repeats by name.
+    // One places-only extraction per transcript; cache-first (0 tokens when the
+    // transcript's _placesHash matches the stored breakdown), merge repeats by name.
     const guard = 'Find EVERY location visited or named. prefecture_guess / area_guess may be inferred from the name.';
+    let cachedN = 0, freshN = 0;
     const perVideo = await Promise.all(vids.map(async v => {
+      const h = _cheapHash(v.transcript);
+      if (!force && v.breakdown && v.breakdown._placesHash === h && Array.isArray(v.breakdown.places)) {
+        cachedN++;
+        return { title: v.title, id: v.id, places: v.breakdown.places, _cached: true };
+      }
       try {
         const r = await runExtractCall(v.transcript, PLACES_SHAPE, guard);
-        return { title: v.title, id: v.id, places: (r && r.places) || [] };
+        const places = (r && r.places) || [];
+        freshN++;
+        // persist into the video's Content Outline so a re-collect is free
+        v.breakdown = { ...(v.breakdown || {}), places, _placesHash: h };
+        await notionAPI(`pages/${v.id}`, 'PATCH', {
+          properties: { 'Content Outline': { rich_text: codeBlockRichText(JSON.stringify(v.breakdown, null, 2).slice(0, 190000)) } },
+        }).catch(e => console.warn('places cache save failed:', e.message));
+        return { title: v.title, id: v.id, places };
       } catch (e) { console.warn('places extract failed for', v.title, e.message); return { title: v.title, id: v.id, places: [] }; }
     }));
 
@@ -4566,6 +4585,7 @@ async function extractPlaces() {
         const name = (p.name || '').trim();
         if (!name) continue;
         const key = name.toLowerCase();
+        const hit0 = existingByName.get(key);
         if (byKey.has(key)) {
           const e = byKey.get(key);
           if (!e.what_happens_here && p.what_happens_here) e.what_happens_here = p.what_happens_here;
@@ -4574,9 +4594,10 @@ async function extractPlaces() {
           if (!e.area && p.area_guess) e.area = p.area_guess;
           if (!e.from.includes(b.title)) e.from.push(b.title);
           if (b.id && !e.fromIds.includes(b.id)) e.fromIds.push(b.id);
+          if (b.id && hit0 && (hit0.vids || []).includes(b.id)) e.same_video = true;
           continue;
         }
-        const hit = existingByName.get(key);
+        const hit = hit0;
         const guessPref = PREFECTURES.includes(p.prefecture_guess) ? p.prefecture_guess : '';
         byKey.set(key, {
           name,
@@ -4593,6 +4614,7 @@ async function extractPlaces() {
             encodeURIComponent([name, p.area_guess, p.prefecture_guess, 'Japan'].filter(Boolean).join(' ')),
           is_existing: !!hit,
           existing_id: hit ? hit.id : '',
+          same_video: !!(hit && b.id && (hit.vids || []).includes(b.id)),
           from: [b.title],
           fromIds: b.id ? [b.id] : [],
         });
@@ -4609,8 +4631,9 @@ async function extractPlaces() {
 
     renderPlacesReview();
     document.getElementById('places-review-area').style.display = '';
-    toast(`${S.extractedPlaces.length} places from ${vids.length} transcript${vids.length > 1 ? 's' : ''}` +
-      (enriched ? ` · ${enriched} matched on Google Maps` : ''), 'success');
+    toast(`${S.extractedPlaces.length} places · ${freshN} fresh AI pass${freshN === 1 ? '' : 'es'}` +
+      (cachedN ? ` · ${cachedN} from cache (0 tokens)` : '') +
+      (enriched ? ` · ${enriched} on Google Maps` : ''), 'success');
   } catch (err) {
     errEl.textContent = `Places failed: ${err.message}`;
     errEl.style.display = '';
@@ -4693,7 +4716,7 @@ function renderPlacesReview() {
           : p.prefFromGuess ? ' <span style="color:var(--accent2);font-size:10px">AI?</span>' : '';
         return `<tr style="opacity:${off ? 0.45 : 1}">
           <td><input type="checkbox" ${off ? '' : 'checked'} onchange="togglePlace(${i})" style="width:14px;flex:none"></td>
-          <td style="max-width:190px;white-space:normal;font-weight:600">${_esc(p.name)}${localName ? ` <span style="font-weight:400;color:var(--text3)">${_esc(localName)}</span>` : ''}
+          <td style="max-width:190px;white-space:normal;font-weight:600;${p.same_video ? 'text-decoration:line-through' : ''}">${_esc(p.name)}${localName ? ` <span style="font-weight:400;color:var(--text3)">${_esc(localName)}</span>` : ''}${p.same_video ? ' <span style="font-size:9px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:0 3px;white-space:nowrap">already from this video</span>' : ''}
             <div style="font-weight:400;font-size:10px;margin-top:2px"><a href="${p.google_maps_url}" target="_blank" rel="noopener" style="color:var(--blue)">Maps ↗</a>${p.website ? ` · <a href="${p.website}" target="_blank" rel="noopener" style="color:var(--blue)">Web ↗</a>` : ''}</div></td>
           <td>${_esc(p.type)}</td>
           <td><select onchange="setPlaceField(${i},'prefecture',this.value);setPlaceField(${i},'prefFromGuess',false);setPlaceField(${i},'prefFromMaps',false)" style="font-size:11px;padding:2px 3px;width:auto">
