@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseJsonLoose } = require('../web-research')._internal;
+const { parseJsonLoose, buildVerifyPrompt, buildAskPrompt } = require('../web-research')._internal;
 
 test('parseJsonLoose: clean JSON', () => {
   assert.deepEqual(parseJsonLoose('{"a":1}'), { a: 1 });
@@ -19,4 +19,18 @@ test('parseJsonLoose: trailing comma repair', () => {
 
 test('parseJsonLoose: unparseable -> null', () => {
   assert.equal(parseJsonLoose('no json here'), null);
+});
+
+test('buildAskPrompt: missing query -> error', () => {
+  assert.equal(buildAskPrompt({}).error, 'Missing query');
+  assert.match(buildAskPrompt({ query: 'Lake Tanuki' }).text, /Lake Tanuki/);
+});
+
+test('buildVerifyPrompt: numbers entries, caps at 40, echoes store', () => {
+  assert.equal(buildVerifyPrompt({ items: [] }).error, 'Missing items');
+  const items = Array.from({ length: 50 }, (_, i) => ({ name: `claim ${i}`, detail: 'd' }));
+  const t = buildVerifyPrompt({ store: 'prices', items }).text;
+  assert.match(t, /40 "prices" entries/);
+  assert.match(t, /^40\. claim 39 — d$/m);
+  assert.equal(/^41\./m.test(t), false);
 });
