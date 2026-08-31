@@ -5,6 +5,15 @@ Human-readable, updated per milestone. Format loosely follows
 
 ## Unreleased
 
+### Changed — Review table flags rows already in Notion
+
+- Opening a store tab in "3 · Review & push" now fetches that DB's existing
+  titles (`ensureExisting`, paginated, cached per `S._existing`). Matching rows
+  get an **"in Notion"** pill, are **unticked by default**, and are excluded
+  from the **all** button; the header shows `N already in Notion`. Stops
+  accidental re-pushes before they happen (the push-time dedupe stays as a
+  backstop).
+
 ### Added — Web tab: "Verify collected" mode
 
 - The Web tab now has two modes. **Ask a question** is unchanged. **Verify
