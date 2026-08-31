@@ -1,7 +1,9 @@
 # Pipeline redesign — Step 1 Research + Step 2 Episode Builder
 
-Status: **built** (R1–R4, E1–E3 landed 2026-08-31; verify-mode Web, refresh-stale
-and angle-first-from-Plan still deferred). Restructured Stage 1 (YouTube Browser)
+Status: **built** (R1–R4, E1–E3 landed 2026-08-31; Web "Verify collected" mode
++ `Source Video` relations on the 6 breakdown stores landed 2026-08-31.
+refresh-stale and angle-first-from-Plan still deferred; `Place` / `Used In
+Episode` cross-refs still text). Restructured Stage 1 (YouTube Browser)
 + Stage 2 (Queue / Prep / Places / Assemble) into two clean steps:
 
 - **Step 1 — Research**: fill Notion with reusable, one-fact-per-column material.

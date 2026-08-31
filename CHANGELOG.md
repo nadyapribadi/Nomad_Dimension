@@ -5,6 +5,18 @@ Human-readable, updated per milestone. Format loosely follows
 
 ## Unreleased
 
+### Added — Web tab: "Verify collected" mode
+
+- The Web tab now has two modes. **Ask a question** is unchanged. **Verify
+  collected** runs the low-confidence rows you extracted in Prep (per store)
+  through grounded Google search: each is confirmed / corrected / unsupported
+  and gets a real `source_url` + `as_of_date` + note, **merged back onto the
+  same rows** (`S.verify` decoration layer in `poolFor`) — no duplicate rows.
+  Verified rows show ✅ in the Prep review table and push with raised
+  Confidence.
+- `web-research.js` gains `mode:'verify'` (`buildVerifyPrompt`, caps at 40
+  rows/call). Shared `runGemini` helper; open-question path unchanged.
+
 ### Changed — Notion relations (the stores link back)
 
 - **`Source Video` is now a real Notion relation** on Activities · Food ·
@@ -48,7 +60,7 @@ Human-readable, updated per milestone. Format loosely follows
 - **E2/E3** — `✨ Order` (`suggestSectionOrder`), `✨ Distribute`
   (`autoDistribute`), `✨ Gap check` (`epGapCheck`).
 
-Deferred: Sources DB rename, Episode/Place relations (still text), Web verify-mode,
+Deferred: Sources DB rename, Episode/Place relations (still text),
 refresh-stale, angle-first-from-Plan, TikTok/IG fetchers.
 
 ### Added

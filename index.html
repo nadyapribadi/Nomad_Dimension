@@ -1083,7 +1083,11 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
   <!-- WEB TAB -->
   <div id="res-tab-web" style="display:none">
-    <div class="card">
+    <div class="tabs" style="margin-bottom:12px">
+      <div class="tab active" id="web-mode-ask" onclick="webMode('ask')">Ask a question</div>
+      <div class="tab" id="web-mode-verify" onclick="webMode('verify')">Verify collected</div>
+    </div>
+    <div class="card" id="web-ask-panel">
       <div class="card-title"><span class="icon">🌐</span> Web research</div>
       <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Ask a question — a place, a category, a region, a "why". Grounded Google search → drafts rows for the Research / Prices / Data / Glossary / Places stores with real source URLs. Every claim carries its source; review and push below.</p>
       <div class="field">
@@ -1098,6 +1102,12 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         <button class="btn btn-primary" onclick="runWebResearch(this)">Research →</button>
       </div>
       <div id="web-status" style="font-size:12px;color:var(--text3);margin-top:10px"></div>
+    </div>
+    <div class="card" id="web-verify-panel" style="display:none">
+      <div class="card-title"><span class="icon">✅</span> Verify collected material</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Run the low-confidence rows you extracted in <strong>Prep</strong> through grounded search. Each is confirmed or corrected and gets a real source URL + date, written back onto the <em>same</em> rows — no duplicates. Push them from the Prep <strong>Review</strong> step.</p>
+      <div id="web-verify-stores" class="btn-row" style="flex-wrap:wrap;gap:8px"></div>
+      <div id="web-verify-status" style="font-size:12px;color:var(--text3);margin-top:10px"></div>
     </div>
     <div class="card">
       <div class="card-title"><span class="icon">📤</span> Review &amp; push</div>
@@ -3241,6 +3251,7 @@ const RESEARCH_STORES = {
 
 // Flatten one array from a source (Prep breakdowns or the Web result), dedup by name.
 S._pushed = S._pushed || new Set();
+S.verify = S.verify || {};   // "<store>:<name>" -> { confidence, source_url, as_of_date, verify_note, _verified }
 function poolFor(key, src) {
   const rows = src === 'web'
     ? ((S.webExtract && S.webExtract[key]) || [])
@@ -3250,9 +3261,12 @@ function poolFor(key, src) {
     const nm = String(RESEARCH_STORES[key].name(it) || '').trim();
     if (!nm || seen.has(nm.toLowerCase())) continue;
     seen.add(nm.toLowerCase());
-    const _key = `${src}:${key}:${nm.toLowerCase()}`;
+    const lk = nm.toLowerCase();
+    const _key = `${src}:${key}:${lk}`;
     if (S._pushed.has(_key)) continue;           // already written this session — gone from review
-    out.push({ ...it, _key });
+    // Web verify-pass decorations merge onto the same prep row (see runWebVerify).
+    const vfy = src === 'prep' ? S.verify[`${key}:${lk}`] : null;
+    out.push({ ...it, ...(vfy || {}), _key });
   }
   return out;
 }
@@ -3297,7 +3311,7 @@ function renderReviewInto(elId, src) {
         const off = skip.has(it._key);
         return `<tr style="opacity:${off ? 0.4 : 1}">
           <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview('${it._key}','${src}')" style="width:14px;flex:none"></td>
-          <td style="font-weight:500;max-width:220px;white-space:normal">${_esc(cfg.name(it) || '(unnamed)')}</td>
+          <td style="font-weight:500;max-width:220px;white-space:normal" title="${_esc(it.verify_note || '')}">${it._verified ? '✅ ' : ''}${_esc(cfg.name(it) || '(unnamed)')}</td>
           ${cols.map(c => `<td style="max-width:240px;white-space:normal">${_esc(_propText(p[c]))}</td>`).join('')}
         </tr>`;
       }).join('')}
@@ -3380,6 +3394,80 @@ async function runWebResearch(btn) {
     toast(`Web research failed: ${e.message}`, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Research →'; }
+  }
+}
+
+// ─── Web · "Verify collected" — grounded fact-check of the Prep pool ─────────
+function webMode(m) {
+  document.getElementById('web-ask-panel').style.display = m === 'ask' ? '' : 'none';
+  document.getElementById('web-verify-panel').style.display = m === 'verify' ? '' : 'none';
+  document.getElementById('web-mode-ask').classList.toggle('active', m === 'ask');
+  document.getElementById('web-mode-verify').classList.toggle('active', m === 'verify');
+  if (m === 'verify') renderVerifyStores();
+}
+
+// Verifiable stores = the transcript-sourced ones that carry a source/confidence.
+const VERIFY_STORES = ['research', 'prices', 'data', 'activities', 'food', 'transport', 'glossary'];
+function renderVerifyStores() {
+  const el = document.getElementById('web-verify-stores');
+  if (!el) return;
+  const btns = VERIFY_STORES.map(k => {
+    const n = poolFor(k, 'prep').length;
+    if (!n) return '';
+    const done = poolFor(k, 'prep').filter(it => it._verified).length;
+    return `<button class="btn btn-sm" onclick="runWebVerify('${k}',this)">${RESEARCH_STORES[k].label} · ${n}${done ? ` (${done}✓)` : ''}</button>`;
+  }).filter(Boolean).join('');
+  el.innerHTML = btns || '<span style="font-size:12px;color:var(--text3)">Nothing collected yet — run breakdowns in the Prep tab first.</span>';
+}
+
+// One short "key: value" line per row, so the model knows what it's checking.
+function _verifyDetail(key, it) {
+  const p = RESEARCH_STORES[key].props(it);
+  return Object.entries(p)
+    .filter(([k]) => !['Date Added', 'Retrieved Date', 'Source Video', RESEARCH_STORES[key].titleProp].includes(k))
+    .map(([k, v]) => { const t = _propText(v); return t ? `${k}: ${t}` : ''; })
+    .filter(Boolean).join(' · ');
+}
+
+async function runWebVerify(key, btn) {
+  const items = poolFor(key, 'prep');
+  if (!items.length) { toast(`Nothing collected for ${key}`, 'error'); return; }
+  const cfg = RESEARCH_STORES[key];
+  const statusEl = document.getElementById('web-verify-status');
+  if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
+  statusEl.textContent = `Checking ${Math.min(items.length, 40)} ${cfg.label} rows against the web…`;
+  try {
+    const payload = items.slice(0, 40).map(it => ({ name: cfg.name(it), detail: _verifyDetail(key, it) }));
+    const res = await fetch('/.netlify/functions/web-research', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'verify', store: key, items: payload }),
+    });
+    const raw = await res.text();
+    let d; try { d = JSON.parse(raw); } catch { throw new Error(`web-research ${res.status} — ${raw.slice(0, 160)}`); }
+    if (!res.ok) throw new Error(d.error || `web-research ${res.status}`);
+    const verdicts = { confirmed: 0, corrected: 0, unsupported: 0 };
+    for (const v of (d.verified || [])) {
+      const nm = String(v.name || '').trim().toLowerCase();
+      if (!nm) continue;
+      verdicts[v.verdict] = (verdicts[v.verdict] || 0) + 1;
+      S.verify[`${key}:${nm}`] = {
+        _verified: true,
+        confidence: ['low', 'medium', 'high'].includes(v.confidence) ? v.confidence : 'medium',
+        source_url: v.source_url || '',
+        as_of_date: /^\d{4}-\d{2}-\d{2}$/.test(v.as_of_date || '') ? v.as_of_date : '',
+        verify_note: [v.verdict, v.corrected_value && `→ ${v.corrected_value}`, v.note].filter(Boolean).join(' '),
+      };
+    }
+    renderExtractReview();
+    renderVerifyStores();
+    statusEl.innerHTML = `${verdicts.confirmed} confirmed · ${verdicts.corrected} corrected · ${verdicts.unsupported} unsupported. ` +
+      (d.sources || []).slice(0, 6).map(s => `<a href="${s.url}" target="_blank" rel="noopener" style="color:var(--blue)">${s.title || 'source'}</a>`).join(' · ');
+    toast(`Verified ${(d.verified || []).length} ${cfg.label} rows`, 'success');
+  } catch (e) {
+    statusEl.textContent = `Failed: ${e.message}`;
+    toast(`Verify failed: ${e.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = `${cfg.label} · ${poolFor(key, 'prep').length}`; }
   }
 }
 

@@ -1,10 +1,14 @@
 'use strict';
 
-// Web research for Step 1 (Research → Web tab). Gemini with Google Search
-// grounding: one call, returns the same extraction shape as the transcript
-// passes but with real source URLs and raised confidence.
-//   POST { query, focus? }  ->  { extract: {...}, sources: [{title,url}], model }
-// Needs GEMINI_API_KEY. Returns 502 on provider/network failure.
+// Web research for Step 1 (Research → Web tab). Gemini + Google Search
+// grounding. Two modes:
+//   POST { query, focus? }
+//     -> { extract: {...}, sources: [{title,url}], model }   (open question)
+//   POST { mode:'verify', store, items:[{name, detail}] }
+//     -> { verified: [{name, verdict, confidence, source_url, as_of_date,
+//                      corrected_value, note}], sources, model }
+// Needs GEMINI_API_KEY. 502 on provider/network failure, 504 on our own
+// 23s bail (before Netlify's 26s hard kill).
 
 const MODEL = 'gemini-3.6-flash';
 
@@ -29,24 +33,81 @@ exports.handler = async (event) => {
   } catch {
     return respond(400, { error: 'Invalid JSON' });
   }
-  const query = String(body.query || '').trim();
-  if (!query) return respond(400, { error: 'Missing query' });
-  const focus = String(body.focus || '').trim();
 
-  const prompt = `Research this for a Japan travel documentary: "${query}".
+  const prompt = body.mode === 'verify' ? buildVerifyPrompt(body) : buildAskPrompt(body);
+  if (prompt.error) return respond(400, { error: prompt.error });
+
+  const call = await runGemini(key, prompt.text);
+  if (call.error) return respond(call.status, { error: call.error });
+
+  const parsed = parseJsonLoose(call.text);
+  if (!parsed) {
+    return respond(502, { error: 'model reply was not valid JSON', raw: call.text.slice(0, 400) });
+  }
+
+  if (body.mode === 'verify') {
+    return respond(200, {
+      verified: Array.isArray(parsed.verified) ? parsed.verified : [],
+      sources: call.sources,
+      model: MODEL,
+    });
+  }
+  return respond(200, { extract: parsed, sources: call.sources, model: MODEL });
+};
+
+function buildAskPrompt(body) {
+  const query = String(body.query || '').trim();
+  if (!query) return { error: 'Missing query' };
+  const focus = String(body.focus || '').trim();
+  return {
+    text: `Research this for a Japan travel documentary: "${query}".
 ${focus ? `Focus: ${focus}\n` : ''}Use web search. Prefer primary sources, official
 sites, reputable local sources, academic work. For every claim record its
 source_url. Set confidence "high" only when multiple reputable sources agree,
 else "medium". Give Japanese terms worth explaining on screen in "glossary".
 Numbers go in "data" with unit + year. Prices go in "prices" with as_of_date.
 Return ONLY this JSON shape, no markdown:
-${SHAPE}`;
+${SHAPE}`,
+  };
+}
 
+function buildVerifyPrompt(body) {
+  const store = String(body.store || 'claims').trim();
+  const items = Array.isArray(body.items) ? body.items.slice(0, 40) : [];
+  if (!items.length) return { error: 'Missing items' };
+  const list = items
+    .map(
+      (it, i) =>
+        `${i + 1}. ${String(it.name || '').trim()}${it.detail ? ` — ${String(it.detail).slice(0, 300)}` : ''}`
+    )
+    .join('\n');
+  return {
+    text: `These ${items.length} "${store}" entries were pulled from Japan travel
+vlogs and are UNVERIFIED. For each, use web search to check it against
+reputable sources (official sites, tourism boards, news, academic).
+
+For each entry return:
+- name: copy the entry name back EXACTLY so it can be matched
+- verdict: "confirmed" | "corrected" | "unsupported"
+- confidence: "high" (multiple reputable sources agree) | "medium" | "low"
+- source_url: the best single URL backing your verdict ("" if none)
+- as_of_date: "YYYY-MM-DD" the source reflects, or ""
+- corrected_value: the corrected fact if verdict is "corrected", else ""
+- note: one short sentence of context
+
+Entries:
+${list}
+
+Return ONLY this JSON, no markdown:
+{ "verified": [{ "name","verdict","confidence","source_url","as_of_date","corrected_value","note" }] }`,
+  };
+}
+
+async function runGemini(key, prompt) {
   // Grounded generation is slow; bail at 23s so we return clean JSON before
   // Netlify's 26s hard kill turns it into an opaque 504 HTML page.
   const ac = new AbortController();
   const killer = setTimeout(() => ac.abort(), 23000);
-  let data;
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
@@ -61,35 +122,29 @@ ${SHAPE}`;
         signal: ac.signal,
       }
     );
-    data = await res.json().catch(() => ({}));
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return respond(502, { error: (data.error && data.error.message) || `HTTP ${res.status}` });
+      return { status: 502, error: (data.error && data.error.message) || `HTTP ${res.status}` };
     }
+    const cand = (data.candidates || [])[0] || {};
+    const text = ((cand.content && cand.content.parts) || []).map((p) => p.text || '').join('');
+    const chunks = (cand.groundingMetadata && cand.groundingMetadata.groundingChunks) || [];
+    const sources = chunks
+      .map((c) => c.web && { title: c.web.title || c.web.uri, url: c.web.uri })
+      .filter(Boolean);
+    return { text, sources };
   } catch (e) {
     if (e.name === 'AbortError') {
-      return respond(504, {
-        error: 'Search took too long. Narrow the question, or add a Focus to scope it.',
-      });
+      return {
+        status: 504,
+        error: 'Search took too long. Narrow the question, or verify fewer rows.',
+      };
     }
-    return respond(502, { error: e.message });
+    return { status: 502, error: e.message };
   } finally {
     clearTimeout(killer);
   }
-
-  const cand = (data.candidates || [])[0] || {};
-  const text = ((cand.content && cand.content.parts) || []).map((p) => p.text || '').join('');
-  const extract = parseJsonLoose(text);
-  if (!extract) {
-    return respond(502, { error: 'model reply was not valid JSON', raw: text.slice(0, 400) });
-  }
-
-  const chunks = (cand.groundingMetadata && cand.groundingMetadata.groundingChunks) || [];
-  const sources = chunks
-    .map((c) => c.web && { title: c.web.title || c.web.uri, url: c.web.uri })
-    .filter(Boolean);
-
-  return respond(200, { extract, sources, model: MODEL });
-};
+}
 
 // Same tolerant JSON extraction as the browser's parseJsonLoose.
 function parseJsonLoose(raw) {
@@ -137,4 +192,4 @@ function respond(statusCode, payload) {
   };
 }
 
-module.exports._internal = { parseJsonLoose };
+module.exports._internal = { parseJsonLoose, buildVerifyPrompt, buildAskPrompt };
