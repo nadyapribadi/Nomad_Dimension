@@ -1039,10 +1039,15 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     </div>
     <div class="card" id="prep-card-2" style="display:none">
       <div class="card-title"><span class="icon">🧪</span> 2 · Get transcript &amp; analyse</div>
-      <p style="font-weight:600;font-size:13px;margin-bottom:12px">
+      <p style="font-weight:600;font-size:13px;margin-bottom:10px">
         For each video: <strong>Get transcript</strong>, then <strong>Analyse</strong> — the AI pulls
         out places, activities, food, transport, facts, prices and terms and saves them to the video's row.
       </p>
+      <div class="btn-row" style="margin-top:0;margin-bottom:12px">
+        <button class="btn btn-sm" id="prep-fetch-all" onclick="prepFetchAll(this)">Get all transcripts</button>
+        <button class="btn btn-sm btn-primary" id="prep-analyse-all" onclick="prepAnalyseAll(this)">Analyse all</button>
+        <span style="font-size:11px;color:var(--text3)">…or do them one at a time below</span>
+      </div>
       <div id="ep-prep-list"></div>
     </div>
     <div class="card" id="prep-card-3" style="display:none">
@@ -3155,6 +3160,35 @@ function txHash(v) {
   return v._txHash;
 }
 
+// ── batch: run the per-video actions across the whole selection, sequentially ──
+async function prepFetchAll(btn) {
+  const ids = [...S.epSelected].filter(i => { const v = S.epQueue[i]; return v && !v.transcript && v.url; });
+  if (!ids.length) { toast('Every selected video already has a transcript (or has no URL to fetch from)', 'success'); return; }
+  if (btn) btn.disabled = true;
+  for (let k = 0; k < ids.length; k++) {
+    if (btn) btn.textContent = `Getting transcripts ${k + 1}/${ids.length}…`;
+    await prepFetchTranscript(ids[k]);
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Get all transcripts'; }
+  toast(`Fetched ${ids.length} transcript${ids.length === 1 ? '' : 's'}`, 'success');
+}
+async function prepAnalyseAll(btn) {
+  const todo = [...S.epSelected].filter(i => {
+    const v = S.epQueue[i];
+    return v && v.transcript && !(v.breakdown && v.breakdown._hash === txHash(v));
+  });
+  if (!todo.length) { toast('Nothing to analyse — all selected videos are done (or need a transcript)', 'success'); return; }
+  if (btn) btn.disabled = true;
+  let ok = 0, fail = 0;
+  for (let k = 0; k < todo.length; k++) {
+    if (btn) btn.textContent = `Analysing ${k + 1}/${todo.length}…`;
+    try { await prepRunBreakdown(todo[k]); ok++; } catch { fail++; }
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Analyse all'; }
+  prepStep(3);
+  toast(`Analysed ${ok} video${ok === 1 ? '' : 's'}${fail ? ` · ${fail} failed` : ''}`, fail ? 'error' : 'success');
+}
+
 async function prepRunBreakdown(i, force) {
   const v = S.epQueue[i];
   if (!v.transcript) { prepStatus(i, 'Fetch the transcript first.'); return; }
@@ -3413,6 +3447,7 @@ function resetResearchSession() {
   S._vlibSkip = new Set();
   S._vlibArch = new Set();
   S._vlibTidy = false;
+  S._lastPush = {};
 }
 const _skipSet = (src) => (S[src === 'web' ? '_webSkip' : '_extractSkip'] ||= new Set());
 
@@ -3453,8 +3488,13 @@ function renderReviewInto(elId, src) {
   const HIDE = new Set(['Date Added', 'Retrieved Date', 'Country', 'Last Verified', cfg.titleProp]);
   const cols = [];
   for (const { p } of built) for (const k of Object.keys(p)) if (!HIDE.has(k) && !cols.includes(k)) cols.push(k);
+  const lp = (S._lastPush || {})[`${src}:${active}`];
+  const savedBanner = lp
+    ? `<div style="background:rgba(122,168,116,.12);border:1px solid var(--accent3);border-radius:var(--radius);padding:6px 10px;margin-bottom:8px;font-size:12px;color:var(--text2)">✓ Saved ${lp.added} to ${cfg.label}${lp.skipped ? ` · ${lp.skipped} were already there` : ''}. <a href="${lp.url}" target="_blank" rel="noopener" style="color:var(--blue)">Open ${cfg.label} in Notion ↗</a></div>`
+    : '';
   el.innerHTML = `
     <div class="tabs" style="margin-bottom:10px">${tabs}</div>
+    ${savedBanner}
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${active}',this,'${src}')">Save ticked to ${cfg.label} →</button>
       <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',true)">Tick all</button>
@@ -3514,6 +3554,7 @@ async function ensureExisting(key, src) {
 }
 function switchReviewTab(src, key) {
   _reviewTab[src] = key;
+  if (S._lastPush) delete S._lastPush[`${src}:${key}`];   // clear the "saved" banner when you leave/return
   renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
 }
 function reviewAll(src, key, on) {
@@ -3567,6 +3608,12 @@ async function pushStore(key, btn, src) {
     }
     toast([added && `${added} added`, skipped && `${skipped} skipped`, failed && `${failed} failed`]
       .filter(Boolean).join(' · ') || 'nothing to push', failed ? 'error' : 'success');
+    if (added || skipped) {
+      (S._lastPush ||= {})[`${src}:${key}`] = {
+        added, skipped,
+        url: `https://www.notion.so/${cfg.db().replace(/-/g, '')}`,
+      };
+    }
   } finally {
     _pushingStore = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Save ticked →'; }
