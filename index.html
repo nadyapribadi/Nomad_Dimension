@@ -1110,22 +1110,22 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <div id="web-status" style="font-size:12px;color:var(--text3);margin-top:10px"></div>
     </div>
     <div class="card" id="web-verify-panel" style="display:none">
-      <div class="card-title"><span class="icon">✅</span> Fact-check saved rows</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Search rows <strong>already saved in your Notion tables</strong> and check each one against the web. The result is written back as a <strong>Verify Status</strong> + a <strong>Verify Note</strong> — the fact itself is never overwritten.</p>
+      <div class="card-title"><span class="icon">✅</span> Fact-check rows</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:10px">Check rows against the web. The result is written back as a <strong>Verify Status</strong> + a <strong>Verify Note</strong> — the fact itself is never overwritten.</p>
+      <div class="tabs" style="margin-bottom:10px">
+        <div class="tab active" id="vsrc-saved" onclick="setVerifySource('saved')">Rows already saved in Notion</div>
+        <div class="tab" id="vsrc-session" onclick="setVerifySource('session')">Rows found this session (not saved yet)</div>
+      </div>
       <div class="field" style="margin-bottom:8px">
-        <label>Keyword <span style="color:var(--text3);font-weight:400">— leave blank to load a whole table, then use “Find duplicates”</span></label>
+        <label>Keyword <span style="color:var(--text3);font-weight:400">— leave blank to load everything</span></label>
         <input type="text" id="vlib-q" placeholder="place · region · dish · topic — matches any field" onkeydown="if(event.key==='Enter')searchLibrary(this)">
       </div>
       <div id="vlib-stores-pick" style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-bottom:10px"></div>
       <div class="btn-row" style="margin-bottom:10px">
         <button class="btn btn-sm btn-primary" onclick="searchLibrary(this)">Load / search →</button>
-        <button class="btn btn-sm btn-ghost" onclick="findDuplicates(this)" title="Load the ticked tables and group near-duplicate + thin rows so you can archive them">🧹 Find duplicates in these tables</button>
+        <button class="btn btn-sm btn-ghost" id="vlib-dedupe-btn" onclick="findDuplicates(this)" title="Load the ticked tables and group near-duplicate + thin rows so you can archive them">🧹 Find duplicates in these tables</button>
       </div>
       <div id="vlib-results"></div>
-      <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
-      <p style="font-size:12px;color:var(--text3);margin-bottom:8px">…or fact-check rows you found this session but <strong>haven't saved yet</strong>:</p>
-      <div id="web-verify-stores" class="btn-row" style="flex-wrap:wrap;gap:8px"></div>
-      <div id="web-verify-status" style="font-size:12px;color:var(--text3);margin-top:10px"></div>
     </div>
     <div class="card">
       <div class="card-title"><span class="icon">📤</span> New rows found on the web — save to tables</div>
@@ -3651,13 +3651,26 @@ async function findDuplicates(btn) {
   if ((S.vlib || []).length && !S._vlibTidy) tidyVlib();
 }
 
-// ─── Web · "Verify collected" — grounded fact-check of the Prep pool ─────────
+// ─── Web · Fact-check — one list, two sources (saved Notion rows / session pool)
 function webMode(m) {
   document.getElementById('web-ask-panel').style.display = m === 'ask' ? '' : 'none';
   document.getElementById('web-verify-panel').style.display = m === 'verify' ? '' : 'none';
   document.getElementById('web-mode-ask').classList.toggle('active', m === 'ask');
   document.getElementById('web-mode-verify').classList.toggle('active', m === 'verify');
-  if (m === 'verify') { renderVerifyStores(); renderVlibPicker(); }
+  if (m === 'verify') { renderVlibPicker(); setVerifySource(S._vlibSource || 'saved'); }
+}
+
+function setVerifySource(src) {
+  S._vlibSource = src;
+  document.getElementById('vsrc-saved').classList.toggle('active', src === 'saved');
+  document.getElementById('vsrc-session').classList.toggle('active', src === 'session');
+  const dd = document.getElementById('vlib-dedupe-btn');
+  if (dd) dd.style.display = src === 'saved' ? '' : 'none';        // dedupe = archive → only for saved rows
+  const qField = document.getElementById('vlib-q').closest('.field');
+  if (qField) qField.style.display = src === 'saved' ? '' : 'none';
+  S.vlib = []; S._vlibSkip = new Set(); S._vlibTidy = false; S._vlibArch = new Set();
+  if (src === 'session') searchLibrary();                          // auto-load the not-yet-saved pool
+  else renderVlibResults();
 }
 
 // fetch + parse JSON with a hard client-side timeout, so a hung Netlify
@@ -3729,12 +3742,29 @@ function renderVlibPicker() {
 }
 
 async function searchLibrary(btn) {
-  const q = document.getElementById('vlib-q').value.trim().toLowerCase();   // blank = fetch all (for Tidy)
   const stores = LIB_STORES.filter(k => document.getElementById(`vlib-pick-${k}`)?.checked);
   if (!stores.length) { toast('Tick at least one table', 'error'); return; }
   const el = document.getElementById('vlib-results');
+
+  // "This session" source: rows from the current Prep pool, not yet saved to Notion.
+  if (S._vlibSource === 'session') {
+    const out = [];
+    for (const store of stores) {
+      if (store === 'places') continue;
+      const cfg = RESEARCH_STORES[store];
+      for (const it of poolFor(store, 'prep')) {
+        out.push({ store, name: cfg.name(it), fields: _verifyDetail(store, it), _key: it._key, status: it._verified ? 'checked' : '', note: it.verify_note || '' });
+      }
+    }
+    S.vlib = out; S._vlibSkip = new Set(); S._vlibTidy = false; S._vlibArch = new Set();
+    renderVlibResults();
+    toast(out.length ? `${out.length} unsaved row${out.length === 1 ? '' : 's'}` : 'Nothing found this session — analyse some videos first', out.length ? 'success' : 'error');
+    return;
+  }
+
+  const q = document.getElementById('vlib-q').value.trim().toLowerCase();   // blank = load all
   if (btn) { btn.disabled = true; btn.textContent = 'Searching…'; }
-  el.innerHTML = '<div class="loading-row"><div class="spinner"></div> Searching your Notion library…</div>';
+  el.innerHTML = '<div class="loading-row"><div class="spinner"></div> Searching your Notion tables…</div>';
   try {
     S._vlibRaw = S._vlibRaw || {};                    // per-store row cache for the session
     const out = [];
@@ -3806,16 +3836,20 @@ function _clusterRows(rows, thr = 0.5) {
 function renderVlibResults() {
   const el = document.getElementById('vlib-results');
   const rows = S.vlib || [];
-  if (!rows.length) { el.innerHTML = '<div class="empty-state" style="padding:20px"><p>Nothing loaded — search a keyword, or leave it blank and load a table to Tidy.</p></div>'; return; }
+  if (!rows.length) {
+    el.innerHTML = `<div class="empty-state" style="padding:20px"><p>${S._vlibSource === 'session' ? 'No unsaved rows this session — analyse some videos first.' : 'Nothing loaded — type a keyword and Load, or leave it blank to load a whole table.'}</p></div>`;
+    return;
+  }
   if (S._vlibTidy) return renderVlibTidy(el, rows);
   const skip = (S._vlibSkip ||= new Set());
-  const n = rows.filter(r => !skip.has(r.id)).length;
+  const rk = (r) => r.id || r._key;          // saved rows key by page id, session rows by _key
+  const n = rows.filter(r => !skip.has(rk(r))).length;
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
       <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="runLibVerify(this)">Fact-check ticked (${n}) →</button>
       <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(true)">Tick all</button>
       <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(false)">Untick all</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">🧹 Find duplicates</button>
+      ${S._vlibSource === 'session' ? '' : '<button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">🧹 Find duplicates</button>'}
       <span style="font-size:11px;color:var(--text3)">${rows.length} row${rows.length === 1 ? '' : 's'}</span>
     </div>
     <div style="overflow:auto;max-height:55vh;border:1px solid var(--border);border-radius:var(--radius)">
@@ -3823,11 +3857,11 @@ function renderVlibResults() {
       <thead><tr><th style="width:24px"></th><th>Table</th><th>Name</th><th>Fields</th><th>Verify</th></tr></thead>
       <tbody>
       ${rows.map(r => {
-        const off = skip.has(r.id);
+        const off = skip.has(rk(r));
         const st = r._newStatus || r.status;
         const badge = st ? `<span class="badge ${st === 'confirmed' ? 'badge-green' : st === 'corrected' ? 'badge-amber' : 'badge'}" style="font-size:9px">${st}</span>` : '';
         return `<tr style="opacity:${off ? 0.4 : 1}">
-          <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleVlib('${r.id}')" style="width:14px;flex:none"></td>
+          <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleVlib('${rk(r)}')" style="width:14px;flex:none"></td>
           <td style="white-space:nowrap;color:var(--text3)">${RESEARCH_STORES[r.store].label}</td>
           <td style="max-width:200px;white-space:normal;font-weight:500">${_esc(r.name)}</td>
           <td style="max-width:320px;white-space:normal;color:var(--text2)">${_esc(r.fields)}</td>
@@ -3843,7 +3877,7 @@ function toggleVlib(id) {
   renderVlibResults();
 }
 function vlibAll(on) {
-  S._vlibSkip = on ? new Set() : new Set((S.vlib || []).map(r => r.id));
+  S._vlibSkip = on ? new Set() : new Set((S.vlib || []).map(r => r.id || r._key));
   renderVlibResults();
 }
 
@@ -3945,7 +3979,7 @@ async function archiveVlib(btn) {
 let _libVerifying = false;
 async function runLibVerify(btn) {
   if (_libVerifying) { toast('Still verifying the last batch — hang on', 'error'); return; }
-  const rows = (S.vlib || []).filter(r => !S._vlibSkip.has(r.id));
+  const rows = (S.vlib || []).filter(r => !S._vlibSkip.has(r.id || r._key));
   if (!rows.length) { toast('Nothing ticked', 'error'); return; }
   _libVerifying = true;
   if (btn) btn.disabled = true;
@@ -3980,18 +4014,31 @@ async function runLibVerify(btn) {
             v.source_url, v.as_of_date, v.note,
           ].filter(Boolean).join(' · ').slice(0, 1900);
           try {
-            await notionAPI(`pages/${r.id}`, 'PATCH', {
-              properties: {
-                'Verify Status': { select: { name: verdict } },
-                'Verify Note': { rich_text: [{ text: { content: note } }] },
-              },
-            });
+            if (r.id) {
+              // saved Notion row → write back to the page
+              await notionAPI(`pages/${r.id}`, 'PATCH', {
+                properties: {
+                  'Verify Status': { select: { name: verdict } },
+                  'Verify Note': { rich_text: [{ text: { content: note } }] },
+                },
+              });
+            } else {
+              // not-yet-saved session row → decorate the Prep pool so it pushes verified
+              S.verify[`${r.store}:${r.name.trim().toLowerCase()}`] = {
+                _verified: true,
+                confidence: ['low', 'medium', 'high'].includes(v.confidence) ? v.confidence : 'medium',
+                source_url: v.source_url || '',
+                as_of_date: /^\d{4}-\d{2}-\d{2}$/.test(v.as_of_date || '') ? v.as_of_date : '',
+                verify_note: `${verdict}${v.corrected_value ? ` → ${v.corrected_value}` : ''}${v.note ? ` ${v.note}` : ''}`,
+              };
+            }
             r._newStatus = verdict; r._newNote = note;
             tally[verdict]++; patched++;
-          } catch (e) { failed++; console.error('verify PATCH failed', r.id, e); }
+          } catch (e) { failed++; console.error('verify write failed', r.id || r.name, e); }
         }
       }
     }
+    if (S.vlib.some(r => !r.id)) renderExtractReview();   // reflect session-row decorations
     renderVlibResults();
     toast([`${patched} written`, tally.corrected && `${tally.corrected} corrected`, tally.unsupported && `${tally.unsupported} unsupported`, failed && `${failed} failed`]
       .filter(Boolean).join(' · '), failed ? 'error' : 'success');
@@ -4001,20 +4048,6 @@ async function runLibVerify(btn) {
   }
 }
 
-// Verifiable stores = the transcript-sourced ones that carry a source/confidence.
-const VERIFY_STORES = ['research', 'prices', 'data', 'activities', 'food', 'transport', 'glossary'];
-function renderVerifyStores() {
-  const el = document.getElementById('web-verify-stores');
-  if (!el) return;
-  const btns = VERIFY_STORES.map(k => {
-    const n = poolFor(k, 'prep').length;
-    if (!n) return '';
-    const done = poolFor(k, 'prep').filter(it => it._verified).length;
-    return `<button class="btn btn-sm" onclick="runWebVerify('${k}',this)">${RESEARCH_STORES[k].label} · ${n}${done ? ` (${done}✓)` : ''}</button>`;
-  }).filter(Boolean).join('');
-  el.innerHTML = btns || '<span style="font-size:12px;color:var(--text3)">Nothing to check yet — analyse some videos in the Analyse tab first.</span>';
-}
-
 // One short "key: value" line per row, so the model knows what it's checking.
 function _verifyDetail(key, it) {
   const p = RESEARCH_STORES[key].props(it);
@@ -4022,50 +4055,6 @@ function _verifyDetail(key, it) {
     .filter(([k]) => !['Date Added', 'Retrieved Date', 'Source Video', RESEARCH_STORES[key].titleProp].includes(k))
     .map(([k, v]) => { const t = _propText(v); return t ? `${k}: ${t}` : ''; })
     .filter(Boolean).join(' · ');
-}
-
-async function runWebVerify(key, btn) {
-  const items = poolFor(key, 'prep');
-  if (!items.length) { toast(`Nothing collected for ${key}`, 'error'); return; }
-  const cfg = RESEARCH_STORES[key];
-  const statusEl = document.getElementById('web-verify-status');
-  if (btn) btn.disabled = true;
-  // small batches — grounded search self-aborts at 23s, a big call reliably 504s
-  const CHUNK = 8;
-  const chunks = [];
-  for (let i = 0; i < items.length; i += CHUNK) chunks.push(items.slice(i, i + CHUNK));
-  const verdicts = { confirmed: 0, corrected: 0, unsupported: 0 };
-  let allSources = [], done = 0;
-  try {
-    for (let b = 0; b < chunks.length; b++) {
-      if (btn) btn.textContent = `Verifying ${b + 1}/${chunks.length}…`;
-      statusEl.textContent = `Checking ${cfg.label} rows against the web… batch ${b + 1}/${chunks.length}`;
-      let d;
-      try {
-        d = await _verifyBatch(key, chunks[b].map(it => ({ name: cfg.name(it), detail: _verifyDetail(key, it) })));
-      } catch (e) { toast(`Batch ${b + 1}: ${e.message}`, 'error'); continue; }
-      allSources = allSources.concat(d.sources || []);
-      for (const v of (d.verified || [])) {
-        const nm = String(v.name || '').trim().toLowerCase();
-        if (!nm) continue;
-        verdicts[v.verdict] = (verdicts[v.verdict] || 0) + 1;
-        done++;
-        S.verify[`${key}:${nm}`] = {
-          _verified: true,
-          confidence: ['low', 'medium', 'high'].includes(v.confidence) ? v.confidence : 'medium',
-          source_url: v.source_url || '',
-          as_of_date: /^\d{4}-\d{2}-\d{2}$/.test(v.as_of_date || '') ? v.as_of_date : '',
-          verify_note: [v.verdict, v.corrected_value && `→ ${v.corrected_value}`, v.note].filter(Boolean).join(' '),
-        };
-      }
-      renderExtractReview();
-    }
-    renderVerifyStores();
-    statusEl.innerHTML = `${verdicts.confirmed} confirmed · ${verdicts.corrected} corrected · ${verdicts.unsupported} unsupported. ` + _srcLinks(allSources);
-    toast(`Verified ${done} ${cfg.label} row${done === 1 ? '' : 's'}`, 'success');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = `${cfg.label} · ${poolFor(key, 'prep').length}`; }
-  }
 }
 
 // ─── Step 2 · Episode Builder — typed sections + Notion-backed material ──────
