@@ -7,13 +7,18 @@ Human-readable, updated per milestone. Format loosely follows
 
 ### Fixed — hung request could freeze a button forever
 
-- `web-research` / `notion-proxy` calls now carry a **client-side timeout**
-  (`_postJSON` / an `AbortController` in `notionAPI`, 30 s). Before, when
-  Netlify's edge didn't cleanly close a slow connection the browser `fetch`
-  hung, so `runLibVerify`'s `finally` never ran and its `_libVerifying` lock
-  stayed set — **"Verify ticked" stopped responding** and unticking rows
-  didn't help. Now the request rejects, the lock clears, and a re-entrant
-  click toasts "still verifying — hang on" instead of silently no-op'ing.
+- **Every proxy fetch now has a client-side timeout.** `notionAPI` (30 s),
+  `_postJSON` for `web-research` (30 s), and a new shared `_afetch` wrapping
+  `ytAPI` (25 s), `aiRun` (40 s), `ttsAPI` (60 s), both `yt-transcript` calls
+  (40 s) and `maps-proxy` (20 s). Before, when Netlify's edge didn't cleanly
+  close a slow connection the browser `fetch` hung forever, so a handler's
+  `finally` never ran — e.g. `runLibVerify`'s `_libVerifying` lock stayed set
+  and **"Verify ticked" went dead**, unticking rows didn't help. Now the
+  request rejects, the button re-enables, and a re-entrant click toasts
+  "still verifying — hang on" instead of silently no-op'ing.
+- **Verify runs in batches of 8** (was 40) with a `Verifying 2/3…` progress
+  label — small batches finish before the timeout, and a batch that fails
+  doesn't lose the rows already written.
 
 ### Changed — Review table flags rows already in Notion
 
