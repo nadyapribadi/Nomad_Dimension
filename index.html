@@ -969,8 +969,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <div class="row" style="flex-wrap:wrap;gap:8px">
         <input type="text" id="ytf-text" oninput="renderYTVideos()" placeholder="Filter title / description / tags / channel…" style="flex:1;min-width:200px">
         <input type="number" id="ytf-minviews" oninput="renderYTVideos()" placeholder="min views" style="width:110px">
-        <input type="number" id="ytf-mindur" oninput="renderYTVideos()" placeholder="min min" style="width:80px" title="minimum minutes">
-        <input type="number" id="ytf-maxdur" oninput="renderYTVideos()" placeholder="max min" style="width:80px" title="maximum minutes">
+        <input type="number" id="ytf-mindur" oninput="renderYTVideos()" placeholder="shortest (min)" style="width:110px" title="minimum length in minutes">
+        <input type="number" id="ytf-maxdur" oninput="renderYTVideos()" placeholder="longest (min)" style="width:110px" title="maximum length in minutes">
         <select id="ytf-channel" onchange="renderYTVideos()" style="width:150px"><option value="">all channels</option></select>
         <select id="ytf-sort" onchange="renderYTVideos()" style="width:150px">
           <option value="views">Sort: views ↓</option>
@@ -4148,8 +4148,8 @@ async function epLoadMaterial() {
   listEl.innerHTML = '<div class="loading-row"><div class="spinner"></div> Loading…</div>';
   try {
     const cfg = EP_MAT[cat];
-    const data = await notionAPI(`databases/${cfg.db()}/query`, 'POST', { page_size: 100 });
-    S.ep.pool[cat] = (data.results || []).map(r => {
+    const results = await notionQueryAll(cfg.db());   // don't cap the material browser at 100
+    S.ep.pool[cat] = results.map(r => {
       const pr = r.properties || {};
       return {
         id: r.id, _cat: cat,
