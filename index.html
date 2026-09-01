@@ -1628,6 +1628,22 @@ const S = {
 };
 
 // ─── PROXY HELPERS ──────────────────────────────────────────────────────────
+// fetch with a hard client-side timeout. A hung Netlify connection then
+// rejects with a real error instead of leaving a button disabled / a
+// re-entry lock stuck forever. (`notionAPI` / `_postJSON` roll their own.)
+async function _afetch(url, opts = {}, ms = 45000) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ac.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`${url.split('/').pop()} timed out after ${ms / 1000}s — try a smaller input`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Keys/tokens live only in Netlify env vars — the browser never sends them.
 async function notionAPI(endpoint, method = 'GET', body = null) {
   for (let attempt = 0; ; attempt++) {
@@ -1659,11 +1675,11 @@ async function notionAPI(endpoint, method = 'GET', body = null) {
 }
 
 async function ytAPI(path, params = {}) {
-  const res = await fetch('/.netlify/functions/youtube-proxy', {
+  const res = await _afetch('/.netlify/functions/youtube-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, params }),
-  });
+  }, 25000);
   return res.json();
 }
 
@@ -1671,14 +1687,14 @@ async function ytAPI(path, params = {}) {
 // (or an explicit provider+model override). Returns { text, provider, model,
 // usage, costUsd }. Every AI stage goes through this.
 async function aiRun(task, { system = '', messages, provider, model, maxTokens } = {}) {
-  const res = await fetch('/.netlify/functions/ai-run', {
+  const res = await _afetch('/.netlify/functions/ai-run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       task, system, messages, provider, model, maxTokens,
       episode: S.activeEpisode || null,
     }),
-  });
+  }, 40000);   // ai-run's own server cap is 26s; give the round-trip a margin
   // ai-run can return a non-JSON body on a platform timeout / crash — read text
   // first so the caller gets a real message, not "JSON.parse: unexpected character".
   const body = await res.text();
@@ -1710,7 +1726,7 @@ function parseJsonLoose(raw) {
 }
 
 async function ttsAPI(text, voice, speed) {
-  const res = await fetch('/.netlify/functions/tts-proxy', {
+  const res = await _afetch('/.netlify/functions/tts-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1718,7 +1734,7 @@ async function ttsAPI(text, voice, speed) {
       voice: { languageCode: 'en-US', name: voice },
       audioConfig: { audioEncoding: 'MP3', speakingRate: speed },
     }),
-  });
+  }, 60000);
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || data.error);
   return data.audioContent; // base64 MP3
@@ -2940,10 +2956,10 @@ async function prepFetchTranscript(i) {
   btn.disabled = true; btn.textContent = 'Fetching…';
   let msg = '';
   try {
-    const res = await fetch('/.netlify/functions/yt-transcript', {
+    const res = await _afetch('/.netlify/functions/yt-transcript', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: v.url }),
-    });
+    }, 40000);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     if (!data.text) throw new Error('empty transcript returned');
@@ -3780,21 +3796,29 @@ async function runLibVerify(btn) {
   const rows = (S.vlib || []).filter(r => !S._vlibSkip.has(r.id));
   if (!rows.length) { toast('Nothing ticked', 'error'); return; }
   _libVerifying = true;
-  if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
-  // group by store, then chunk 40
+  if (btn) btn.disabled = true;
+  // group by store, then send small batches (grounded search is slow — small
+  // batches finish before the timeout; a failed batch doesn't lose the rest).
+  const CHUNK = 8;
   const byStore = {};
   for (const r of rows) (byStore[r.store] ||= []).push(r);
+  const batches = Object.entries(byStore).flatMap(([store, srows]) => {
+    const out = [];
+    for (let i = 0; i < srows.length; i += CHUNK) out.push([store, srows.slice(i, i + CHUNK)]);
+    return out;
+  });
   const tally = { confirmed: 0, corrected: 0, unsupported: 0 };
-  let patched = 0, failed = 0;
+  let patched = 0, failed = 0, b = 0;
   try {
-    for (const [store, srows] of Object.entries(byStore)) {
-      for (let i = 0; i < srows.length; i += 40) {
-        const chunk = srows.slice(i, i + 40);
-        const byName = new Map(chunk.map(r => [r.name.trim().toLowerCase(), r]));
-        let verified = [];
+    for (const [store, chunk] of batches) {
+      b++;
+      if (btn) btn.textContent = `Verifying ${b}/${batches.length}…`;
+      const byName = new Map(chunk.map(r => [r.name.trim().toLowerCase(), r]));
+      let verified = [];
+      {
         try {
           ({ verified } = await _verifyBatch(store, chunk.map(r => ({ name: r.name, detail: r.fields.slice(0, 300) }))));
-        } catch (e) { toast(`${RESEARCH_STORES[store].label}: ${e.message}`, 'error'); continue; }
+        } catch (e) { toast(`${RESEARCH_STORES[store].label} batch ${b}: ${e.message}`, 'error'); continue; }
         for (const v of verified) {
           const r = byName.get(String(v.name || '').trim().toLowerCase());
           if (!r) continue;
@@ -4437,11 +4461,11 @@ async function fetchTranscript() {
   btn.disabled = true;
   btn.textContent = 'Fetching…';
   try {
-    const res = await fetch('/.netlify/functions/yt-transcript', {
+    const res = await _afetch('/.netlify/functions/yt-transcript', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
-    });
+    }, 40000);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     document.getElementById('transcript-input').value = data.text;
@@ -4680,10 +4704,10 @@ async function enrichPlacesFromMaps() {
     const q = [p.name, p.area, p.prefecture !== 'Unknown' ? p.prefecture : '', 'Japan']
       .filter(Boolean).join(' ');
     try {
-      const res = await fetch('/.netlify/functions/maps-proxy', {
+      const res = await _afetch('/.netlify/functions/maps-proxy', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: q }),
-      });
+      }, 20000);
       const d = await res.json().catch(() => ({}));
       if (!d || !d.found) return;
       matched++;
