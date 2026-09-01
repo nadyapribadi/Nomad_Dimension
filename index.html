@@ -4831,6 +4831,7 @@ async function extractPlaces(force) {
     }
     S.extractedPlaces = [...byKey.values()].sort((a, z) => a.name.localeCompare(z.name));
     S.confirmedPlaces = [];
+    S._placesSaved = null;
     // default: ones already in the DB start unticked
     S.placeSkip = new Set(S.extractedPlaces.filter(p => p.is_existing).map(p => p.name.toLowerCase()));
     if (!S.extractedPlaces.length) throw new Error('no places found in the transcript(s)');
@@ -4969,6 +4970,7 @@ function placesPick(mode) {
 function queuePlaces() {
   S.confirmedPlaces = S.extractedPlaces.filter(p => !S.placeSkip.has(p.name.toLowerCase()));
   if (!S.confirmedPlaces.length) { toast('Nothing ticked', 'error'); return; }
+  S._placesSaved = null;
   renderConfirmedList();
   toast(`${S.confirmedPlaces.length} place${S.confirmedPlaces.length === 1 ? '' : 's'} ready to save`, 'success');
 }
@@ -4976,11 +4978,16 @@ function queuePlaces() {
 function renderConfirmedList() {
   const el = document.getElementById('confirmed-list');
   if (!el) return;
-  const nNew = S.confirmedPlaces.filter(p => !p.is_existing).length;
-  const nUpd = S.confirmedPlaces.length - nNew;
-  el.innerHTML = S.confirmedPlaces.length
-    ? _esc([nNew && `${nNew} new`, nUpd && `${nUpd} to refresh`].filter(Boolean).join(' · ') +
-      ': ' + S.confirmedPlaces.map(p => p.name).join(' · '))
+  if (S.confirmedPlaces.length) {
+    const nNew = S.confirmedPlaces.filter(p => !p.is_existing).length;
+    const nUpd = S.confirmedPlaces.length - nNew;
+    el.innerHTML = _esc([nNew && `${nNew} new`, nUpd && `${nUpd} to refresh`].filter(Boolean).join(' · ') +
+      ': ' + S.confirmedPlaces.map(p => p.name).join(' · '));
+    return;
+  }
+  const s = S._placesSaved;
+  el.innerHTML = s
+    ? `<span style="color:var(--accent3)">✓ Saved ${s.added} new · ${s.updated} refreshed.</span> <a href="${s.url}" target="_blank" rel="noopener" style="color:var(--blue)">Open Places in Notion ↗</a>`
     : 'Nothing picked yet — use <strong>Add ticked → Notion</strong> above.';
 }
 
@@ -5040,9 +5047,14 @@ async function saveConfirmedPlaces() {
     }
     toast(
       [added && `${added} added`, updated && `${updated} refreshed`, failed && `${failed} failed`]
-        .filter(Boolean).join(' · ') || 'Nothing to push',
+        .filter(Boolean).join(' · ') || 'These places are already saved',
       failed ? 'error' : 'success'
     );
+    if (!failed) {
+      S._placesSaved = { added, updated, url: `https://www.notion.so/${DB_IDS.places.replace(/-/g, '')}` };
+      S.confirmedPlaces = [];   // done — clear the queue so a second click is a no-op, not "nothing to push"
+      renderConfirmedList();
+    }
   } finally {
     _savingPlaces = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Save these places to Notion →'; }
