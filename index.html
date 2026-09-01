@@ -924,14 +924,14 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 <div class="stage-panel" id="stage-1">
   <div class="stage-header">
     <h1>Research</h1>
-    <span class="subtitle">step 1 · gather material into Notion</span>
+    <span class="subtitle">gather material into your Notion tables</span>
   </div>
 
   <div class="tabs">
-    <div class="tab active" onclick="switchTab('res','youtube')">📺 YouTube</div>
-    <div class="tab" onclick="switchTab('res','prep');renderPrepList()">🧪 Prep</div>
+    <div class="tab active" onclick="switchTab('res','youtube')">📺 Find videos</div>
+    <div class="tab" onclick="switchTab('res','prep');renderPrepList()">🧪 Analyse</div>
     <div class="tab" onclick="switchTab('res','places')">📍 Places</div>
-    <div class="tab" onclick="switchTab('res','web');renderWebReview()">🌐 Web</div>
+    <div class="tab" onclick="switchTab('res','web');renderWebReview()">🌐 Fact-check</div>
   </div>
 
   <div id="res-tab-youtube">
@@ -941,7 +941,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <input type="text" id="new-channel-input" placeholder="Add channel name or ID…" style="max-width:260px">
       <button class="btn btn-sm" onclick="addChannel()">+ Add</button>
-      <button class="btn btn-sm btn-ghost" onclick="saveChannels()">Save to Notion →</button>
+      <button class="btn btn-sm btn-ghost" onclick="saveChannels()">Save channel list</button>
     </div>
     <div class="row" style="flex-wrap:wrap">
       <input type="text" id="yt-keyword" placeholder="Fetch keyword (optional)…" style="max-width:220px">
@@ -959,7 +959,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
         <input type="date" id="yt-after" style="width:135px"></label>
       <label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px">to
         <input type="date" id="yt-before" style="width:135px"></label>
-      <button class="btn btn-primary" onclick="fetchYouTube()" id="yt-fetch-btn">Fetch All →</button>
+      <button class="btn btn-primary" onclick="fetchYouTube()" id="yt-fetch-btn">Fetch videos →</button>
     </div>
   </div>
 
@@ -986,7 +986,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <div style="font-size:12px;color:var(--text2)" id="yt-selection-count">0 videos selected</div>
       <div class="row">
         <button class="btn btn-sm btn-ghost" onclick="clearYTSelection()">Clear</button>
-        <button class="btn btn-sm btn-primary" onclick="openReviewModal()" id="yt-push-btn" disabled>Review &amp; Push to Notion →</button>
+        <button class="btn btn-sm btn-primary" onclick="openReviewModal()" id="yt-push-btn" disabled>Add selected to my library →</button>
       </div>
     </div>
     <div class="video-grid" id="yt-video-grid"></div>
@@ -995,29 +995,30 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
   <!-- PREP TAB — pick source videos, then break each down -->
   <div id="res-tab-prep" style="display:none">
+    <p style="font-weight:600;font-size:13px;margin-bottom:10px">Turn saved videos into research rows: <strong>1</strong> pick videos → <strong>2</strong> get transcript &amp; analyse → <strong>3</strong> save the good rows to your tables.</p>
     <div class="tabs" style="margin-bottom:12px">
       <div class="tab active" id="prep-step-1" onclick="prepStep(1)">1 · Pick videos</div>
-      <div class="tab" id="prep-step-2" onclick="prepStep(2)">2 · Break down</div>
-      <div class="tab" id="prep-step-3" onclick="prepStep(3)">3 · Review &amp; push</div>
+      <div class="tab" id="prep-step-2" onclick="prepStep(2)">2 · Analyse</div>
+      <div class="tab" id="prep-step-3" onclick="prepStep(3)">3 · Save to tables</div>
     </div>
     <div class="card" id="prep-card-1">
       <div class="card-title"><span class="icon">📋</span> 1 · Pick source videos</div>
       <div class="btn-row" style="margin-top:0;margin-bottom:10px">
-        <button class="btn btn-sm" onclick="loadSourceQueue()">↻ Load from Notion</button>
+        <button class="btn btn-sm" onclick="loadSourceQueue()">↻ Load my saved videos</button>
         <div style="flex:1"></div>
         <span id="ep-sel-count" style="font-size:12px;color:var(--text2)">0 selected</span>
-        <button class="btn btn-sm btn-ghost" onclick="selectAllQueue()">Select shown</button>
+        <button class="btn btn-sm btn-ghost" onclick="selectAllQueue()">Select all shown</button>
         <button class="btn btn-sm btn-ghost" onclick="clearEpSelection()">Clear</button>
       </div>
       <div class="row" id="ep-q-filters" style="flex-wrap:wrap;gap:6px;margin-bottom:10px;display:none">
         <input type="text" id="ep-q-search" oninput="renderQueue()" placeholder="title / channel / angle…" style="flex:1;min-width:160px">
         <input type="text" id="ep-q-region" oninput="renderQueue()" placeholder="region / prefecture" style="width:150px">
         <select id="ep-q-channel" onchange="renderQueue()" style="width:150px"><option value="">all channels</option></select>
-        <select id="ep-q-prep" onchange="renderQueue()" style="width:150px">
-          <option value="">any prep state</option>
-          <option value="none">needs transcript</option>
-          <option value="tx">has transcript, no breakdown</option>
-          <option value="done">has breakdown</option>
+        <select id="ep-q-prep" onchange="renderQueue()" style="width:170px">
+          <option value="">any state</option>
+          <option value="none">no transcript yet</option>
+          <option value="tx">transcript, not analysed</option>
+          <option value="done">analysed</option>
         </select>
         <select id="ep-q-status" onchange="renderQueue()" style="width:140px">
           <option value="">any status</option>
@@ -1032,50 +1033,49 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <div id="ep-queue-area">
         <div class="empty-state">
           <div class="icon">📋</div>
-          <p>Load your Source Videos from Notion, then tick the ones to break down.</p>
+          <p>Load your saved videos, then tick the ones to analyse.</p>
         </div>
       </div>
     </div>
     <div class="card" id="prep-card-2" style="display:none">
-      <div class="card-title"><span class="icon">🧪</span> 2 · Break down each</div>
-      <p style="font-size:12px;color:var(--text3);margin-bottom:12px">
-        Fetch the transcript, then <strong>Run breakdown</strong> — two AI passes pull a
-        structured object (places · activities · food · transport · beats · quotes, then
-        research · prices · data · glossary) and save it as JSON to the video's Notion row.
+      <div class="card-title"><span class="icon">🧪</span> 2 · Get transcript &amp; analyse</div>
+      <p style="font-weight:600;font-size:13px;margin-bottom:12px">
+        For each video: <strong>Get transcript</strong>, then <strong>Analyse</strong> — the AI pulls
+        out places, activities, food, transport, facts, prices and terms and saves them to the video's row.
       </p>
       <div id="ep-prep-list"></div>
     </div>
     <div class="card" id="prep-card-3" style="display:none">
-      <div class="card-title"><span class="icon">📤</span> 3 · Review &amp; push to the stores</div>
-      <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Places go via the <strong>Places</strong> tab (Maps enrichment). Everything else is pushed here — tick what's worth keeping. All of it is low-confidence until the <strong>Web</strong> tab verifies it.</p>
-      <div id="extract-review"><div class="empty-state"><div class="icon">📤</div><p>Run a breakdown above first.</p></div></div>
+      <div class="card-title"><span class="icon">📤</span> 3 · Save rows to your research tables</div>
+      <p style="font-weight:600;font-size:13px;margin-bottom:10px">The AI's findings, one tab per table. Untick anything wrong, then <strong>Save</strong> — nothing reaches Notion until you do. Places are handled on the <strong>Places</strong> tab. Everything here is unverified until the <strong>Fact-check</strong> tab checks it.</p>
+      <div id="extract-review"><div class="empty-state"><div class="icon">📤</div><p>Analyse a video first.</p></div></div>
     </div>
   </div>
 
   <!-- PLACES TAB -->
   <div id="res-tab-places" style="display:none">
     <div class="card">
-      <div class="card-title"><span class="icon">📍</span> Places → Notion library</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Its own pass — extracts places straight from the <strong>ticked transcripts</strong> (independent of the breakdown), enriches each via Google Maps, and <strong>pushes them to your Places DB</strong> (or <strong>refreshes</strong> ones already there). Sorted A–Z. Tick videos + fetch transcripts in <strong>Prep</strong> first.</p>
-      <button class="btn btn-primary" onclick="extractPlaces()">Collect Places →</button>
-      <button class="btn btn-ghost btn-sm" onclick="extractPlaces(true)" title="Fresh AI pass on every selected transcript — spends tokens">↻ Re-collect (fresh)</button>
-      <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Reading breakdowns…</div>
+      <div class="card-title"><span class="icon">📍</span> Find places</div>
+      <p style="font-weight:600;font-size:13px;margin-bottom:14px">Reads the transcripts of the videos you ticked in <strong>Analyse</strong>, pulls out every place, and looks each one up on Google Maps (prefecture, address, rating, price). Save the good ones to your Places table below.</p>
+      <button class="btn btn-primary" onclick="extractPlaces()">Find places in these transcripts →</button>
+      <button class="btn btn-ghost btn-sm" onclick="extractPlaces(true)" title="Runs the AI again on every selected transcript — uses credits">↻ Re-find (fresh, uses credits)</button>
+      <div id="places-loading" style="display:none" class="loading-row"><div class="spinner"></div> Reading transcripts…</div>
       <div id="places-error" class="info-box error" style="display:none;margin-top:12px"></div>
     </div>
     <div id="places-review-area" style="display:none">
       <div class="card">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <div class="card-title" style="margin:0"><span class="icon">🗂️</span> Places to Review</div>
+          <div class="card-title" style="margin:0"><span class="icon">🗂️</span> Places found — pick which to save</div>
           <div style="flex:1"></div>
         </div>
         <div id="places-list"></div>
       </div>
       <div class="card">
-        <div class="card-title"><span class="icon">📥</span> Queued for Notion</div>
-        <p style="font-size:12px;color:var(--text3);margin-bottom:10px">These get written to the Places DB. New rows are created; ones already in the DB have their Maps facts (rating, address, price, coordinates…) refreshed and <strong>Last Verified</strong> stamped — your Halal / Notes are never overwritten.</p>
-        <div id="confirmed-list" style="font-size:12px;color:var(--text2);margin-bottom:10px">Nothing queued yet — hit <strong>✓ Push</strong> / <strong>↻ Update</strong> above.</div>
+        <div class="card-title"><span class="icon">📥</span> Ready to save</div>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:10px">New places are added to your Places table; places already there get their Google Maps facts (rating, address, price, coordinates…) refreshed — your Halal / Notes are never touched.</p>
+        <div id="confirmed-list" style="font-size:12px;color:var(--text2);margin-bottom:10px">Nothing picked yet — use <strong>Add ticked → Notion</strong> above.</div>
         <div class="btn-row">
-          <button class="btn btn-primary" id="save-places-btn" onclick="saveConfirmedPlaces()">Push Confirmed Places to Notion →</button>
+          <button class="btn btn-primary" id="save-places-btn" onclick="saveConfirmedPlaces()">Save these places to Notion →</button>
         </div>
       </div>
     </div>
@@ -1083,31 +1083,32 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
   <!-- WEB TAB -->
   <div id="res-tab-web" style="display:none">
+    <p style="font-weight:600;font-size:13px;margin-bottom:10px">Check facts against the web — either research a fresh question, or fact-check rows you've already saved.</p>
     <div class="tabs" style="margin-bottom:12px">
-      <div class="tab active" id="web-mode-ask" onclick="webMode('ask')">Ask a question</div>
-      <div class="tab" id="web-mode-verify" onclick="webMode('verify')">Verify collected</div>
+      <div class="tab active" id="web-mode-ask" onclick="webMode('ask')">Research a question</div>
+      <div class="tab" id="web-mode-verify" onclick="webMode('verify')">Fact-check saved rows</div>
     </div>
     <div class="card" id="web-ask-panel">
-      <div class="card-title"><span class="icon">🌐</span> Web research</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Ask a question — a place, a category, a region, a "why". Grounded Google search → drafts rows for the Research / Prices / Data / Glossary / Places stores with real source URLs. Every claim carries its source; review and push below.</p>
+      <div class="card-title"><span class="icon">🌐</span> Research a question</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Ask about a place, a region, a "why". A web search drafts new rows (facts, prices, numbers, terms, places) each with a real source link. Review and save them below.</p>
       <div class="field">
-        <label>Research question</label>
+        <label>Your question</label>
         <input type="text" id="web-query" placeholder="e.g. history of Lake Tanuki · onsen etiquette for tattoos · why is rural Iwate depopulating">
       </div>
       <div class="field">
-        <label>Focus (optional)</label>
+        <label>Narrow it down (optional)</label>
         <input type="text" id="web-focus" placeholder="e.g. primary sources only · figures with year · Japanese-language sources">
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary" onclick="runWebResearch(this)">Research →</button>
+        <button class="btn btn-primary" onclick="runWebResearch(this)">Search the web →</button>
       </div>
       <div id="web-status" style="font-size:12px;color:var(--text3);margin-top:10px"></div>
     </div>
     <div class="card" id="web-verify-panel" style="display:none">
-      <div class="card-title"><span class="icon">✅</span> Verify from library</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Keyword-search rows <strong>already in your Notion stores</strong> — across any tables — and grounded-check the ones you tick. Results are written back as <strong>Verify Status</strong> + <strong>Verify Note</strong> on each row; the fact itself is never overwritten.</p>
+      <div class="card-title"><span class="icon">✅</span> Fact-check saved rows</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px">Search rows <strong>already saved in your Notion tables</strong> and check each one against the web. The result is written back as a <strong>Verify Status</strong> + a <strong>Verify Note</strong> — the fact itself is never overwritten.</p>
       <div class="field" style="margin-bottom:8px">
-        <label>Keyword <span style="color:var(--text3);font-weight:400">— blank = load everything, then hit Tidy</span></label>
+        <label>Keyword <span style="color:var(--text3);font-weight:400">— leave blank to load a whole table, then use “Find duplicates”</span></label>
         <input type="text" id="vlib-q" placeholder="place · region · dish · topic — matches any field" onkeydown="if(event.key==='Enter')searchLibrary(this)">
       </div>
       <div id="vlib-stores-pick" style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-bottom:10px"></div>
@@ -1116,13 +1117,13 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       </div>
       <div id="vlib-results"></div>
       <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
-      <p style="font-size:12px;color:var(--text3);margin-bottom:8px">…or verify <strong>this session's fresh extract</strong> (not yet pushed):</p>
+      <p style="font-size:12px;color:var(--text3);margin-bottom:8px">…or fact-check rows you found this session but <strong>haven't saved yet</strong>:</p>
       <div id="web-verify-stores" class="btn-row" style="flex-wrap:wrap;gap:8px"></div>
       <div id="web-verify-status" style="font-size:12px;color:var(--text3);margin-top:10px"></div>
     </div>
     <div class="card">
-      <div class="card-title"><span class="icon">📤</span> Review &amp; push</div>
-      <div id="web-review"><div class="empty-state"><div class="icon">🌐</div><p>Run a search above.</p></div></div>
+      <div class="card-title"><span class="icon">📤</span> New rows found on the web — save to tables</div>
+      <div id="web-review"><div class="empty-state"><div class="icon">🌐</div><p>Research a question above first.</p></div></div>
     </div>
   </div>
 </div>
@@ -1133,7 +1134,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 <div class="stage-panel" id="stage-2">
   <div class="stage-header">
     <h1>Episode Builder</h1>
-    <span class="subtitle">step 2 · plan the episode</span>
+    <span class="subtitle">plan the episode from your saved material</span>
   </div>
 
   <div class="tabs">
@@ -1515,12 +1516,12 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 <!-- REVIEW & PUSH MODAL -->
 <div class="modal-overlay" id="modal-review">
   <div class="modal" style="max-width:720px;width:95%">
-    <div class="modal-title">Review & Push to Notion</div>
-    <p style="color:var(--text2);font-size:13px;margin-bottom:16px">A content angle has been auto-generated for each video (<em>angle</em> route). Review, edit if needed, then push all to your Source Videos database.</p>
+    <div class="modal-title">Add these videos to your library</div>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:16px">The AI drafted a one-line summary for each video — uses AI credits. Edit if you like, then add them to your Source Videos table.</p>
     <div id="review-list"></div>
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="closeModal('modal-review')">Cancel</button>
-      <button class="btn btn-primary" onclick="pushToNotion()">Push All to Notion →</button>
+      <button class="btn btn-primary" onclick="pushToNotion()">Add all to library →</button>
     </div>
   </div>
 </div>
@@ -2518,7 +2519,7 @@ async function fetchYouTube() {
     console.error(err);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Fetch All →';
+    btn.textContent = 'Fetch videos →';
   }
 }
 
@@ -2750,7 +2751,7 @@ async function pushToNotion() {
   );
   if (pushed) closeModal('modal-review');
   btn.disabled = false;
-  btn.textContent = 'Push All to Notion →';
+  btn.textContent = 'Add all to library →';
 }
 
 // ─── STAGE 2 — EPISODE BUILDER ───────────────────────────────────────────────
@@ -2901,7 +2902,7 @@ function renderPrepList() {
   if (!el) return;
   const sel = [...S.epSelected].map(i => ({ i, v: S.epQueue[i] })).filter(x => x.v);
   if (!sel.length) {
-    el.innerHTML = '<div class="empty-state"><div class="icon">🧪</div><p>Tick source videos in <strong>1 · Pick source videos</strong> above.</p></div>';
+    el.innerHTML = '<div class="empty-state"><div class="icon">🧪</div><p>Tick some videos in <strong>1 · Pick videos</strong> first.</p></div>';
     return;
   }
   el.innerHTML = sel.map(({ i, v }) => {
@@ -2915,16 +2916,16 @@ function renderPrepList() {
       <div style="font-weight:500;margin-bottom:8px">${v.title}</div>
       <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">
         <span class="badge ${v.transcript ? 'badge-green' : ''}">📄 transcript ${v.transcript ? '✓' : '—'}</span>
-        <span class="badge ${cached ? 'badge-green' : stale ? 'badge-amber' : ''}">📋 breakdown ${cached ? '✓ cached' : stale ? '⚠ transcript changed' : v.breakdown ? '✓' : '—'}</span>
-        ${minedTotal ? `<span class="badge" title="${minedStr}">⛏ ${minedTotal} row${minedTotal === 1 ? '' : 's'} in stores</span>` : ''}
+        <span class="badge ${cached ? 'badge-green' : stale ? 'badge-amber' : ''}">📋 analysed ${cached ? '✓' : stale ? '⚠ transcript updated — re-run' : v.breakdown ? '✓' : '—'}</span>
+        ${minedTotal ? `<span class="badge" title="${_esc(minedStr)}">⛏ ${minedTotal} row${minedTotal === 1 ? '' : 's'} saved from this video</span>` : ''}
       </div>
       <div class="row" style="flex-wrap:wrap;gap:8px">
-        <button class="btn btn-sm" onclick="prepFetchTranscript(${i})" id="prep-tx-btn-${i}">${v.transcript ? 'Re-fetch transcript' : 'Fetch transcript'}</button>
-        <button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'paste')">paste transcript</button>
-        <button class="btn btn-sm" onclick="prepRunBreakdown(${i})" id="prep-ol-btn-${i}" ${v.transcript ? '' : 'disabled'}>${cached ? '✓ Review cached (0 tokens)' : stale ? 'Re-run breakdown' : v.breakdown ? 'Re-run breakdown' : 'Run breakdown'}</button>
-        ${v.breakdown ? `<button class="btn btn-sm btn-ghost" onclick="prepRunBreakdown(${i},true)" title="Fresh AI pass — spends tokens">↻ Re-extract (fresh)</button>` : ''}
+        <button class="btn btn-sm ${v.transcript ? '' : 'btn-primary'}" onclick="prepFetchTranscript(${i})" id="prep-tx-btn-${i}">${v.transcript ? 'Re-fetch transcript' : 'Get transcript'}</button>
+        <button class="btn btn-sm ${v.transcript ? 'btn-ghost' : ''}" onclick="prepToggle(${i},'paste')">${v.transcript ? 'paste transcript' : 'Paste transcript instead'}</button>
+        <button class="btn btn-sm btn-primary" onclick="prepRunBreakdown(${i})" id="prep-ol-btn-${i}" ${v.transcript ? '' : 'disabled'}>${cached ? '✓ View saved result (no cost)' : v.breakdown ? 'Re-analyse' : 'Analyse'}</button>
+        ${v.breakdown ? `<button class="btn btn-sm btn-ghost" onclick="prepRunBreakdown(${i},true)" title="Runs the AI again — uses credits">↻ Re-analyse (fresh, uses credits)</button>` : ''}
         ${v.transcript ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'tx')">view transcript</button>` : ''}
-        ${v.breakdown ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'ol')">view breakdown</button>` : ''}
+        ${v.breakdown ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'ol')">view result</button>` : ''}
         <a class="btn btn-sm btn-ghost" href="${v.url || '#'}" target="_blank" rel="noopener">▶ open video</a>
       </div>
       <div id="prep-paste-${i}" style="display:none;margin-top:8px">
@@ -3156,6 +3157,7 @@ function txHash(v) {
 async function prepRunBreakdown(i, force) {
   const v = S.epQueue[i];
   if (!v.transcript) { prepStatus(i, 'Fetch the transcript first.'); return; }
+  if (force && v.breakdown && !confirm('Run the AI again on this transcript? It uses AI credits. The saved result is fine unless the transcript changed.')) return;
   const hash = txHash(v);
   // Cache-first: a stored breakdown for this exact transcript costs 0 tokens.
   if (!force && v.breakdown && v.breakdown._hash === hash) {
@@ -3453,10 +3455,10 @@ function renderReviewInto(elId, src) {
   el.innerHTML = `
     <div class="tabs" style="margin-bottom:10px">${tabs}</div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${active}',this,'${src}')">Push ticked → ${cfg.label}</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',true)">all</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',false)">none</button>
-      <span style="font-size:11px;color:var(--text3)">${built.length} row${built.length === 1 ? '' : 's'}${dupN ? ` · <span style="color:var(--amber)">${dupN} already in Notion</span>` : ''}</span>
+      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${active}',this,'${src}')">Save ticked to ${cfg.label} →</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',true)">Tick all</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',false)">Untick all</button>
+      <span style="font-size:11px;color:var(--text3)">${built.length} row${built.length === 1 ? '' : 's'}${dupN ? ` · <span style="color:var(--amber)">${dupN} already saved</span>` : ''}</span>
     </div>
     <div style="overflow:auto;max-height:60vh;border:1px solid var(--border);border-radius:var(--radius)">
     <table class="data-table" style="font-size:12px">
@@ -3465,8 +3467,8 @@ function renderReviewInto(elId, src) {
       ${built.map(({ it, p, dup, same }) => {
         const off = skip.has(it._key);
         const tag = same
-          ? ' <span style="font-size:10px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:0 4px;white-space:nowrap">already from this video</span>'
-          : dup ? ' <span style="font-size:10px;color:var(--text3);border:1px solid var(--border);border-radius:4px;padding:0 4px;white-space:nowrap">in Notion</span>' : '';
+          ? ' <span style="font-size:10px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:0 4px;white-space:nowrap">already saved from this video</span>'
+          : dup ? ' <span style="font-size:10px;color:var(--text3);border:1px solid var(--border);border-radius:4px;padding:0 4px;white-space:nowrap">already saved</span>' : '';
         return `<tr style="opacity:${off ? 0.4 : 1}">
           <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview('${it._key}','${src}',this)" style="width:14px;flex:none"></td>
           <td style="font-weight:500;max-width:220px;white-space:normal;${same ? 'text-decoration:line-through' : ''}" title="${_esc(it.verify_note || '')}">${it._verified ? '✅ ' : ''}${_esc(cfg.name(it) || '(unnamed)')}${tag}</td>
@@ -3541,7 +3543,7 @@ async function pushStore(key, btn, src) {
   const items = poolFor(key, src).filter(it => !_skipSet(src).has(it._key));
   if (!items.length) { toast('Nothing ticked', 'error'); return; }
   _pushingStore = true;
-  if (btn) { btn.disabled = true; btn.textContent = 'Pushing…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   let added = 0, skipped = 0, failed = 0;
   try {
     // Reuse the fully-paginated set ensureExisting already built for this tab;
@@ -3566,7 +3568,7 @@ async function pushStore(key, btn, src) {
       .filter(Boolean).join(' · ') || 'nothing to push', failed ? 'error' : 'success');
   } finally {
     _pushingStore = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Push ticked →'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Save ticked →'; }
     renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
   }
 }
@@ -3754,10 +3756,10 @@ function renderVlibResults() {
   const n = rows.filter(r => !skip.has(r.id)).length;
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="runLibVerify(this)">Verify ticked (${n}) →</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(true)">all</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(false)">none</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">🧹 Tidy</button>
+      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="runLibVerify(this)">Fact-check ticked (${n}) →</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(true)">Tick all</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(false)">Untick all</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">🧹 Find duplicates</button>
       <span style="font-size:11px;color:var(--text3)">${rows.length} row${rows.length === 1 ? '' : 's'}</span>
     </div>
     <div style="overflow:auto;max-height:55vh;border:1px solid var(--border);border-radius:var(--radius)">
@@ -3835,7 +3837,7 @@ function renderVlibTidy(el, rows) {
     const parts = [];
     for (const c of clusters) {
       if (c.rows.length > 1) {
-        parts.push(`<tr><td colspan="3" style="background:var(--bg2);font-size:10px;color:var(--text3);padding:3px 8px">≈ ${c.rows.length} similar — keeping the unchecked one</td></tr>`);
+        parts.push(`<tr><td colspan="3" style="background:var(--bg2);font-size:10px;color:var(--text3);padding:3px 8px">≈ ${c.rows.length} similar — the unchecked row is kept</td></tr>`);
         parts.push(c.rows.slice().sort((a, b) => (a.id === c.keepId ? -1 : b.id === c.keepId ? 1 : 0)).map(r => rowHtml(r, true)).join(''));
       } else if (_thinName(c.rows[0].name)) {
         thinN++;
@@ -3849,8 +3851,8 @@ function renderVlibTidy(el, rows) {
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
       <button class="btn btn-sm ${S._vlibConfirm ? 'btn-danger' : 'btn-primary'}" style="padding:2px 10px" onclick="archiveVlib(this)" ${total ? '' : 'disabled'}>${S._vlibConfirm ? `Confirm — archive ${total}` : `Archive checked (${total}) →`}</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">✕ exit Tidy</button>
-      <span style="font-size:11px;color:var(--text3)">${dupN} redundant · ${thinN} thin · archives to Notion trash (reversible)</span>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">✕ done</button>
+      <span style="font-size:11px;color:var(--text3)">${dupN} look like duplicates · ${thinN} look thin · checked rows move to Notion trash (you can restore them)</span>
     </div>
     <div style="overflow:auto;max-height:55vh;border:1px solid var(--border);border-radius:var(--radius);padding:0 8px 8px">
       ${blocks.join('') || '<div class="empty-state" style="padding:20px"><p>No near-duplicates or thin rows found. 🎉</p></div>'}
@@ -3939,7 +3941,7 @@ async function runLibVerify(btn) {
       .filter(Boolean).join(' · '), failed ? 'error' : 'success');
   } finally {
     _libVerifying = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Verify ticked →'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Fact-check ticked →'; }
   }
 }
 
@@ -3954,7 +3956,7 @@ function renderVerifyStores() {
     const done = poolFor(k, 'prep').filter(it => it._verified).length;
     return `<button class="btn btn-sm" onclick="runWebVerify('${k}',this)">${RESEARCH_STORES[k].label} · ${n}${done ? ` (${done}✓)` : ''}</button>`;
   }).filter(Boolean).join('');
-  el.innerHTML = btns || '<span style="font-size:12px;color:var(--text3)">Nothing collected yet — run breakdowns in the Prep tab first.</span>';
+  el.innerHTML = btns || '<span style="font-size:12px;color:var(--text3)">Nothing to check yet — analyse some videos in the Analyse tab first.</span>';
 }
 
 // One short "key: value" line per row, so the model knows what it's checking.
@@ -4261,7 +4263,7 @@ Respond ONLY in JSON: {"titles":["...","...","...","...","..."]}`
 
 async function draftAngle(btn) {
   rebuildCombinedOutline();
-  if (!S.currentTranscriptOutline) { toast('Run Prep → Run breakdown first', 'error'); return; }
+  if (!S.currentTranscriptOutline) { toast('Analyse a video in the Analyse tab first', 'error'); return; }
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
     const raw = (await aiRun('theme', { provider: 'gemini', model: 'gemini-3.6-flash', system: buildDNASystem(), messages: [{
@@ -4689,6 +4691,7 @@ const priceRange = (s) => {
 let _extractingPlaces = false;
 async function extractPlaces(force) {
   if (_extractingPlaces) { toast('Already collecting places — hang on', 'error'); return; }
+  if (force && !confirm('Run the AI again on every selected transcript to find places? Uses AI credits.')) return;
   const errEl = document.getElementById('places-error');
   errEl.style.display = 'none';
   const vids = [...S.epSelected].map(i => S.epQueue[i]).filter(v => v && v.transcript);
@@ -4861,15 +4864,15 @@ function renderPlacesReview() {
   const dbN = rows.filter(p => p.is_existing).length;
   listEl.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="queuePlaces()">Queue ticked → Notion</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="placesPick('new')">new only</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="placesPick('all')">all</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="placesPick('none')">none</button>
-      <span style="font-size:11px;color:var(--text3)">${rows.length} place${rows.length === 1 ? '' : 's'}${dbN ? ` · <span style="color:var(--amber)">${dbN} already in DB</span>` : ''}</span>
+      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="queuePlaces()">Add ticked → Notion</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="placesPick('new')">Only new</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="placesPick('all')">Tick all</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="placesPick('none')">Untick all</button>
+      <span style="font-size:11px;color:var(--text3)">${rows.length} place${rows.length === 1 ? '' : 's'}${dbN ? ` · <span style="color:var(--amber)">${dbN} already saved</span>` : ''}</span>
     </div>
     <div style="overflow:auto;max-height:60vh;border:1px solid var(--border);border-radius:var(--radius)">
     <table class="data-table" style="font-size:12px">
-      <thead><tr><th style="width:24px"></th><th>Name</th><th>Type</th><th>Prefecture</th><th>Halal</th><th>Area</th><th>What happens here</th><th>★</th><th>💴</th><th>From</th><th></th></tr></thead>
+      <thead><tr><th style="width:24px"></th><th>Name</th><th>Type</th><th>Prefecture</th><th>Halal</th><th>Area</th><th>What happens here</th><th>Rating</th><th>Price</th><th>From</th><th></th></tr></thead>
       <tbody>
       ${rows.map((p, i) => {
         const off = skip.has(p.name.toLowerCase());
@@ -4879,7 +4882,7 @@ function renderPlacesReview() {
           : p.prefFromGuess ? ' <span style="color:var(--accent2);font-size:10px">AI?</span>' : '';
         return `<tr style="opacity:${off ? 0.45 : 1}">
           <td><input type="checkbox" ${off ? '' : 'checked'} onchange="togglePlace(${i},this)" style="width:14px;flex:none"></td>
-          <td style="max-width:190px;white-space:normal;font-weight:600;${p.same_video ? 'text-decoration:line-through' : ''}">${_esc(p.name)}${localName ? ` <span style="font-weight:400;color:var(--text3)">${_esc(localName)}</span>` : ''}${p.same_video ? ' <span style="font-size:9px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:0 3px;white-space:nowrap">already from this video</span>' : ''}
+          <td style="max-width:190px;white-space:normal;font-weight:600;${p.same_video ? 'text-decoration:line-through' : ''}">${_esc(p.name)}${localName ? ` <span style="font-weight:400;color:var(--text3)">${_esc(localName)}</span>` : ''}${p.same_video ? ' <span style="font-size:9px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:0 3px;white-space:nowrap">already saved from this video</span>' : ''}
             <div style="font-weight:400;font-size:10px;margin-top:2px"><a href="${p.google_maps_url}" target="_blank" rel="noopener" style="color:var(--blue)">Maps ↗</a>${p.website ? ` · <a href="${p.website}" target="_blank" rel="noopener" style="color:var(--blue)">Web ↗</a>` : ''}</div></td>
           <td>${_esc(p.type)}</td>
           <td><select onchange="setPlaceField(${i},'prefecture',this.value);setPlaceField(${i},'prefFromGuess',false);setPlaceField(${i},'prefFromMaps',false)" style="font-size:11px;padding:2px 3px;width:auto">
@@ -4922,7 +4925,7 @@ function queuePlaces() {
   S.confirmedPlaces = S.extractedPlaces.filter(p => !S.placeSkip.has(p.name.toLowerCase()));
   if (!S.confirmedPlaces.length) { toast('Nothing ticked', 'error'); return; }
   renderConfirmedList();
-  toast(`${S.confirmedPlaces.length} queued`, 'success');
+  toast(`${S.confirmedPlaces.length} place${S.confirmedPlaces.length === 1 ? '' : 's'} ready to save`, 'success');
 }
 
 function renderConfirmedList() {
@@ -4931,9 +4934,9 @@ function renderConfirmedList() {
   const nNew = S.confirmedPlaces.filter(p => !p.is_existing).length;
   const nUpd = S.confirmedPlaces.length - nNew;
   el.innerHTML = S.confirmedPlaces.length
-    ? [nNew && `${nNew} new`, nUpd && `${nUpd} to update`].filter(Boolean).join(' · ') +
-      ': ' + S.confirmedPlaces.map(p => p.name).join(' · ')
-    : 'Nothing queued yet — hit <strong>✓ Push</strong> / <strong>↻ Update</strong> above.';
+    ? _esc([nNew && `${nNew} new`, nUpd && `${nUpd} to refresh`].filter(Boolean).join(' · ') +
+      ': ' + S.confirmedPlaces.map(p => p.name).join(' · '))
+    : 'Nothing picked yet — use <strong>Add ticked → Notion</strong> above.';
 }
 
 let _savingPlaces = false;
@@ -4997,7 +5000,7 @@ async function saveConfirmedPlaces() {
     );
   } finally {
     _savingPlaces = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Push Confirmed Places to Notion →'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Save these places to Notion →'; }
   }
 }
 
