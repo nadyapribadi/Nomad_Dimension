@@ -5,6 +5,47 @@ Human-readable, updated per milestone. Format loosely follows
 
 ## Unreleased
 
+### Review pass — three audits (UX, code, perf) actioned
+
+_Terminology, correctness, security and speed cleanup after the Research
+rebuild. `scripts/index-helpers.test.js` unit-tests the pure `index.html`
+helpers against the real source (63 tests total)._
+
+- **Data-integrity fixes.** `createEpisode` reads + unions the `Used In
+Episode(s)` relation before writing (a Notion relation PATCH replaces the
+  array — assigning a row to a new episode was erasing its links to earlier
+  ones). Places "Update in DB" unions the `Source Video` relation instead of
+  overwriting it. Every dedup pre-check (`pushStore`, `extractPlaces`,
+  `searchLibrary`, `epLoadMaterial`) paginates via `notionQueryAll` — no more
+  silent duplicates / truncation past 100 rows. `ensureExisting` retries after
+  a transient failure instead of disabling dup-detection for the session.
+- **XSS.** Grounding-metadata titles/URLs and raw model text are escaped
+  (`_srcLinks`, `_esc`); non-`http(s)` hrefs dropped.
+- **State hygiene.** `resetResearchSession()` clears the session dedup / verify
+  / cache sets on a new video selection or after an episode is created;
+  `poolFor` keys rows by name **+ source video** so a genuinely different
+  same-named row (a later episode) isn't blocked.
+- **Plain language.** One verb — **Analyse** (was breakdown / collect /
+  extract). "Save rows to your research tables" (was "push to the stores"),
+  "Find places", "Add to my library", "Fact-check rows", "Find duplicates"
+  (was Tidy). "already saved" not "in Notion"; "uses AI credits" not "spends
+  tokens". Bold one-line orienter per tab; sidebar/subtitle number
+  contradiction removed. `confirm()` before any AI re-run that costs credits.
+- **Batch + feedback.** **"Get all transcripts"** / **"Analyse all"** run the
+  whole selection sequentially with an `N/total` label; a push now shows a
+  green **"✓ Saved N to X · Open in Notion ↗"** banner instead of the rows
+  just vanishing.
+- **Fact-check flattened.** One list with a source toggle — _rows already
+  saved in Notion_ (verify writes back to the page) or _rows found this
+  session_ (verify decorates the Prep pool). Replaces the two-mechanism panel
+  with an "…or" divider. "Find duplicates" is now a visible button.
+- **Perf (no rewrites).** Transcript hash memoised on the video object (was
+  re-hashing 190 KB per row per render); the off-screen review table isn't
+  rebuilt on every checkbox tick; review/Places checkbox toggles update one
+  `<tr>` not the whole table; `poolFor` runs once per store; `_normTokens`
+  memoised; `enrichPlacesFromMaps` / per-video `extractPlaces` fan-outs capped
+  at 4–5 (`mapPool`).
+
 ### Fixed — hung request could freeze a button forever
 
 - **Every proxy fetch now has a client-side timeout.** `notionAPI` (30 s),
