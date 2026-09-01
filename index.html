@@ -1114,6 +1114,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
       <div id="vlib-stores-pick" style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-bottom:10px"></div>
       <div class="btn-row" style="margin-bottom:10px">
         <button class="btn btn-sm btn-primary" onclick="searchLibrary(this)">Load / search →</button>
+        <button class="btn btn-sm btn-ghost" onclick="findDuplicates(this)" title="Load the ticked tables and group near-duplicate + thin rows so you can archive them">🧹 Find duplicates in these tables</button>
       </div>
       <div id="vlib-results"></div>
       <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
@@ -3593,6 +3594,14 @@ async function runWebResearch(btn) {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Research →'; }
   }
+}
+
+// One-click "load the ticked tables and jump straight into dedup".
+async function findDuplicates(btn) {
+  const q = document.getElementById('vlib-q');
+  if (q) q.value = '';
+  await searchLibrary(btn);
+  if ((S.vlib || []).length && !S._vlibTidy) tidyVlib();
 }
 
 // ─── Web · "Verify collected" — grounded fact-check of the Prep pool ─────────
