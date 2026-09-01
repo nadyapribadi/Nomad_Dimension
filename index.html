@@ -2875,9 +2875,12 @@ function toggleEpVideo(i) {
 
 function clearEpSelection() {
   S.epSelected.clear();
+  S.episodeBreakdowns = [];
+  resetResearchSession();          // new video set → drop stale dedup / verify / cache state
   document.querySelectorAll('[id^="ep-cb-"]').forEach(cb => cb.checked = false);
   document.getElementById('ep-sel-count').textContent = '0 selected';
   renderPrepList();
+  renderQueue();
 }
 
 // ─── Research · Prep (transcript + breakdown per ticked source video) ────────
@@ -3375,16 +3378,38 @@ function poolFor(key, src) {
   const seen = new Set(); const out = [];
   for (const it of rows) {
     const nm = String(RESEARCH_STORES[key].name(it) || '').trim();
-    if (!nm || seen.has(nm.toLowerCase())) continue;
-    seen.add(nm.toLowerCase());
+    if (!nm) continue;
     const lk = nm.toLowerCase();
-    const _key = `${src}:${key}:${lk}`;
+    // key by name + source video so a genuinely different "Onsen visit" from
+    // another video (e.g. a later episode) isn't collapsed / blocked
+    const sid = it.source_page_id || '';
+    const dedup = `${lk}::${sid}`;
+    if (seen.has(dedup)) continue;
+    seen.add(dedup);
+    const _key = `${src}:${key}:${dedup}`;
     if (S._pushed.has(_key)) continue;           // already written this session — gone from review
     // Web verify-pass decorations merge onto the same prep row (see runWebVerify).
     const vfy = src === 'prep' ? S.verify[`${key}:${lk}`] : null;
     out.push({ ...it, ...(vfy || {}), _key });
   }
   return out;
+}
+
+// Clear all session-scoped Research state so a second episode (or a re-picked
+// video set) starts from a clean, non-stale slate.
+function resetResearchSession() {
+  S._pushed = new Set();
+  S._extractSkip = new Set();
+  S._webSkip = new Set();
+  S.verify = {};
+  S._existing = {};
+  S._existingVid = {};
+  S._existingBusy = {};
+  S._vlibRaw = {};
+  S.vlib = [];
+  S._vlibSkip = new Set();
+  S._vlibArch = new Set();
+  S._vlibTidy = false;
 }
 const _skipSet = (src) => (S[src === 'web' ? '_webSkip' : '_extractSkip'] ||= new Set());
 
@@ -4394,6 +4419,9 @@ async function createEpisode() {
 
     toast(`Episode "${epName}" created`, 'success');
     await writeAppState({ 'Active Episode': epName, 'Current Stage': 'Stage 3' });
+    // fresh slate for the next episode
+    resetResearchSession();
+    S.ep = { sections: [], assign: {}, pool: {}, _items: {} };
   } catch (err) {
     resultEl.style.display = '';
     resultEl.innerHTML = `<div class="info-box error">Failed: ${err.message}</div>`;
