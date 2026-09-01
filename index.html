@@ -1674,6 +1674,19 @@ async function notionAPI(endpoint, method = 'GET', body = null) {
   }
 }
 
+// Run `fn` over `items` with at most `limit` in flight — keeps transcript / Maps
+// fan-outs from spawning dozens of parallel function calls (→ upstream 429s).
+async function mapPool(items, limit, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (i < items.length) { const n = i++; try { out[n] = await fn(items[n], n); } catch (e) { out[n] = { _err: e }; } }
+    })
+  );
+  return out;
+}
+
 // Fully paginate a databases/{id}/query — dedup pre-checks must see every row,
 // not just the first page of 100.
 async function notionQueryAll(dbId, body = {}) {
@@ -2889,7 +2902,7 @@ function renderPrepList() {
     return;
   }
   el.innerHTML = sel.map(({ i, v }) => {
-    const cached = !!(v.breakdown && v.transcript && v.breakdown._hash === _cheapHash(v.transcript));
+    const cached = !!(v.breakdown && v.transcript && v.breakdown._hash === txHash(v));
     const stale = !!(v.breakdown && v.transcript && !cached);            // transcript changed since last extract
     const mined = v.mined || {};
     const minedTotal = Object.values(mined).reduce((a, b) => a + b, 0);
@@ -2919,7 +2932,9 @@ function renderPrepList() {
       <pre id="prep-view-${i}" style="display:none;white-space:pre-wrap;font-size:11px;color:var(--text2);background:var(--surface2);border-radius:var(--radius);padding:10px;margin-top:8px;max-height:320px;overflow:auto"></pre>
     </div>`;
   }).join('');
-  renderExtractReview();
+  // only rebuild the (heavy) step-3 review table if it's actually visible;
+  // prepStep(3) rebuilds it when the operator opens that step
+  if (document.getElementById('prep-card-3')?.style.display !== 'none') renderExtractReview();
 }
 
 async function prepUsePasted(i) {
@@ -3128,11 +3143,17 @@ function _cheapHash(s) {
   for (let k = 0; k < s.length; k++) h = ((h << 5) + h + s.charCodeAt(k)) | 0;
   return String(h >>> 0);
 }
+// memoised per-video transcript hash — only recomputes when the transcript
+// string actually changes (fetch / paste / reload), not on every re-render.
+function txHash(v) {
+  if (v._txHashSrc !== v.transcript) { v._txHash = _cheapHash(v.transcript || ''); v._txHashSrc = v.transcript; }
+  return v._txHash;
+}
 
 async function prepRunBreakdown(i, force) {
   const v = S.epQueue[i];
   if (!v.transcript) { prepStatus(i, 'Fetch the transcript first.'); return; }
-  const hash = _cheapHash(v.transcript);
+  const hash = txHash(v);
   // Cache-first: a stored breakdown for this exact transcript costs 0 tokens.
   if (!force && v.breakdown && v.breakdown._hash === hash) {
     rebuildCombinedOutline();
@@ -3371,9 +3392,14 @@ const _reviewTab = { prep: '', web: '' };
 function renderReviewInto(elId, src) {
   const el = document.getElementById(elId);
   if (!el) return;
-  // Places always go via the Places tab (Maps enrichment + per-row editing),
-  // never the generic Prep review — keep them out of its tab list.
-  const keys = Object.keys(RESEARCH_STORES).filter(k => (src !== 'prep' || k !== 'places') && poolFor(k, src).length);
+  // Compute each store's pool once (poolFor is a flatMap+dedup — was called ~19×
+  // per render). Places always go via the Places tab, never the Prep review.
+  const pools = {};
+  for (const k of Object.keys(RESEARCH_STORES)) {
+    if (src === 'prep' && k === 'places') continue;
+    pools[k] = poolFor(k, src);
+  }
+  const keys = Object.keys(pools).filter(k => pools[k].length);
   if (!keys.length) {
     el.innerHTML = `<div class="empty-state"><div class="icon">📤</div><p>${src === 'web' ? 'Run a search above.' : 'Run a breakdown above.'}</p></div>`;
     return;
@@ -3381,9 +3407,9 @@ function renderReviewInto(elId, src) {
   if (!keys.includes(_reviewTab[src])) _reviewTab[src] = keys[0];
   const active = _reviewTab[src];
   const skip = _skipSet(src);
-  const pool = poolFor(active, src);
+  const pool = pools[active];
   const tabs = keys.map(k =>
-    `<div class="tab ${k === active ? 'active' : ''}" onclick="switchReviewTab('${src}','${k}')">${RESEARCH_STORES[k].label} · ${poolFor(k, src).length}</div>`
+    `<div class="tab ${k === active ? 'active' : ''}" onclick="switchReviewTab('${src}','${k}')">${RESEARCH_STORES[k].label} · ${pools[k].length}</div>`
   ).join('');
   const cfg = RESEARCH_STORES[active];
   ensureExisting(active, src);   // fetch what's already in this Notion DB, then re-render
@@ -3417,7 +3443,7 @@ function renderReviewInto(elId, src) {
           ? ' <span style="font-size:10px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:0 4px;white-space:nowrap">already from this video</span>'
           : dup ? ' <span style="font-size:10px;color:var(--text3);border:1px solid var(--border);border-radius:4px;padding:0 4px;white-space:nowrap">in Notion</span>' : '';
         return `<tr style="opacity:${off ? 0.4 : 1}">
-          <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview('${it._key}','${src}')" style="width:14px;flex:none"></td>
+          <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview('${it._key}','${src}',this)" style="width:14px;flex:none"></td>
           <td style="font-weight:500;max-width:220px;white-space:normal;${same ? 'text-decoration:line-through' : ''}" title="${_esc(it.verify_note || '')}">${it._verified ? '✅ ' : ''}${_esc(cfg.name(it) || '(unnamed)')}${tag}</td>
           ${cols.map(c => `<td style="max-width:240px;white-space:normal">${_esc(_propText(p[c]))}</td>`).join('')}
         </tr>`;
@@ -3474,10 +3500,13 @@ function reviewAll(src, key, on) {
 }
 function renderExtractReview() { rebuildCombinedOutline(); renderReviewInto('extract-review', 'prep'); }
 function renderWebReview() { renderReviewInto('web-review', 'web'); }
-function toggleReview(key, src) {
+function toggleReview(key, src, cb) {
   const s = _skipSet(src);
-  if (s.has(key)) s.delete(key); else s.add(key);
-  renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
+  const off = !s.has(key);
+  if (off) s.add(key); else s.delete(key);
+  const tr = cb && cb.closest('tr');
+  if (tr) { tr.style.opacity = off ? 0.4 : 1; }         // targeted update — skip the full table rebuild
+  else renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
 }
 
 let _pushingStore = false;
@@ -3658,9 +3687,14 @@ async function searchLibrary(btn) {
 
 // ─── deterministic near-duplicate + thin-row detection (no AI) ──────────────
 const _JUNK_WORDS = new Set(['the', 'a', 'an', 'at', 'in', 'on', 'to', 'of', 'and', 'or', 'with', 'from', 'for', 'is', 'was', 'it', 'they', 'their', 'vlogger', 'trip', 'journey', 'during', 'some', 'this', 'that', 'by', 'as', 'be', 'been']);
+const _ntCache = new Map();   // _clusterRows tokenises the same ~dozen names O(n²) times
 function _normTokens(s) {
-  return String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ')
+  let c = _ntCache.get(s);
+  if (c) return c;
+  c = String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/).filter(w => w.length > 1 && !_JUNK_WORDS.has(w));
+  if (_ntCache.size < 4000) _ntCache.set(s, c);
+  return c;
 }
 function _sim(a, b) {                                   // Jaccard on content tokens
   const A = new Set(_normTokens(a)), B = new Set(_normTokens(b));
@@ -4657,8 +4691,8 @@ async function extractPlaces(force) {
     // transcript's _placesHash matches the stored breakdown), merge repeats by name.
     const guard = 'Find EVERY location visited or named. prefecture_guess / area_guess may be inferred from the name.';
     let cachedN = 0, freshN = 0;
-    const perVideo = await Promise.all(vids.map(async v => {
-      const h = _cheapHash(v.transcript);
+    const perVideo = await mapPool(vids, 4, async v => {
+      const h = txHash(v);
       if (!force && v.breakdown && v.breakdown._placesHash === h && Array.isArray(v.breakdown.places)) {
         cachedN++;
         return { title: v.title, id: v.id, places: v.breakdown.places, _cached: true };
@@ -4674,7 +4708,7 @@ async function extractPlaces(force) {
         }).catch(e => console.warn('places cache save failed:', e.message));
         return { title: v.title, id: v.id, places };
       } catch (e) { console.warn('places extract failed for', v.title, e.message); return { title: v.title, id: v.id, places: [] }; }
-    }));
+    });
 
     const byKey = new Map();
     for (const b of perVideo) {
@@ -4756,7 +4790,7 @@ async function enrichPlacesFromMaps() {
   const targets = S.extractedPlaces;
   if (!targets.length) return 0;
   let matched = 0;
-  await Promise.allSettled(targets.map(async (p) => {
+  await mapPool(targets, 5, async (p) => {
     const q = [p.name, p.area, p.prefecture !== 'Unknown' ? p.prefecture : '', 'Japan']
       .filter(Boolean).join(' ');
     try {
@@ -4782,7 +4816,7 @@ async function enrichPlacesFromMaps() {
       if (d.priceRange) p.maps_price = d.priceRange;      // DB "Price Range" fallback
       if (d.priceLabel && !p.price_if_spoken) p.price_display = d.priceLabel;
     } catch { /* keep the AI guess */ }
-  }));
+  });
   return matched;
 }
 
@@ -4816,7 +4850,7 @@ function renderPlacesReview() {
         const prefNote = p.prefFromMaps ? ' <span style="color:var(--accent3);font-size:10px">✓Maps</span>'
           : p.prefFromGuess ? ' <span style="color:var(--accent2);font-size:10px">AI?</span>' : '';
         return `<tr style="opacity:${off ? 0.45 : 1}">
-          <td><input type="checkbox" ${off ? '' : 'checked'} onchange="togglePlace(${i})" style="width:14px;flex:none"></td>
+          <td><input type="checkbox" ${off ? '' : 'checked'} onchange="togglePlace(${i},this)" style="width:14px;flex:none"></td>
           <td style="max-width:190px;white-space:normal;font-weight:600;${p.same_video ? 'text-decoration:line-through' : ''}">${_esc(p.name)}${localName ? ` <span style="font-weight:400;color:var(--text3)">${_esc(localName)}</span>` : ''}${p.same_video ? ' <span style="font-size:9px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:0 3px;white-space:nowrap">already from this video</span>' : ''}
             <div style="font-weight:400;font-size:10px;margin-top:2px"><a href="${p.google_maps_url}" target="_blank" rel="noopener" style="color:var(--blue)">Maps ↗</a>${p.website ? ` · <a href="${p.website}" target="_blank" rel="noopener" style="color:var(--blue)">Web ↗</a>` : ''}</div></td>
           <td>${_esc(p.type)}</td>
@@ -4836,10 +4870,13 @@ function renderPlacesReview() {
     </table></div>`;
 }
 
-function togglePlace(i) {
+function togglePlace(i, cb) {
   const nm = S.extractedPlaces[i].name.toLowerCase();
-  if (S.placeSkip.has(nm)) S.placeSkip.delete(nm); else S.placeSkip.add(nm);
-  renderPlacesReview();
+  const off = !S.placeSkip.has(nm);
+  if (off) S.placeSkip.add(nm); else S.placeSkip.delete(nm);
+  const tr = cb && cb.closest('tr');
+  if (tr) tr.style.opacity = off ? 0.45 : 1;            // targeted update
+  else renderPlacesReview();
 }
 
 // 'new' = only ones not in the DB · 'all' = everything · 'none'

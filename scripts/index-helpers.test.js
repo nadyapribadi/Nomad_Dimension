@@ -147,6 +147,7 @@ function extract(name) {
 // Build a sandbox with the helpers we want to exercise.
 const bootstrap = [
   extract('_JUNK_WORDS'),
+  extract('_ntCache'),
   extract('_normTokens'),
   extract('_sim'),
   extract('_thinName'),
