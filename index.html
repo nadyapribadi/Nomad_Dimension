@@ -1674,6 +1674,21 @@ async function notionAPI(endpoint, method = 'GET', body = null) {
   }
 }
 
+// Fully paginate a databases/{id}/query — dedup pre-checks must see every row,
+// not just the first page of 100.
+async function notionQueryAll(dbId, body = {}) {
+  const out = [];
+  let cursor;
+  do {
+    const b = { page_size: 100, ...body };
+    if (cursor) b.start_cursor = cursor;
+    const r = await notionAPI(`databases/${dbId}/query`, 'POST', b);
+    out.push(...(r.results || []));
+    cursor = r.has_more ? r.next_cursor : null;
+  } while (cursor);
+  return out;
+}
+
 async function ytAPI(path, params = {}) {
   const res = await _afetch('/.netlify/functions/youtube-proxy', {
     method: 'POST',
@@ -2828,8 +2843,8 @@ function renderQueue() {
         ${rows.map(({ v, i }) => `
           <tr onclick="toggleEpVideo(${i})" style="cursor:pointer" id="ep-row-${i}">
             <td><input type="checkbox" id="ep-cb-${i}" ${S.epSelected.has(i) ? 'checked' : ''}></td>
-            <td style="font-weight:500">${v.title}<div style="font-size:11px;color:var(--text3);font-weight:400">${clip(v.angle)}</div>${v.region ? `<div style="font-size:10px;color:var(--text3)">📍 ${v.region}</div>` : ''}</td>
-            <td style="font-size:12px;color:var(--text2)">${v.channel}</td>
+            <td style="font-weight:500">${_esc(v.title)}<div style="font-size:11px;color:var(--text3);font-weight:400">${_esc(clip(v.angle))}</div>${v.region ? `<div style="font-size:10px;color:var(--text3)">📍 ${_esc(v.region)}</div>` : ''}</td>
+            <td style="font-size:12px;color:var(--text2)">${_esc(v.channel)}</td>
             <td style="font-size:11px;color:var(--text3)">${v.transcript ? '📄' : '·'} ${v.breakdown ? '📋' : '·'}${(() => { const m = Object.values(v.mined || {}).reduce((a, b) => a + b, 0); return m ? ` <span style="color:var(--amber)">⛏${m}</span>` : ''; })()}</td>
             <td><span class="badge ${statusBadge[v.status] || 'badge'}">${v.status}</span></td>
           </tr>`).join('') || '<tr><td colspan="5" style="color:var(--text3);font-size:12px;padding:10px">No videos match.</td></tr>'}
@@ -3148,6 +3163,10 @@ async function prepRunBreakdown(i, force) {
     }));
     const parsed = {
       _hash: hash,
+      // keep the places cache written by extractPlaces so a re-run here doesn't
+      // force the next "Collect Places" to re-spend tokens
+      ...(v.breakdown?._placesHash === hash && Array.isArray(v.breakdown.places)
+        ? { places: v.breakdown.places, _placesHash: hash } : {}),
       summary: p1.summary || '',
       route: p1.route || [],
       beats: p1.beats || [],
@@ -3352,7 +3371,9 @@ const _reviewTab = { prep: '', web: '' };
 function renderReviewInto(elId, src) {
   const el = document.getElementById(elId);
   if (!el) return;
-  const keys = Object.keys(RESEARCH_STORES).filter(k => poolFor(k, src).length);
+  // Places always go via the Places tab (Maps enrichment + per-row editing),
+  // never the generic Prep review — keep them out of its tab list.
+  const keys = Object.keys(RESEARCH_STORES).filter(k => (src !== 'prep' || k !== 'places') && poolFor(k, src).length);
   if (!keys.length) {
     el.innerHTML = `<div class="empty-state"><div class="icon">📤</div><p>${src === 'web' ? 'Run a search above.' : 'Run a breakdown above.'}</p></div>`;
     return;
@@ -3408,26 +3429,20 @@ function renderReviewInto(elId, src) {
 // Fetch every title already in a store's Notion DB (paginated), cache it, then
 // re-render with duplicates flagged + unticked so a blind push can't re-send them.
 async function ensureExisting(key, src) {
-  if (S._existing[key]) return;
-  S._existing[key] = new Set();          // in-flight guard
+  if (S._existing[key] || S._existingBusy?.[key]) return;
+  (S._existingBusy ||= {})[key] = true;          // in-flight guard that DOESN'T poison the cache
   S._existingVid = S._existingVid || {};
   try {
     const cfg = RESEARCH_STORES[key];
     const titles = new Set();
     const byVid = new Map();             // lc title -> Set(source-video page ids on the existing row)
-    let cursor;
-    do {
-      const body = cursor ? { page_size: 100, start_cursor: cursor } : { page_size: 100 };
-      const r = await notionAPI(`databases/${cfg.db()}/query`, 'POST', body);
-      for (const row of (r.results || [])) {
-        const t = (row.properties?.[cfg.titleProp]?.title?.[0]?.plain_text || '').trim().toLowerCase();
-        if (!t) continue;
-        titles.add(t);
-        const vids = (row.properties?.['Source Video']?.relation || []).map(x => x.id);
-        if (vids.length) byVid.set(t, new Set([...(byVid.get(t) || []), ...vids]));
-      }
-      cursor = r.has_more ? r.next_cursor : null;
-    } while (cursor);
+    for (const row of await notionQueryAll(cfg.db())) {
+      const t = (row.properties?.[cfg.titleProp]?.title?.[0]?.plain_text || '').trim().toLowerCase();
+      if (!t) continue;
+      titles.add(t);
+      const vids = (row.properties?.['Source Video']?.relation || []).map(x => x.id);
+      if (vids.length) byVid.set(t, new Set([...(byVid.get(t) || []), ...vids]));
+    }
     S._existing[key] = titles;
     S._existingVid[key] = byVid;
     const skip = _skipSet(src);
@@ -3437,7 +3452,10 @@ async function ensureExisting(key, src) {
     renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
   } catch (e) {
     console.warn('existing-rows check failed for', key, e.message);
-    S._existing[key] = new Set();
+    toast(`Couldn't check ${RESEARCH_STORES[key].label} for duplicates — will retry`, 'error');
+    // leave S._existing[key] undefined so the next render retries
+  } finally {
+    S._existingBusy[key] = false;
   }
 }
 function switchReviewTab(src, key) {
@@ -3472,12 +3490,16 @@ async function pushStore(key, btn, src) {
   if (btn) { btn.disabled = true; btn.textContent = 'Pushing…'; }
   let added = 0, skipped = 0, failed = 0;
   try {
-    let existing = new Set();
-    try {
-      const cur = await notionAPI(`databases/${cfg.db()}/query`, 'POST', { page_size: 100 });
-      existing = new Set((cur.results || []).map(r =>
-        (r.properties?.[cfg.titleProp]?.title?.[0]?.plain_text || '').trim().toLowerCase()));
-    } catch (e) { console.warn(`${key} dedupe pre-check failed:`, e.message); }
+    // Reuse the fully-paginated set ensureExisting already built for this tab;
+    // only hit Notion if it isn't populated (or was an empty error sentinel).
+    let existing = S._existing[key] instanceof Set && S._existing[key].size ? new Set(S._existing[key]) : null;
+    if (!existing) {
+      try {
+        const rows = await notionQueryAll(cfg.db());
+        existing = new Set(rows.map(r =>
+          (r.properties?.[cfg.titleProp]?.title?.[0]?.plain_text || '').trim().toLowerCase()));
+      } catch (e) { console.warn(`${key} dedupe pre-check failed:`, e.message); existing = new Set(); }
+    }
     for (const it of items) {
       const nm = String(cfg.name(it) || '').trim().toLowerCase();
       if (!nm || existing.has(nm)) { S._pushed.add(it._key); skipped++; continue; }
@@ -3507,8 +3529,7 @@ async function runWebResearch(btn) {
     S.webExtract = d.extract || {};
     S._webSkip = new Set();
     const n = Object.values(S.webExtract).reduce((a, v) => a + (Array.isArray(v) ? v.length : 0), 0);
-    statusEl.innerHTML = `${n} items from ${(d.sources || []).length} sources. ` +
-      (d.sources || []).slice(0, 6).map(s => `<a href="${s.url}" target="_blank" rel="noopener" style="color:var(--blue)">${s.title || 'source'}</a>`).join(' · ');
+    statusEl.innerHTML = `${n} items from ${(d.sources || []).length} sources. ` + _srcLinks(d.sources);
     renderWebReview();
   } catch (e) {
     statusEl.textContent = `Failed: ${e.message}`;
@@ -3547,6 +3568,18 @@ async function _postJSON(url, body, ms = 30000) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Render a source list from model grounding metadata — titles/URLs are
+// arbitrary web content, so escape everything and only allow http(s) hrefs.
+function _srcLinks(sources) {
+  return (sources || []).slice(0, 6).map(s => {
+    const url = /^https?:\/\//i.test(s.url || '') ? s.url : '';
+    const label = _esc(s.title || url || 'source');
+    return url
+      ? `<a href="${_esc(url)}" target="_blank" rel="noopener" style="color:var(--blue)">${label}</a>`
+      : `<span style="color:var(--text3)">${label}</span>`;
+  }).join(' · ');
 }
 
 // One grounded verify call. Returns { verified:[], sources:[] } or throws.
@@ -3591,25 +3624,24 @@ async function searchLibrary(btn) {
   if (btn) { btn.disabled = true; btn.textContent = 'Searching…'; }
   el.innerHTML = '<div class="loading-row"><div class="spinner"></div> Searching your Notion library…</div>';
   try {
+    S._vlibRaw = S._vlibRaw || {};                    // per-store row cache for the session
     const out = [];
     for (const store of stores) {
       const cfg = RESEARCH_STORES[store];
-      const r = await notionAPI(`databases/${cfg.db()}/query`, 'POST', { page_size: 100 });
-      for (const row of (r.results || [])) {
-        const props = row.properties || {};
-        const name = _readProp(props[cfg.titleProp]);
-        if (!name) continue;
-        const fields = Object.entries(props)
-          .filter(([k]) => k !== cfg.titleProp && !k.startsWith('Verify') && !['Source Video', 'Date Added', 'Retrieved Date', 'Last Verified'].includes(k))
-          .map(([k, v]) => { const t = _readProp(v); return t ? `${k}: ${t}` : ''; })
-          .filter(Boolean).join(' · ');
-        const blob = `${name} · ${fields}`.toLowerCase();
-        if (!blob.includes(q)) continue;
-        out.push({
-          store, id: row.id, name, fields,
-          status: _readProp(props['Verify Status']),
-          note: _readProp(props['Verify Note']),
-        });
+      if (!S._vlibRaw[store]) {
+        const rows = await notionQueryAll(cfg.db());   // fully paginated — don't truncate at 100
+        S._vlibRaw[store] = rows.map(row => {
+          const props = row.properties || {};
+          const name = _readProp(props[cfg.titleProp]);
+          const fields = Object.entries(props)
+            .filter(([k]) => k !== cfg.titleProp && !k.startsWith('Verify') && !['Source Video', 'Date Added', 'Retrieved Date', 'Last Verified'].includes(k))
+            .map(([k, v]) => { const t = _readProp(v); return t ? `${k}: ${t}` : ''; })
+            .filter(Boolean).join(' · ');
+          return { store, id: row.id, name, fields, status: _readProp(props['Verify Status']), note: _readProp(props['Verify Note']) };
+        }).filter(r => r.name);
+      }
+      for (const r of S._vlibRaw[store]) {
+        if (!q || `${r.name} · ${r.fields}`.toLowerCase().includes(q)) out.push({ ...r });
       }
     }
     S.vlib = out;
@@ -3774,16 +3806,19 @@ async function archiveVlib(btn) {
   if (!S._vlibConfirm) { S._vlibConfirm = true; renderVlibResults(); return; }
   _vlibArchiving = true;
   if (btn) { btn.disabled = true; btn.textContent = 'Archiving…'; }
-  let done = 0, failed = 0;
+  const gone = new Set();
+  let failed = 0;
   try {
     for (const id of ids) {
-      try { await notionAPI(`pages/${id}`, 'PATCH', { archived: true }); done++; }
+      try { await notionAPI(`pages/${id}`, 'PATCH', { archived: true }); gone.add(id); }
       catch (e) { failed++; console.error('archive failed', id, e); }
     }
-    S.vlib = (S.vlib || []).filter(r => !S._vlibArch.has(r.id));
-    S._vlibArch = new Set();
+    // drop ONLY the rows that actually archived — keep failures visible to retry
+    S.vlib = (S.vlib || []).filter(r => !gone.has(r.id));
+    for (const s of Object.keys(S._vlibRaw || {})) S._vlibRaw[s] = S._vlibRaw[s].filter(r => !gone.has(r.id));
+    S._vlibArch = new Set([...S._vlibArch].filter(id => !gone.has(id)));
     S._vlibConfirm = false;
-    toast(`${done} archived${failed ? ` · ${failed} failed` : ''}`, failed ? 'error' : 'success');
+    toast(`${gone.size} archived${failed ? ` · ${failed} failed (still listed)` : ''}`, failed ? 'error' : 'success');
   } finally {
     _vlibArchiving = false;
     renderVlibResults();
@@ -3877,32 +3912,40 @@ async function runWebVerify(key, btn) {
   if (!items.length) { toast(`Nothing collected for ${key}`, 'error'); return; }
   const cfg = RESEARCH_STORES[key];
   const statusEl = document.getElementById('web-verify-status');
-  if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
-  statusEl.textContent = `Checking ${Math.min(items.length, 40)} ${cfg.label} rows against the web…`;
+  if (btn) btn.disabled = true;
+  // small batches — grounded search self-aborts at 23s, a big call reliably 504s
+  const CHUNK = 8;
+  const chunks = [];
+  for (let i = 0; i < items.length; i += CHUNK) chunks.push(items.slice(i, i + CHUNK));
+  const verdicts = { confirmed: 0, corrected: 0, unsupported: 0 };
+  let allSources = [], done = 0;
   try {
-    const payload = items.slice(0, 40).map(it => ({ name: cfg.name(it), detail: _verifyDetail(key, it) }));
-    const d = await _verifyBatch(key, payload);
-    const verdicts = { confirmed: 0, corrected: 0, unsupported: 0 };
-    for (const v of (d.verified || [])) {
-      const nm = String(v.name || '').trim().toLowerCase();
-      if (!nm) continue;
-      verdicts[v.verdict] = (verdicts[v.verdict] || 0) + 1;
-      S.verify[`${key}:${nm}`] = {
-        _verified: true,
-        confidence: ['low', 'medium', 'high'].includes(v.confidence) ? v.confidence : 'medium',
-        source_url: v.source_url || '',
-        as_of_date: /^\d{4}-\d{2}-\d{2}$/.test(v.as_of_date || '') ? v.as_of_date : '',
-        verify_note: [v.verdict, v.corrected_value && `→ ${v.corrected_value}`, v.note].filter(Boolean).join(' '),
-      };
+    for (let b = 0; b < chunks.length; b++) {
+      if (btn) btn.textContent = `Verifying ${b + 1}/${chunks.length}…`;
+      statusEl.textContent = `Checking ${cfg.label} rows against the web… batch ${b + 1}/${chunks.length}`;
+      let d;
+      try {
+        d = await _verifyBatch(key, chunks[b].map(it => ({ name: cfg.name(it), detail: _verifyDetail(key, it) })));
+      } catch (e) { toast(`Batch ${b + 1}: ${e.message}`, 'error'); continue; }
+      allSources = allSources.concat(d.sources || []);
+      for (const v of (d.verified || [])) {
+        const nm = String(v.name || '').trim().toLowerCase();
+        if (!nm) continue;
+        verdicts[v.verdict] = (verdicts[v.verdict] || 0) + 1;
+        done++;
+        S.verify[`${key}:${nm}`] = {
+          _verified: true,
+          confidence: ['low', 'medium', 'high'].includes(v.confidence) ? v.confidence : 'medium',
+          source_url: v.source_url || '',
+          as_of_date: /^\d{4}-\d{2}-\d{2}$/.test(v.as_of_date || '') ? v.as_of_date : '',
+          verify_note: [v.verdict, v.corrected_value && `→ ${v.corrected_value}`, v.note].filter(Boolean).join(' '),
+        };
+      }
+      renderExtractReview();
     }
-    renderExtractReview();
     renderVerifyStores();
-    statusEl.innerHTML = `${verdicts.confirmed} confirmed · ${verdicts.corrected} corrected · ${verdicts.unsupported} unsupported. ` +
-      (d.sources || []).slice(0, 6).map(s => `<a href="${s.url}" target="_blank" rel="noopener" style="color:var(--blue)">${s.title || 'source'}</a>`).join(' · ');
-    toast(`Verified ${(d.verified || []).length} ${cfg.label} rows`, 'success');
-  } catch (e) {
-    statusEl.textContent = `Failed: ${e.message}`;
-    toast(`Verify failed: ${e.message}`, 'error');
+    statusEl.innerHTML = `${verdicts.confirmed} confirmed · ${verdicts.corrected} corrected · ${verdicts.unsupported} unsupported. ` + _srcLinks(allSources);
+    toast(`Verified ${done} ${cfg.label} row${done === 1 ? '' : 's'}`, 'success');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = `${cfg.label} · ${poolFor(key, 'prep').length}`; }
   }
@@ -4096,7 +4139,7 @@ ${outline}
 What's missing or too thin to answer that question well? Name 3-5 specific gaps,
 and for each say exactly what to research (a place, a fact, a number, a source).`,
     }] })).text;
-    el.innerHTML = `<div class="code-block" style="white-space:pre-wrap;font-size:12px">${raw}</div>`;
+    el.innerHTML = `<div class="code-block" style="white-space:pre-wrap;font-size:12px">${_esc(raw)}</div>`;
   } catch (e) {
     el.textContent = `Gap check failed: ${e.message}`;
   } finally {
@@ -4285,11 +4328,16 @@ async function createEpisode() {
     }
 
     // ── link every assigned material row to the new episode (relation) ──
+    // A Notion relation PATCH REPLACES the array, so read + union first —
+    // otherwise assigning a row to this episode wipes its links to earlier ones.
     for (const it of assigned) {
       const prop = it._cat === 'places' ? 'Used In Episodes' : 'Used In Episode';
       try {
+        const cur = await notionAPI(`pages/${it.id}`);
+        const have = (cur.properties?.[prop]?.relation || []).map(r => r.id);
+        if (have.includes(epRes.id)) continue;
         await notionAPI(`pages/${it.id}`, 'PATCH', {
-          properties: { [prop]: { relation: [{ id: epRes.id }] } },
+          properties: { [prop]: { relation: [...have, epRes.id].map(id => ({ id })) } },
         });
       } catch { /* best effort */ }
     }
@@ -4576,7 +4624,9 @@ const priceRange = (s) => {
   return '¥';
 };
 
+let _extractingPlaces = false;
 async function extractPlaces(force) {
+  if (_extractingPlaces) { toast('Already collecting places — hang on', 'error'); return; }
   const errEl = document.getElementById('places-error');
   errEl.style.display = 'none';
   const vids = [...S.epSelected].map(i => S.epQueue[i]).filter(v => v && v.transcript);
@@ -4585,14 +4635,16 @@ async function extractPlaces(force) {
     errEl.style.display = '';
     return;
   }
+  _extractingPlaces = true;
+  document.querySelectorAll('#res-tab-places .btn-primary, #res-tab-places [onclick^="extractPlaces"]').forEach(b => (b.disabled = true));
   const loadEl = document.getElementById('places-loading');
   loadEl.innerHTML = `<div class="spinner"></div> Extracting places from ${vids.length} transcript${vids.length > 1 ? 's' : ''}…`;
   loadEl.style.display = 'flex';
 
   try {
-    const existingData = await notionAPI(`databases/${DB_IDS.places}/query`, 'POST', { page_size: 100 });
+    const existingRows = await notionQueryAll(DB_IDS.places);
     const existingByName = new Map();
-    for (const r of (existingData.results || [])) {
+    for (const r of existingRows) {
       const nm = (r.properties?.Name?.title?.[0]?.plain_text || '').trim().toLowerCase();
       if (nm) existingByName.set(nm, {
         id: r.id,
@@ -4661,7 +4713,9 @@ async function extractPlaces(force) {
           existing_id: hit ? hit.id : '',
           same_video: !!(hit && b.id && (hit.vids || []).includes(b.id)),
           from: [b.title],
-          fromIds: b.id ? [b.id] : [],
+          // seed with the videos already linked on the existing row so an
+          // "Update in DB" unions provenance instead of replacing it
+          fromIds: [...new Set([...(hit && hit.vids ? hit.vids : []), ...(b.id ? [b.id] : [])])],
         });
       }
     }
@@ -4684,6 +4738,8 @@ async function extractPlaces(force) {
     errEl.style.display = '';
     console.error(err);
   } finally {
+    _extractingPlaces = false;
+    document.querySelectorAll('#res-tab-places .btn-primary, #res-tab-places [onclick^="extractPlaces"]').forEach(b => (b.disabled = false));
     loadEl.style.display = 'none';
   }
 }
