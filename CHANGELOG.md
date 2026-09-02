@@ -32,9 +32,15 @@ Episode(s)` relation before writing (a Notion relation PATCH replaces the
   tokens". Bold one-line orienter per tab; sidebar/subtitle number
   contradiction removed. `confirm()` before any AI re-run that costs credits.
 - **Batch + feedback.** **"Get all transcripts"** / **"Analyse all"** run the
-  whole selection sequentially with an `N/total` label; a push now shows a
-  green **"✓ Saved N to X · Open in Notion ↗"** banner instead of the rows
-  just vanishing.
+  whole selection sequentially with an `N/total` label (shared `prepRunSeq`
+  helper); their end-of-run toast now recounts what is still pending from
+  Notion-durable state, so it reports real successes, not a blind total. A
+  push shows a green **"✓ Saved N to X · Open in Notion ↗"** banner instead of
+  the rows just vanishing.
+- **Partial-breakdown cache fix.** When `prepRunBreakdown` pass 1 succeeds but
+  pass 2 (claims / prices / data) fails, the pass-1 result is still saved but
+  the `_hash` cache key is **withheld** — so the next run re-analyses instead
+  of treating the incomplete outline as done forever.
 - **Fact-check flattened.** One list with a source toggle — _rows already
   saved in Notion_ (verify writes back to the page) or _rows found this
   session_ (verify decorates the Prep pool). Replaces the two-mechanism panel
