@@ -3976,72 +3976,90 @@ async function archiveVlib(btn) {
   }
 }
 
+// write one verdict back — to the Notion page (saved row) or S.verify (session row)
+async function _writeVerdict(r, v) {
+  const verdict = ['confirmed', 'corrected', 'unsupported'].includes(v.verdict) ? v.verdict : 'unsupported';
+  const note = [v.corrected_value && `→ ${v.corrected_value}`, v.source_url, v.as_of_date, v.note]
+    .filter(Boolean).join(' · ').slice(0, 1900);
+  if (r.id) {
+    await notionAPI(`pages/${r.id}`, 'PATCH', {
+      properties: {
+        'Verify Status': { select: { name: verdict } },
+        'Verify Note': { rich_text: [{ text: { content: note } }] },
+      },
+    });
+  } else {
+    S.verify[`${r.store}:${r.name.trim().toLowerCase()}`] = {
+      _verified: true,
+      confidence: ['low', 'medium', 'high'].includes(v.confidence) ? v.confidence : 'medium',
+      source_url: v.source_url || '',
+      as_of_date: /^\d{4}-\d{2}-\d{2}$/.test(v.as_of_date || '') ? v.as_of_date : '',
+      verify_note: `${verdict}${v.corrected_value ? ` → ${v.corrected_value}` : ''}${v.note ? ` ${v.note}` : ''}`,
+    };
+  }
+  r._newStatus = verdict; r._newNote = note;
+  return verdict;
+}
+
 let _libVerifying = false;
 async function runLibVerify(btn) {
-  if (_libVerifying) { toast('Still verifying the last batch — hang on', 'error'); return; }
+  if (_libVerifying) { toast('Still checking — hang on', 'error'); return; }
   const rows = (S.vlib || []).filter(r => !S._vlibSkip.has(r.id || r._key));
   if (!rows.length) { toast('Nothing ticked', 'error'); return; }
+  if (rows.length > 40 && !confirm(`Fact-check ${rows.length} rows? Grounded web search is slow — this can take several minutes and some rows may not finish. You can also untick some and do it in passes.`)) return;
   _libVerifying = true;
   if (btn) btn.disabled = true;
-  // group by store, then send small batches (grounded search is slow — small
-  // batches finish before the timeout; a failed batch doesn't lose the rest).
-  const CHUNK = 8;
+
   const byStore = {};
   for (const r of rows) (byStore[r.store] ||= []).push(r);
-  const batches = Object.entries(byStore).flatMap(([store, srows]) => {
-    const out = [];
-    for (let i = 0; i < srows.length; i += CHUNK) out.push([store, srows.slice(i, i + CHUNK)]);
-    return out;
-  });
   const tally = { confirmed: 0, corrected: 0, unsupported: 0 };
-  let patched = 0, failed = 0, b = 0;
-  try {
-    for (const [store, chunk] of batches) {
-      b++;
-      if (btn) btn.textContent = `Verifying ${b}/${batches.length}…`;
-      const byName = new Map(chunk.map(r => [r.name.trim().toLowerCase(), r]));
-      let verified = [];
-      {
-        try {
-          ({ verified } = await _verifyBatch(store, chunk.map(r => ({ name: r.name, detail: r.fields.slice(0, 300) }))));
-        } catch (e) { toast(`${RESEARCH_STORES[store].label} batch ${b}: ${e.message}`, 'error'); continue; }
-        for (const v of verified) {
-          const r = byName.get(String(v.name || '').trim().toLowerCase());
-          if (!r) continue;
-          const verdict = ['confirmed', 'corrected', 'unsupported'].includes(v.verdict) ? v.verdict : 'unsupported';
-          const note = [
-            v.corrected_value && `→ ${v.corrected_value}`,
-            v.source_url, v.as_of_date, v.note,
-          ].filter(Boolean).join(' · ').slice(0, 1900);
-          try {
-            if (r.id) {
-              // saved Notion row → write back to the page
-              await notionAPI(`pages/${r.id}`, 'PATCH', {
-                properties: {
-                  'Verify Status': { select: { name: verdict } },
-                  'Verify Note': { rich_text: [{ text: { content: note } }] },
-                },
-              });
-            } else {
-              // not-yet-saved session row → decorate the Prep pool so it pushes verified
-              S.verify[`${r.store}:${r.name.trim().toLowerCase()}`] = {
-                _verified: true,
-                confidence: ['low', 'medium', 'high'].includes(v.confidence) ? v.confidence : 'medium',
-                source_url: v.source_url || '',
-                as_of_date: /^\d{4}-\d{2}-\d{2}$/.test(v.as_of_date || '') ? v.as_of_date : '',
-                verify_note: `${verdict}${v.corrected_value ? ` → ${v.corrected_value}` : ''}${v.note ? ` ${v.note}` : ''}`,
-              };
-            }
-            r._newStatus = verdict; r._newNote = note;
-            tally[verdict]++; patched++;
-          } catch (e) { failed++; console.error('verify write failed', r.id || r.name, e); }
-        }
+  let done = 0, timedOut = 0, wErr = 0;
+  const total = rows.length;
+  const tick = () => { if (btn) btn.textContent = `Checking ${done + timedOut}/${total}…`; };
+
+  // Try a group in one grounded call; on a timeout, split and recurse; a single
+  // row that still times out is marked and left ticked so you can retry it.
+  async function verifyGroup(store, grp) {
+    let res;
+    try {
+      res = await _verifyBatch(store, grp.map(r => ({ name: r.name, detail: r.fields.slice(0, 300) })));
+    } catch (e) {
+      const slow = /too long|timed out/i.test(e.message);
+      if (slow && grp.length > 1) {
+        const mid = Math.ceil(grp.length / 2);
+        await verifyGroup(store, grp.slice(0, mid));
+        await verifyGroup(store, grp.slice(mid));
+        return;
       }
+      if (slow) { grp[0]._timedOut = true; timedOut++; tick(); return; }
+      toast(`${RESEARCH_STORES[store].label}: ${e.message}`, 'error');
+      timedOut += grp.length; tick(); return;
     }
-    if (S.vlib.some(r => !r.id)) renderExtractReview();   // reflect session-row decorations
+    const byName = new Map(grp.map(r => [r.name.trim().toLowerCase(), r]));
+    for (const v of (res.verified || [])) {
+      const r = byName.get(String(v.name || '').trim().toLowerCase());
+      if (!r) continue;
+      try {
+        tally[await _writeVerdict(r, v)]++; done++;
+        S._vlibSkip.add(r.id || r._key);   // done — a re-run then targets only the leftovers
+      } catch (e) { wErr++; console.error('verify write failed', r.id || r.name, e); }
+      tick();
+    }
+  }
+
+  try {
+    for (const [store, srows] of Object.entries(byStore)) {
+      for (let i = 0; i < srows.length; i += 4) await verifyGroup(store, srows.slice(i, i + 4));
+    }
+    if (S.vlib.some(r => !r.id)) renderExtractReview();
     renderVlibResults();
-    toast([`${patched} written`, tally.corrected && `${tally.corrected} corrected`, tally.unsupported && `${tally.unsupported} unsupported`, failed && `${failed} failed`]
-      .filter(Boolean).join(' · '), failed ? 'error' : 'success');
+    toast([
+      `${done} checked`,
+      tally.corrected && `${tally.corrected} corrected`,
+      tally.unsupported && `${tally.unsupported} unsupported`,
+      timedOut && `${timedOut} too slow — still ticked, run again to retry`,
+      wErr && `${wErr} write errors`,
+    ].filter(Boolean).join(' · '), timedOut || wErr ? 'error' : 'success');
   } finally {
     _libVerifying = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Fact-check ticked →'; }

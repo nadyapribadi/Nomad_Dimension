@@ -83,17 +83,20 @@ function buildVerifyPrompt(body) {
     .join('\n');
   return {
     text: `These ${items.length} "${store}" entries were pulled from Japan travel
-vlogs and are UNVERIFIED. For each, use web search to check it against
-reputable sources (official sites, tourism boards, news, academic).
+vlogs and are UNVERIFIED. Fact-check each against the web. Be FAST: at most ONE
+web search per entry, skip entries you can judge from general knowledge, and if
+an entry is inherently unverifiable (a personal anecdote, a vague claim, no
+proper noun) just return verdict "unsupported" with an empty source_url — do
+not keep searching.
 
 For each entry return:
 - name: copy the entry name back EXACTLY so it can be matched
 - verdict: "confirmed" | "corrected" | "unsupported"
-- confidence: "high" (multiple reputable sources agree) | "medium" | "low"
-- source_url: the best single URL backing your verdict ("" if none)
-- as_of_date: "YYYY-MM-DD" the source reflects, or ""
-- corrected_value: the corrected fact if verdict is "corrected", else ""
-- note: one short sentence of context
+- confidence: "high" | "medium" | "low"
+- source_url: the single best URL ("" if none / unverifiable)
+- as_of_date: "YYYY-MM-DD" or ""
+- corrected_value: the fix if "corrected", else ""
+- note: one short sentence, max 15 words
 
 Entries:
 ${list}
@@ -107,7 +110,7 @@ async function runGemini(key, prompt) {
   // Grounded generation is slow; bail at 23s so we return clean JSON before
   // Netlify's 26s hard kill turns it into an opaque 504 HTML page.
   const ac = new AbortController();
-  const killer = setTimeout(() => ac.abort(), 23000);
+  const killer = setTimeout(() => ac.abort(), 24500); // just under Netlify's 26s hard kill
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
