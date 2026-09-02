@@ -3866,24 +3866,49 @@ function renderVlibResults() {
       ${S._vlibSource === 'session' ? '' : '<button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">🧹 Find duplicates</button>'}
       <span style="font-size:11px;color:var(--text3)">${rows.length} row${rows.length === 1 ? '' : 's'}</span>
     </div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Verify column: <span class="badge badge-green" style="font-size:9px">confirmed</span> web backs it · <span class="badge badge-amber" style="font-size:9px">corrected</span> web says otherwise (fix in the note) · <span class="badge" style="font-size:9px">unsupported</span> no web evidence found · <span class="badge badge-amber" style="font-size:9px">unfinished</span> run again to retry · <em>— not checked</em> not run yet. Rows fill in live as the run works through them.</div>
     <div style="overflow:auto;max-height:55vh;border:1px solid var(--border);border-radius:var(--radius)">
     <table class="data-table" style="font-size:12px">
       <thead><tr><th style="width:24px"></th><th>Table</th><th>Name</th><th>Fields</th><th>Verify</th></tr></thead>
       <tbody>
       ${rows.map(r => {
-        const off = skip.has(rk(r));
-        const st = r._newStatus || r.status;
-        const badge = st ? `<span class="badge ${st === 'confirmed' ? 'badge-green' : st === 'corrected' ? 'badge-amber' : 'badge'}" style="font-size:9px">${st}</span>` : '';
-        return `<tr style="opacity:${off ? 0.4 : 1}">
-          <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleVlib('${rk(r)}')" style="width:14px;flex:none"></td>
+        const k = rk(r);
+        const off = skip.has(k);
+        return `<tr id="vlrow-${k}" style="opacity:${off ? 0.4 : 1}">
+          <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleVlib('${k}')" style="width:14px;flex:none"></td>
           <td style="white-space:nowrap;color:var(--text3)">${RESEARCH_STORES[r.store].label}</td>
           <td style="max-width:200px;white-space:normal;font-weight:500">${_esc(r.name)}</td>
           <td style="max-width:320px;white-space:normal;color:var(--text2)">${_esc(r.fields)}</td>
-          <td style="max-width:200px;white-space:normal">${badge}${r._newNote ? ` <span style="font-size:10px;color:var(--text3)">${_esc(r._newNote)}</span>` : ''}</td>
+          <td id="vlver-${k}" style="max-width:200px;white-space:normal">${_vlibVerifyCell(r)}</td>
         </tr>`;
       }).join('')}
       </tbody>
     </table></div>`;
+}
+
+// Verify-column cell for one row: verdict badge / unfinished / "not checked".
+function _vlibVerifyCell(r) {
+  const st = r._newStatus || r.status;
+  if (st) {
+    const cls = st === 'confirmed' ? 'badge-green' : st === 'corrected' ? 'badge-amber' : 'badge';
+    const note = r._newNote ? ` <span style="font-size:10px;color:var(--text3)">${_esc(r._newNote)}</span>` : '';
+    return `<span class="badge ${cls}" style="font-size:9px">${st}</span>${note}`;
+  }
+  if (r._retry) return '<span class="badge badge-amber" style="font-size:9px">unfinished</span> <span style="font-size:10px;color:var(--text3)">run again to retry</span>';
+  return '<span style="font-size:10px;color:var(--text3)">— not checked</span>';
+}
+
+// Repaint one row's Verify cell mid-run (the table only fully re-renders at the end).
+function _vlibPaintRow(r) {
+  const k = r.id || r._key;
+  const cell = document.getElementById(`vlver-${k}`);
+  if (cell) cell.innerHTML = _vlibVerifyCell(r);
+  const tr = document.getElementById(`vlrow-${k}`);
+  if (tr && (r._newStatus || (S._vlibSkip && S._vlibSkip.has(k)))) {
+    tr.style.opacity = 0.4;
+    const cb = tr.querySelector('input[type=checkbox]');
+    if (cb) cb.checked = false;
+  }
 }
 
 function toggleVlib(id) {
@@ -4027,27 +4052,29 @@ async function runLibVerify(btn) {
   const byStore = {};
   for (const r of rows) (byStore[r.store] ||= []).push(r);
   const tally = { confirmed: 0, corrected: 0, unsupported: 0 };
-  let done = 0, timedOut = 0, wErr = 0;
+  let done = 0, unfinished = 0, wErr = 0;
   const total = rows.length;
-  const tick = () => { if (btn) btn.textContent = `Checking ${done + timedOut}/${total}…`; };
+  const tick = () => { if (btn) btn.textContent = `Checking ${done + unfinished}/${total}…`; };
+  const mark = (r) => { r._retry = true; unfinished++; _vlibPaintRow(r); tick(); };
 
-  // Try a group in one grounded call; on a timeout, split and recurse; a single
-  // row that still times out is marked and left ticked so you can retry it.
+  // Try a group in one grounded call; on a slow / malformed / 5xx reply, split
+  // and recurse; a single row that still fails is marked "unfinished" and left
+  // ticked so a re-run retries only the leftovers.
   async function verifyGroup(store, grp) {
     let res;
     try {
       res = await _verifyBatch(store, grp.map(r => ({ name: r.name, detail: r.fields.slice(0, 300) })));
     } catch (e) {
-      const slow = /too long|timed out/i.test(e.message);
-      if (slow && grp.length > 1) {
+      const retryable = /too long|timed out|not valid json|\b5\d\d\b/i.test(e.message);
+      if (retryable && grp.length > 1) {
         const mid = Math.ceil(grp.length / 2);
         await verifyGroup(store, grp.slice(0, mid));
         await verifyGroup(store, grp.slice(mid));
         return;
       }
-      if (slow) { grp[0]._timedOut = true; timedOut++; tick(); return; }
-      toast(`${RESEARCH_STORES[store].label}: ${e.message}`, 'error');
-      timedOut += grp.length; tick(); return;
+      if (!retryable) toast(`${RESEARCH_STORES[store].label}: ${e.message}`, 'error');
+      grp.forEach(mark);
+      return;
     }
     const byName = new Map(grp.map(r => [r.name.trim().toLowerCase(), r]));
     for (const v of (res.verified || [])) {
@@ -4056,9 +4083,12 @@ async function runLibVerify(btn) {
       try {
         tally[await _writeVerdict(r, v)]++; done++;
         S._vlibSkip.add(r.id || r._key);   // done — a re-run then targets only the leftovers
+        _vlibPaintRow(r);
       } catch (e) { wErr++; console.error('verify write failed', r.id || r.name, e); }
       tick();
     }
+    // any row the model left out of its reply — leave ticked, flag for retry
+    for (const r of grp) if (!r._newStatus && !S._vlibSkip.has(r.id || r._key)) mark(r);
   }
 
   try {
@@ -4071,9 +4101,9 @@ async function runLibVerify(btn) {
       `${done} checked`,
       tally.corrected && `${tally.corrected} corrected`,
       tally.unsupported && `${tally.unsupported} unsupported`,
-      timedOut && `${timedOut} too slow — still ticked, run again to retry`,
+      unfinished && `${unfinished} unfinished — still ticked, run again to retry`,
       wErr && `${wErr} write errors`,
-    ].filter(Boolean).join(' · '), timedOut || wErr ? 'error' : 'success');
+    ].filter(Boolean).join(' · '), unfinished || wErr ? 'error' : 'success');
   } finally {
     _libVerifying = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Fact-check ticked →'; }
