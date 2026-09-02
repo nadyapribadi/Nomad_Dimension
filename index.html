@@ -3160,33 +3160,41 @@ function txHash(v) {
   return v._txHash;
 }
 
-// ── batch: run the per-video actions across the whole selection, sequentially ──
-async function prepFetchAll(btn) {
-  const ids = [...S.epSelected].filter(i => { const v = S.epQueue[i]; return v && !v.transcript && v.url; });
-  if (!ids.length) { toast('Every selected video already has a transcript (or has no URL to fetch from)', 'success'); return; }
+// ── batch: run a per-video action across the whole selection, sequentially ──
+// Sequential on purpose: transcript fetch scrapes YouTube (one IP), analyse is a
+// 2-pass LLM call. Both per-item fns swallow their own errors into a row status,
+// so there is no failure to accumulate here — callers recompute what's still
+// pending after the run to report an honest count.
+async function prepRunSeq(btn, items, progress, idle, fn) {
   if (btn) btn.disabled = true;
-  for (let k = 0; k < ids.length; k++) {
-    if (btn) btn.textContent = `Getting transcripts ${k + 1}/${ids.length}…`;
-    await prepFetchTranscript(ids[k]);
+  try {
+    for (let k = 0; k < items.length; k++) {
+      if (btn) btn.textContent = `${progress} ${k + 1}/${items.length}…`;
+      await fn(items[k], k);
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = idle; }
   }
-  if (btn) { btn.disabled = false; btn.textContent = 'Get all transcripts'; }
-  toast(`Fetched ${ids.length} transcript${ids.length === 1 ? '' : 's'}`, 'success');
+}
+async function prepFetchAll(btn) {
+  const pending = () => [...S.epSelected].filter(i => { const v = S.epQueue[i]; return v && !v.transcript && v.url; });
+  const todo = pending();
+  if (!todo.length) { toast('Every selected video already has a transcript (or has no URL to fetch from)', 'success'); return; }
+  await prepRunSeq(btn, todo, 'Getting transcripts', 'Get all transcripts', i => prepFetchTranscript(i));
+  const left = pending().length, got = todo.length - left;
+  toast(`Fetched ${got} transcript${got === 1 ? '' : 's'}${left ? ` · ${left} failed — click Get all transcripts again` : ''}`, left ? 'error' : 'success');
 }
 async function prepAnalyseAll(btn) {
-  const todo = [...S.epSelected].filter(i => {
+  const pending = () => [...S.epSelected].filter(i => {
     const v = S.epQueue[i];
     return v && v.transcript && !(v.breakdown && v.breakdown._hash === txHash(v));
   });
+  const todo = pending();
   if (!todo.length) { toast('Nothing to analyse — all selected videos are done (or need a transcript)', 'success'); return; }
-  if (btn) btn.disabled = true;
-  let ok = 0, fail = 0;
-  for (let k = 0; k < todo.length; k++) {
-    if (btn) btn.textContent = `Analysing ${k + 1}/${todo.length}…`;
-    try { await prepRunBreakdown(todo[k]); ok++; } catch { fail++; }
-  }
-  if (btn) { btn.disabled = false; btn.textContent = 'Analyse all'; }
+  await prepRunSeq(btn, todo, 'Analysing', 'Analyse all', i => prepRunBreakdown(i));
   prepStep(3);
-  toast(`Analysed ${ok} video${ok === 1 ? '' : 's'}${fail ? ` · ${fail} failed` : ''}`, fail ? 'error' : 'success');
+  const left = pending().length, done = todo.length - left;
+  toast(`Analysed ${done} video${done === 1 ? '' : 's'}${left ? ` · ${left} need another pass — click Analyse all again` : ''}`, left ? 'error' : 'success');
 }
 
 async function prepRunBreakdown(i, force) {
@@ -3211,9 +3219,10 @@ async function prepRunBreakdown(i, force) {
     // web-verifiable layer.
     const p1 = await runExtractCall(v.transcript, EXTRACT_SHAPE_1,
       'prefecture_guess / area_guess may be inferred from the name; nothing else.');
+    let p2ok = true;
     const p2 = await runExtractCall(v.transcript, EXTRACT_SHAPE_2,
       'Everything here is a CLAIM the vlogger makes — mark confidence "low".').catch(e => {
-        console.warn('extract pass 2 failed:', e.message); return {};
+        console.warn('extract pass 2 failed:', e.message); p2ok = false; return {};
       });
 
     // Stamp source provenance onto every pushable array. source_page_id drives
@@ -3223,7 +3232,10 @@ async function prepRunBreakdown(i, force) {
       source_page_id: v.id || '', needs_verification: true, ...x,
     }));
     const parsed = {
-      _hash: hash,
+      // Only cache-key a breakdown whose pass 2 actually produced content. A
+      // pass-2 failure still saves pass-1 data, but WITHOUT _hash — so the next
+      // run re-analyses instead of treating the partial result as done forever.
+      ...(p2ok ? { _hash: hash } : {}),
       // keep the places cache written by extractPlaces so a re-run here doesn't
       // force the next "Collect Places" to re-spend tokens
       ...(v.breakdown?._placesHash === hash && Array.isArray(v.breakdown.places)
@@ -3253,7 +3265,9 @@ async function prepRunBreakdown(i, force) {
     const n = (k) => (parsed[k] || []).length;
     msg = saveErr
       ? `⚠ Extracted but NOT saved to Notion: ${saveErr.message}. Re-run to retry.`
-      : `Extracted — ${n('places')} places · ${n('activities')} activities · ${n('food')} food · ${n('research')} claims.`;
+      : p2ok
+        ? `Extracted — ${n('places')} places · ${n('activities')} activities · ${n('food')} food · ${n('research')} claims.`
+        : `Pass 1 saved (${n('activities')} activities · ${n('food')} food) — pass 2 (claims / prices / data) failed, will retry on the next run.`;
   } catch (e) {
     msg = `Breakdown failed: ${e.message}`;
   } finally {
