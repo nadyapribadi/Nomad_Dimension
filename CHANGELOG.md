@@ -45,6 +45,13 @@ Episode(s)` relation before writing (a Notion relation PATCH replaces the
   saved in Notion_ (verify writes back to the page) or _rows found this
   session_ (verify decorates the Prep pool). Replaces the two-mechanism panel
   with an "…or" divider. "Find duplicates" is now a visible button.
+- **Fact-check column is legible now.** A legend spells out the four states;
+  each row's Verify cell shows an explicit **— not checked** instead of going
+  blank, and rows fill in **live** as the run works through them (the table
+  used to repaint only once, at the end). A batch that comes back malformed
+  or 5xx now splits and retries per-row like a timeout does, instead of
+  dumping a red toast and silently skipping all four rows; whatever still
+  doesn't finish is badged **unfinished — run again** and left ticked.
 - **Perf (no rewrites).** Transcript hash memoised on the video object (was
   re-hashing 190 KB per row per render); the off-screen review table isn't
   rebuilt on every checkbox tick; review/Places checkbox toggles update one

@@ -158,12 +158,13 @@ const bootstrap = [
   extract('_readProp'),
   extract('parseJsonLoose'),
   extract('_afetch'),
+  extract('_vlibVerifyCell'),
 ].join('\n');
 
 const H = {};
 new Function(
   'exports',
-  `${bootstrap}\n Object.assign(exports, { _normTokens, _sim, _thinName, _clusterRows, _cheapHash, _esc, _propText, _readProp, parseJsonLoose, _afetch });`
+  `${bootstrap}\n Object.assign(exports, { _normTokens, _sim, _thinName, _clusterRows, _cheapHash, _esc, _propText, _readProp, parseJsonLoose, _afetch, _vlibVerifyCell });`
 )(H);
 
 // ── _cheapHash ────────────────────────────────────────────────────────────────
@@ -240,6 +241,24 @@ test('_clusterRows leaves genuinely distinct rows as singletons', () => {
   assert.equal(
     H._clusterRows(rows).every((cl) => cl.rows.length === 1),
     true
+  );
+});
+
+// ── _vlibVerifyCell (fact-check column: three visible states) ────────────────
+test('_vlibVerifyCell shows a coloured badge once a verdict is in', () => {
+  assert.match(H._vlibVerifyCell({ _newStatus: 'confirmed' }), /badge-green[^]*confirmed/);
+  assert.match(H._vlibVerifyCell({ status: 'corrected' }), /badge-amber[^]*corrected/);
+  assert.match(H._vlibVerifyCell({ status: 'unsupported' }), /unsupported/);
+});
+test('_vlibVerifyCell distinguishes unfinished from never-checked', () => {
+  assert.match(H._vlibVerifyCell({ _retry: true }), /unfinished/);
+  assert.match(H._vlibVerifyCell({}), /not checked/);
+  assert.doesNotMatch(H._vlibVerifyCell({}), /unfinished/);
+});
+test('_vlibVerifyCell escapes the note', () => {
+  assert.match(
+    H._vlibVerifyCell({ _newStatus: 'corrected', _newNote: '<b>x</b>' }),
+    /&lt;b&gt;x&lt;\/b&gt;/
   );
 });
 
