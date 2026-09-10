@@ -1,36 +1,52 @@
-# Netlify Functions — Provider Proxies
+# Netlify Functions — Provider boundary
 
-These four functions are the app's **provider boundary**. Each is a stateless
-CORS proxy: the browser sends the payload, the function forwards it to the
-upstream API and returns the JSON response unchanged.
+Seven provider functions and `session.js` serve the single-operator app.
+Provider keys come only from private server environment variables; the browser
+sends no provider keys or Notion token.
 
-**Keys are Netlify environment variables — the browser sends none.** Each
-function reads its key/token from `process.env` and returns `500` if it is not
-configured.
+## Sign-in
 
-| Function             | Env var (required)                                                                 |
-| -------------------- | ---------------------------------------------------------------------------------- |
-| `anthropic-proxy.js` | `ANTHROPIC_API_KEY`                                                                |
-| `tts-proxy.js`       | `GOOGLE_TTS_API_KEY`                                                               |
-| `youtube-proxy.js`   | `YOUTUBE_API_KEY`                                                                  |
-| `notion-proxy.js`    | `NOTION_TOKEN`                                                                     |
-| `ai-run.js`          | `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `NOTION_TOKEN` (cost log) |
-| `yt-transcript.js`   | none required; `TRANSCRIPT_API_KEY` optional (youtube-transcript.io fallback)      |
-| `maps-proxy.js`      | `GOOGLE_MAPS_API_KEY` optional — no key → `{ found:false, reason:'no_key' }`       |
-| `web-research.js`    | `GEMINI_API_KEY` — Gemini + Google Search grounding; `500` if unset                |
+All provider endpoints, including their direct `/.netlify/functions/` URLs,
+require an HMAC-signed eight-hour session cookie. `POST` to
+`/.netlify/functions/session` with `{ "password": "…" }` signs in;
+`{ "action": "status" }` checks authentication and `{ "action": "logout" }`
+expires the cookie. Configure a unique `APP_PASSWORD` of at least 16 characters.
+Missing configuration fails closed with 503; missing/invalid sessions return 401. Cookie flags are HttpOnly, SameSite=Strict, and Secure over HTTPS.
+Rotating the password invalidates existing sessions. Sign-in throttling is
+best-effort per warm instance, not a shared rate limiter. Browser-local drafts
+and audio are retained on sign-out.
 
-Set these in the Netlify dashboard (Site settings → Environment variables) and,
-for local `netlify dev`, in a gitignored `.env` (see `.env.example`).
+All provider handlers use `_shared/auth.js`: POST only, same-origin checks,
+JSON object input, a 1 MB body limit, no wildcard CORS, and no-store responses.
+OPTIONS returns no cross-origin authorization. The Notion proxy restricts API
+operations and path shapes; it does not implement per-record ownership or
+resource ancestry checks. The integration's permissions remain the data scope.
 
-`_shared/` (underscore prefix — not deployed as a function) holds the
-provider-agnostic model router `models.js` (`callModel()`), used from Phase 2
-onward via an `ai-run.js` endpoint. See `Docs/AS_BUILT.md` → "Direction &
-evolution plan". Adapters currently: Anthropic (`ANTHROPIC_API_KEY`), Gemini
-(`GEMINI_API_KEY`).
+| Function                        | Server environment                                                     |
+| ------------------------------- | ---------------------------------------------------------------------- |
+| `session.js` and every provider | `APP_PASSWORD` required                                                |
+| `notion-proxy.js`               | `NOTION_TOKEN`                                                         |
+| `tts-proxy.js`                  | `GOOGLE_TTS_API_KEY`                                                   |
+| `youtube-proxy.js`              | `YOUTUBE_API_KEY`                                                      |
+| `ai-run.js`                     | Keys for configured routes; `NOTION_TOKEN` for routing and cost writes |
+| `yt-transcript.js`              | `TRANSCRIPT_API_KEY` optional fallback                                 |
+| `maps-proxy.js`                 | `GOOGLE_MAPS_API_KEY` optional                                         |
+| `web-research.js`               | `GEMINI_API_KEY`                                                       |
 
-All functions: `POST` only (plus `OPTIONS` preflight),
-`Access-Control-Allow-Origin: *`, JSON in / JSON out, upstream errors returned
-with their status code.
+Set these in Netlify environment variables and, for local development, a
+gitignored `.env` (see `.env.example`). Model adapters, key names, and routing
+are documented in [AS_BUILT.md](../Docs/AS_BUILT.md).
+
+## `ai-run.js`
+
+`POST { task, system, messages, maxTokens?, provider?, model?, episode? }`
+returns normalized text, provider/model, usage, estimated cost, and
+`costLogged`. Routing is read from Notion with a short cache, falling back to
+server defaults. Provider attempts share a 48-second deadline. Token output is
+capped at 12,000; empty/truncated output fails visibly. A cost write is awaited
+for up to 2.5 seconds; failure does not discard completed model output.
+This is not a complete billing ledger: TTS, web grounding, and other provider
+calls are not covered, and Episodes has no calculated total here.
 
 ## `notion-proxy.js`
 
@@ -42,27 +58,10 @@ Forwards to `https://api.notion.com/v1/{endpoint}`.
   "endpoint": "databases/<id>/query",   // path after /v1/
   "method": "GET" | "POST" | "PATCH",   // default "GET"
   "body": { /* Notion API body, sent only when method != GET */ },
-  "token": "ntn_…"                       // Notion integration token
 }
 ```
 
 Adds `Notion-Version: 2022-06-28`. Returns the raw Notion response + status.
-
-## `anthropic-proxy.js`
-
-Forwards to `https://api.anthropic.com/v1/messages`.
-
-```jsonc
-{
-  "model": "claude-haiku-4-5-20251001", // default if omitted
-  "max_tokens": 1000, // default
-  "system": "…", // optional
-  "messages": [{ "role": "user", "content": "…" }],
-  "apiKey": "sk-ant-…",
-}
-```
-
-Adds `anthropic-version: 2023-06-01`. Returns the raw Messages API response.
 
 ## `tts-proxy.js`
 
@@ -73,7 +72,6 @@ Forwards to `https://texttospeech.googleapis.com/v1/text:synthesize`.
   "text": "…",
   "voice": { "languageCode": "en-US", "name": "en-US-Neural2-D" }, // default = Kai
   "audioConfig": { "audioEncoding": "MP3" }, // default
-  "apiKey": "<google-api-key>",
 }
 ```
 
@@ -88,7 +86,6 @@ Forwards to `https://www.googleapis.com/youtube/v3/{path}`.
 {
   "path": "search" | "videos" | "channels" | "captions",
   "params": { "part": "snippet", "q": "…", "maxResults": 25 },
-  "apiKey": "<google-api-key>"
 }
 ```
 
@@ -105,7 +102,8 @@ back to `POST https://www.youtube-transcript.io/api/transcripts`.
 
 ```jsonc
 // 200
-{ "text": "…", "videoId": "…", "lang": "ja", "source": "scrape" | "youtube-transcript.io" }
+{ "text": "…", "videoId": "…", "lang": "ja", "source": "scrape" | "youtube-transcript.io",
+  "segments": [{ "text": "…", "startMs": 2500, "durationMs": 1200 }] }
 // 404 { "error": "No transcript found…", "code": "not_found" }
 ```
 
@@ -127,7 +125,7 @@ Text Search (`places:searchText`, `maxResultCount: 1`, `regionCode: JP`).
 ```
 
 `prefecture` = the `administrative_area_level_1` component, trimmed of a trailing
-"Prefecture". Used by Stage 2 → Places to override the AI's prefecture guess.
+"Prefecture". Presented as a candidate in Research → Places; precise fields are applied only after the operator accepts the match.
 
 ## `web-research.js`
 
@@ -148,7 +146,7 @@ POST { "mode": "verify", "store": "research",
        "sources": […], "model": "gemini-3.6-flash" }
 ```
 
-Bails at 23 s → `504 { error }` (before Netlify's 26 s hard kill). `502` on
+Bails at 23 s → `504 { error }`. `502` on
 provider/network failure, `500` if `GEMINI_API_KEY` is unset.
 
 ## Contract stability
@@ -156,8 +154,10 @@ provider/network failure, `500` if `GEMINI_API_KEY` is unset.
 The browser (`index.html`) depends on these shapes. Change them additively only;
 a breaking change means updating `index.html` in the same commit.
 
-## Known gaps
+## Limits
 
-- No schema validation on upstream responses — treated as trusted.
-- No rate-limit handling or retry.
-- Errors bubble up as `{ error: <message> }` with the upstream status.
+Notion and TTS requests have 25-second deadlines; YouTube uses 20 seconds.
+TTS accepts at most 4,500 UTF-8 bytes per line. Provider response validation
+varies by adapter; errors are returned to the caller. LLM routing has bounded
+retry/fallback. Other writes are recovered at the workflow layer where possible.
+Source-caption timing is optional; missing timing is null, never invented.

@@ -22,6 +22,8 @@ exports.handler = async (event) => {
   const key = process.env.GOOGLE_TTS_API_KEY;
   if (!key) return respond(500, { error: 'GOOGLE_TTS_API_KEY not configured' });
   if (!text) return respond(400, { error: 'Missing text' });
+  if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 4500)
+    return respond(400, { error: 'Split this dialogue line: it exceeds the TTS input limit' });
 
   const reqBody = {
     input: { text },
@@ -34,6 +36,7 @@ exports.handler = async (event) => {
   try {
     const res = await fetch(url, {
       method: 'POST',
+      signal: AbortSignal.timeout(25000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(reqBody),
     });
@@ -55,3 +58,6 @@ function corsHeaders() {
 function respond(statusCode, body) {
   return { statusCode, headers: corsHeaders(), body: JSON.stringify(body) };
 }
+
+// All provider calls require a signed, same-origin operator session.
+exports.handler = require('./_shared/auth').withAuth(exports.handler);

@@ -89,3 +89,28 @@ test('digTranscriptText: flat string, bare array, and null', () => {
   );
   assert.equal(digTranscriptText(null), '');
 });
+
+test('caption timestamps preserve source offsets and leave absent timing unknown', () => {
+  assert.deepEqual(
+    _internal.parseJson3Segments({
+      events: [
+        { tStartMs: 2500, dDurationMs: 1200, segs: [{ utf8: 'hello ' }, { utf8: 'world' }] },
+        { segs: [{ utf8: 'untimed' }] },
+        { tStartMs: 5000 },
+      ],
+    }),
+    [
+      { startMs: 2500, durationMs: 1200, text: 'hello world' },
+      { startMs: null, durationMs: null, text: 'untimed' },
+    ]
+  );
+  assert.deepEqual(
+    _internal.transcriptIoSegments([
+      { tracks: [{ transcript: [{ text: 'hello', start: 2.5, dur: 1.2 }, { text: 'untimed' }] }] },
+    ]),
+    [
+      { text: 'hello', startMs: 2500, durationMs: 1200 },
+      { text: 'untimed', startMs: null, durationMs: null },
+    ]
+  );
+});

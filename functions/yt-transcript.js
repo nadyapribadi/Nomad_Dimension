@@ -83,7 +83,7 @@ async function scrapeTranscript(videoId, lang) {
   const json = await capRes.json().catch(() => null);
   const text = parseJson3(json);
   if (!text) return null;
-  return { text, lang: track.languageCode || lang || '' };
+  return { text, segments: parseJson3Segments(json), lang: track.languageCode || lang || '' };
 }
 
 // Pull the ytInitialPlayerResponse object out of the watch-page HTML.
@@ -147,6 +147,33 @@ function pickCaptionTrack(tracks, lang) {
 }
 
 // json3 caption format → plain text.
+function parseJson3Segments(json) {
+  return (json?.events || [])
+    .filter((ev) => Array.isArray(ev.segs))
+    .map((ev) => ({
+      startMs: Number.isFinite(ev.tStartMs) ? ev.tStartMs : null,
+      durationMs: Number.isFinite(ev.dDurationMs) ? ev.dDurationMs : null,
+      text: ev.segs
+        .map((s) => s.utf8 || '')
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    }))
+    .filter((x) => x.text);
+}
+function transcriptIoSegments(data) {
+  const rec = Array.isArray(data) ? data[0] : data;
+  const track = rec?.tracks?.find((t) => Array.isArray(t.transcript));
+  const segments = track?.transcript || (Array.isArray(rec?.transcript) ? rec.transcript : []);
+  return segments
+    .map((s) => ({
+      text: typeof s === 'string' ? s : s.text || s.utf8 || '',
+      startMs: Number.isFinite(s.start) ? Math.round(s.start * 1000) : null,
+      durationMs: Number.isFinite(s.dur) ? Math.round(s.dur * 1000) : null,
+    }))
+    .filter((x) => x.text);
+}
+
 function parseJson3(json) {
   if (!json || !Array.isArray(json.events)) return '';
   const out = [];
@@ -177,7 +204,7 @@ async function fetchFromTranscriptIo(videoId, key) {
   if (!res.ok) throw new Error(`http ${res.status}`);
   const data = await res.json().catch(() => null);
   const text = digTranscriptText(data);
-  return text ? { text, lang: '' } : null;
+  return text ? { text, segments: transcriptIoSegments(data), lang: '' } : null;
 }
 
 // youtube-transcript.io returns [{ text: "<flat>", tracks: [{ language, transcript: [{start,dur,text}] }] }].
@@ -242,5 +269,10 @@ module.exports._internal = {
   sliceBalancedJson,
   pickCaptionTrack,
   parseJson3,
+  parseJson3Segments,
+  transcriptIoSegments,
   digTranscriptText,
 };
+
+// All provider calls require a signed, same-origin operator session.
+exports.handler = require('./_shared/auth').withAuth(exports.handler);

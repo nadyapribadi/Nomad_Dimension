@@ -23,12 +23,14 @@ exports.handler = async (event) => {
   const key = process.env.YOUTUBE_API_KEY;
   if (!key) return respond(500, { error: 'YOUTUBE_API_KEY not configured' });
   if (!path) return respond(400, { error: 'Missing path' });
+  if (!['search', 'videos', 'channels', 'captions', 'playlistItems', 'playlists'].includes(path))
+    return respond(400, { error: 'Unsupported YouTube path' });
 
   const qs = new URLSearchParams({ ...params, key }).toString();
   const url = `https://www.googleapis.com/youtube/v3/${path}?${qs}`;
 
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
     const data = await res.json();
     return respond(res.status, data);
   } catch (err) {
@@ -47,3 +49,6 @@ function corsHeaders() {
 function respond(statusCode, body) {
   return { statusCode, headers: corsHeaders(), body: JSON.stringify(body) };
 }
+
+// All provider calls require a signed, same-origin operator session.
+exports.handler = require('./_shared/auth').withAuth(exports.handler);

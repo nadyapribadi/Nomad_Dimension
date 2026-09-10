@@ -134,3 +134,6 @@ function respond(statusCode, payload) {
 }
 
 module.exports._internal = { pickPrefecture, pickArea, pickComponent, PRICE_LEVEL };
+
+// All provider calls require a signed, same-origin operator session.
+exports.handler = require('./_shared/auth').withAuth(exports.handler);

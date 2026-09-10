@@ -1,7 +1,7 @@
 'use strict';
 
 // HTTP entry point for the model router. The browser POSTs a task + messages;
-// this calls callModel() (functions/_shared/models.js), fire-and-forget logs the
+// this calls callModel() (functions/_shared/models.js), awaits a bounded write of the
 // cost to the Production Costs DB, and returns the normalized result.
 // Phase 2 of the evolution plan — see Docs/AS_BUILT.md.
 
@@ -90,9 +90,10 @@ exports.handler = async (event) => {
     });
   }
 
-  logCost({ result, task, episode, token: process.env.NOTION_TOKEN }).catch((e) =>
-    console.warn('cost log failed:', e && e.message)
-  );
+  let costLogged = true;
+  await logCost({ result, task, episode, token: process.env.NOTION_TOKEN }).catch(() => {
+    costLogged = false;
+  });
 
   return respond(200, {
     text: result.text,
@@ -100,6 +101,7 @@ exports.handler = async (event) => {
     model: result.model,
     usage: result.usage,
     costUsd: result.costUsd,
+    costLogged,
   });
 };
 
@@ -121,7 +123,10 @@ async function getRouting() {
     const qs = `page_size=100${cursor ? `&start_cursor=${cursor}` : ''}`;
     const res = await fetch(
       `https://api.notion.com/v1/blocks/${APP_SETTINGS_PAGE_ID}/children?${qs}`,
-      { headers: { Authorization: `Bearer ${token}`, 'Notion-Version': '2022-06-28' } }
+      {
+        headers: { Authorization: `Bearer ${token}`, 'Notion-Version': '2022-06-28' },
+        signal: AbortSignal.timeout(3000),
+      }
     );
     if (!res.ok) throw new Error(`Notion ${res.status}`);
     const data = await res.json();
@@ -146,7 +151,7 @@ async function getRouting() {
 
 // Fire-and-forget. Never blocks or fails the response.
 async function logCost({ result, task, episode, token }) {
-  if (!token) return; // no server-side Notion token available
+  if (!token) throw new Error('Cost logging unavailable');
   const stage = STAGE_BY_TASK[task];
   const label = `${episode || 'EP?'} · ${stage || task} · ${task}`;
   const props = {
@@ -166,6 +171,7 @@ async function logCost({ result, task, episode, token }) {
 
   const res = await fetch('https://api.notion.com/v1/pages', {
     method: 'POST',
+    signal: AbortSignal.timeout(2500),
     headers: {
       Authorization: `Bearer ${token}`,
       'Notion-Version': '2022-06-28',
@@ -192,3 +198,6 @@ function respond(statusCode, body) {
 module.exports.STAGE_BY_TASK = STAGE_BY_TASK;
 module.exports.PROVIDER_SELECT = PROVIDER_SELECT;
 module.exports.STATUS_BY_CODE = STATUS_BY_CODE;
+
+// All provider calls require a signed, same-origin operator session.
+exports.handler = require('./_shared/auth').withAuth(exports.handler);

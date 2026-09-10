@@ -317,7 +317,19 @@ test('parseJsonLoose throws (does not hang) on junk', () => {
 
 // ── _afetch (the hung-request fix) ────────────────────────────────────────────
 test('_afetch rejects with a timeout error when the connection hangs (the freeze-bug guard)', async () => {
-  // 10.255.255.1 is non-routable — the socket hangs, so our AbortController must
-  // fire and the caller must get an Error, never an unsettled promise.
-  await assert.rejects(() => H._afetch('http://10.255.255.1/', {}, 250), /timed out after 0\.25s/);
+  const previous = globalThis.fetch;
+  globalThis.fetch = (_url, { signal }) =>
+    new Promise((_, reject) => {
+      signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {
+        once: true,
+      });
+    });
+  try {
+    await assert.rejects(
+      () => H._afetch('https://example.test/', {}, 10),
+      /timed out after 0\.01s/
+    );
+  } finally {
+    globalThis.fetch = previous;
+  }
 });

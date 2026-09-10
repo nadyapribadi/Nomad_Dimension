@@ -78,6 +78,13 @@ const FAILOVER = new Set(['rate_limited', 'network', 'provider_error', 'content_
 async function callModel(req, deps = {}) {
   const fetchImpl = deps.fetch || globalThis.fetch;
   const env = deps.env || process.env;
+  const deadline = Date.now() + 48000;
+  const timedFetch = (url, options) =>
+    fetchImpl(url, {
+      ...options,
+      signal: AbortSignal.timeout(Math.max(1, Math.min(20000, deadline - Date.now()))),
+    });
+  req = { ...req, maxTokens: req.maxTokens ?? 2000 };
 
   const routed = req.task ? DEFAULT_ROUTING[req.task] : null;
   const provider = req.provider || (routed && routed.provider);
@@ -88,6 +95,17 @@ async function callModel(req, deps = {}) {
   if (!Array.isArray(req.messages) || req.messages.length === 0) {
     throw taxonomyError('invalid_request', 'messages is required');
   }
+  if (
+    !Number.isInteger(req.maxTokens) ||
+    req.maxTokens < 1 ||
+    req.maxTokens > 12000 ||
+    req.messages.some(
+      (m) => !m || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string'
+    ) ||
+    req.messages.reduce((n, m) => n + m.content.length, 0) > 500000
+  ) {
+    throw taxonomyError('invalid_request', 'Invalid messages or output token limit (1–12000)');
+  }
 
   // One provider attempt = adapter call + up to one same-model retry.
   const runAttempts = async (prov, mdl) => {
@@ -96,7 +114,20 @@ async function callModel(req, deps = {}) {
     let lastErr;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await adapter({ ...req, model: mdl }, { fetch: fetchImpl, env });
+        if (Date.now() >= deadline)
+          throw taxonomyError('network', 'Model request deadline reached');
+        const res = await adapter({ ...req, model: mdl }, { fetch: timedFetch, env });
+        if (!res.text || !res.text.trim())
+          throw taxonomyError('provider_error', 'Model returned no text');
+        const stop =
+          res.raw?.stop_reason ||
+          res.raw?.choices?.[0]?.finish_reason ||
+          res.raw?.candidates?.[0]?.finishReason;
+        if (['max_tokens', 'length', 'MAX_TOKENS'].includes(stop))
+          throw taxonomyError(
+            'invalid_request',
+            'Model output was truncated. Shorten the section or increase its output limit.'
+          );
         return { ...res, costUsd: cost(mdl, res.usage) };
       } catch (err) {
         lastErr = err;

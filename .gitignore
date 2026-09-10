@@ -15,6 +15,7 @@ node_modules/
 # IDE
 .vscode/
 .idea/
+.obsidian/
 
 # Keep Template/ out — it's a separate project
 Template/

@@ -4,7 +4,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { handler, STAGE_BY_TASK, PROVIDER_SELECT, STATUS_BY_CODE } = require('../ai-run');
 
-const post = (body) => ({ httpMethod: 'POST', body: JSON.stringify(body) });
+const { makeSession } = require('./auth');
+process.env.APP_PASSWORD = 'test-only-password-not-for-deployment';
+const headers = () => ({ cookie: `nomad_session=${makeSession(process.env.APP_PASSWORD)}` });
+const post = (body) => ({ httpMethod: 'POST', headers: headers(), body: JSON.stringify(body) });
 
 test('maps: every task has a Stage; providers map to Notion select names', () => {
   for (const stage of Object.values(STAGE_BY_TASK)) assert.match(stage, /^Stage /);
@@ -25,7 +28,7 @@ test('non-POST -> 405', async () => {
 });
 
 test('bad JSON -> 400', async () => {
-  const r = await handler({ httpMethod: 'POST', body: '{' });
+  const r = await handler({ httpMethod: 'POST', headers: headers(), body: '{' });
   assert.equal(r.statusCode, 400);
 });
 

@@ -4,6 +4,8 @@
 // globals are irrelevant, only syntax matters.
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { ESLint } from 'eslint';
+import globals from 'globals';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
@@ -23,5 +25,23 @@ blocks.forEach((src, i) => {
   }
 });
 
+if (bad) process.exit(1);
+const eslint = new ESLint({
+  overrideConfigFile: true,
+  overrideConfig: [
+    {
+      languageOptions: { sourceType: 'script', globals: globals.browser },
+      rules: { 'no-redeclare': 'error', 'no-undef': 'error' },
+    },
+  ],
+});
+for (const src of blocks) {
+  const results = await eslint.lintText(src);
+  for (const result of results) {
+    for (const message of result.messages)
+      console.error(`inline script:${message.line}: ${message.message}`);
+    if (result.errorCount) bad++;
+  }
+}
 if (bad) process.exit(1);
 console.log(`check-html-syntax: ${blocks.length} <script> block(s) OK`);
