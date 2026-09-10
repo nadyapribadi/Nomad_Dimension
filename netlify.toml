@@ -140,12 +140,6 @@
   force = true
 
 [[redirects]]
-  from = "/.netlify/state.json"
-  to = "/404.html"
-  status = 404
-  force = true
-
-[[redirects]]
   from = "/.github/*"
   to = "/404.html"
   status = 404
