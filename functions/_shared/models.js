@@ -141,7 +141,8 @@ async function callModel(req, deps = {}) {
   try {
     return await runAttempts(provider, model);
   } catch (err) {
-    const fb = req.fallback || (routed && routed.fallback);
+    // An explicit null means the operator selected no fallback.
+    const fb = req.fallback === undefined ? routed && routed.fallback : req.fallback;
     if (!req.singleAttempt && fb && fb.provider && fb.model && FAILOVER.has(err.code)) {
       return runAttempts(fb.provider, fb.model);
     }

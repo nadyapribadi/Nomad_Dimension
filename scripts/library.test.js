@@ -605,6 +605,38 @@ test('pasted transcripts reject oversized input without truncation or writes', a
   assert.equal(t.calls.length, 0);
 });
 
+test('Places extraction uses the Places route with one model attempt', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.routing = {
+    places: { provider: 'deepseek', model: 'configured-places-model' },
+    outline: { provider: 'openai', model: 'different-outline-model' },
+  };
+  let captured;
+  t.c.aiRun = async (task, request) => {
+    captured = { task, request };
+    return { text: '{"places":[]}' };
+  };
+  await t.run(
+    "runExtractCall('A transcript about a place','shape','guard',{key:'places-test',task:'places'})"
+  );
+  assert.equal(captured.task, 'places');
+  assert.equal(captured.request.model, 'configured-places-model');
+  assert.equal(captured.request.provider, 'deepseek');
+  assert.equal(captured.request.singleAttempt, true);
+});
+
+test('routing without a loaded saved block never pretends to persist or changes active choices', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.routing = { dialogue: { provider: 'example', model: 'saved-model' } };
+  S.routingBlockId = null;
+  await t.run('saveRouting()');
+  assert.equal(t.calls.length, 0);
+  assert.equal(S.routing.dialogue.model, 'saved-model');
+  assert.match(t.element('routing-save-status').textContent, /have not been saved/);
+});
+
 test('a failed transcript save can be recovered for review without replacing saved text or fetching', async () => {
   const t = setup(),
     S = t.run('S');

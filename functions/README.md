@@ -38,6 +38,14 @@ Set these in Netlify environment variables and, for local development, a
 gitignored `.env` (see `.env.example`). Model adapters, key names, and routing
 are documented in [AS_BUILT.md](../Docs/AS_BUILT.md).
 
+## `service-status.js`
+
+Authenticated `POST {}` returns `configured` (service-to-boolean key presence),
+`factCheck` (provider/model/search metadata), and `checked: "presence-only"`.
+It never returns credentials/fragments, tests a provider, reads a balance, or
+makes an upstream call. It reports the environment of the deployment serving the
+request. A configured key does not establish valid access or available funds.
+
 ## `ai-run.js`
 
 `POST { task, system, messages, maxTokens?, provider?, model?, episode? }`
@@ -173,3 +181,7 @@ Source-caption timing is optional; missing timing is null, never invented.
 a 20-second model budget, and no automatic retry/fallback. This does not guarantee
 a live model response or erase potential costs from a timed-out request. The client
 retains completed extraction parts and asks the operator to resume explicitly.
+
+An explicit null model fallback disables provider switching. An omitted fallback
+in a direct `callModel` request still uses the built-in task default. Extraction
+uses `singleAttempt`, suppressing both same-model retries and provider fallback.

@@ -195,7 +195,7 @@ function respond(statusCode, payload) {
   };
 }
 
-module.exports._internal = { parseJsonLoose, buildVerifyPrompt, buildAskPrompt };
+module.exports._internal = { parseJsonLoose, buildVerifyPrompt, buildAskPrompt, MODEL };
 
 // All provider calls require a signed, same-origin operator session.
 exports.handler = require('./_shared/auth').withAuth(exports.handler);

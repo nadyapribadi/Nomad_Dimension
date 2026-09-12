@@ -266,6 +266,19 @@ test('explicit req.fallback is honored on failover', async () => {
   assert.equal(fetch.calls.length, 3);
 });
 
+test('an explicit no-fallback choice cannot activate the built-in fallback', async () => {
+  const fetch = mockFetch(() => httpErr(503, {}));
+  await assert.rejects(
+    callModel(
+      { task: 'angle', fallback: null, messages: [{ role: 'user', content: 'x' }] },
+      { fetch, env }
+    ),
+    (error) => error.code === 'provider_error'
+  );
+  assert.equal(fetch.calls.length, 2);
+  assert.ok(fetch.calls.every((call) => call.url.includes('anthropic.com')));
+});
+
 test('unknown task -> invalid_request', async () => {
   await assert.rejects(
     callModel(

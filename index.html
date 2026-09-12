@@ -1065,6 +1065,44 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
 .library-tray { position:static; }
 #library-detail-modal .library-detail > label { display:flex;align-items:center;gap:10px;font-size:14px; }
 #library-detail-modal .library-detail > label input { width:18px;height:18px;margin:0; }
+
+/* Settings and Library: visible service boundaries, responsive task controls. */
+.settings-nav { display:flex; gap:8px; padding-bottom:20px; border-bottom:1px solid var(--border); margin-bottom:28px; }
+.settings-nav .btn { background:transparent; border-color:transparent; }
+.settings-nav [aria-pressed="true"] { background:var(--surface); border-color:var(--border); color:var(--accent); }
+.settings-intro { margin-bottom:24px; max-width:720px; }
+.settings-intro h2, .library-section-head h2 { font-size:26px; letter-spacing:-.6px; margin:0 0 8px; }
+.settings-intro p, .library-section-head p { font-size:14px; line-height:1.6; color:var(--text2); }
+#stage-0 .card { padding:28px; }
+#stage-0 h2 { font-size:21px; margin-bottom:10px; }
+#stage-0 h3 { font-size:15px; margin:0; }
+#stage-0 p { line-height:1.6; }
+.service-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; margin-top:18px; }
+.service-item { min-width:0; padding:18px; border:1px solid var(--border); border-radius:10px; background:var(--surface); }
+.service-item .outline-heading { flex-wrap:wrap; gap:10px; margin-bottom:6px; }
+.service-item p { font-size:13px; color:var(--text2); margin:8px 0; overflow-wrap:anywhere; }
+.service-item .badge { font-size:11px; white-space:normal; }
+.billing-help { background:var(--surface2); }
+.billing-help p { max-width:850px; margin-bottom:12px; }
+.settings-diagnostics { margin:20px 0; }
+.settings-diagnostics summary,.reserved-routes summary { cursor:pointer; padding:16px 0; font-size:14px; font-weight:600; }
+.route-card { display:grid; grid-template-columns:minmax(190px,1fr) minmax(220px,1fr) minmax(220px,1fr); gap:22px; align-items:start; padding:22px 0; border-bottom:1px solid var(--border); }
+.route-card p { font-size:12px; color:var(--text2); margin:8px 0 0; max-width:300px; }
+.route-card label { display:flex; flex-direction:column; gap:9px; font-size:12px; color:var(--text2); min-width:0; }
+.route-card select { font-family:inherit !important; font-size:13px !important; min-height:42px; text-overflow:ellipsis; }
+.settings-save { display:flex; align-items:center; gap:16px; padding-top:22px; }
+.settings-save p { color:var(--text2); font-size:13px; max-width:660px; }
+.library-section-head { display:flex; align-items:start; justify-content:space-between; gap:28px; padding:8px 0 24px; }
+.library-section-head>div:first-child { max-width:660px; }
+.action-service { display:flex; flex-direction:column; align-items:flex-start; padding:14px 16px; border:1px solid var(--border); border-radius:10px; max-width:340px; min-width:230px; font-size:12px; line-height:1.6; color:var(--text2); background:var(--surface); }
+.action-service span { overflow-wrap:anywhere; }
+.library-tabs { margin-bottom:28px; }
+#res-tab-prep>.library-section-head+p,#res-tab-web>.library-section-head+p { display:none; }
+#res-tab-places .card-title,#res-tab-web .card-title,#res-tab-prep .card-title { font-size:18px; }
+#stage-0 .card-title .icon,#res-tab-prep .card-title .icon,#res-tab-places .card-title .icon,#res-tab-web .card-title .icon { display:none; }
+#stage-0 a:not(.btn),.library-detail a { color:var(--accent); text-underline-offset:3px; }
+@media(max-width:1100px) { .route-card { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } .route-card>div { grid-column:1/-1; } .route-card p { max-width:none; } .library-section-head { flex-wrap:wrap; } .action-service { max-width:none; width:100%; } }
+@media(max-width:600px) { #stage-0 .card { padding:18px; } .settings-nav { gap:2px; } .settings-nav .btn { font-size:12px; padding:10px; } .route-card { grid-template-columns:minmax(0,1fr); gap:14px; } .service-grid { grid-template-columns:minmax(0,1fr); } .settings-save { flex-direction:column; align-items:stretch; } .library-section-head h2 { font-size:23px; } }
 </style>
 </head>
 <body>
@@ -1145,54 +1183,56 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
      STAGE 0 — SETTINGS
      ═══════════════════════════════════════════ -->
 <div class="stage-panel active" id="stage-0">
-  <div class="stage-header">
-    <h1>Settings</h1><button class="btn btn-sm" onclick="signOut()">Sign out</button>
-    <span class="subtitle">stage 0 · cross-device state</span>
-  </div>
+  <div class="stage-header"><div><span class="studio-eyebrow">YOUR WORKSPACE</span><h1>Settings<span class="heading-dot">.</span></h1><p class="subtitle">Choose your tools. Keep control of the work and the spend.</p></div><button class="btn btn-sm" onclick="signOut()">Sign out</button></div>
+  <nav class="settings-nav" aria-label="Settings sections"><button class="btn" data-settings="connections" aria-pressed="true" onclick="settingsSection('connections')">Connections</button><button class="btn" data-settings="models" aria-pressed="false" onclick="settingsSection('models')">AI choices</button><button class="btn" data-settings="style" aria-pressed="false" onclick="settingsSection('style')">Channel style</button></nav>
+  <section id="settings-connections" aria-label="Connections">
+  <div class="settings-intro"><h2>What is connected?</h2><p>A configured key is not a guarantee of available credits or access. Check billing with the provider.</p></div>
 
   <!-- NOTION CONNECTION -->
   <div class="card">
     <div class="card-title"><span class="icon">🔗</span> Notion Connection</div>
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="connectNotion()">Connect &amp; Load →</button>
+      <button class="btn btn-primary" onclick="connectNotion()">Reload workspace settings</button>
     </div>
     <div id="notion-status" class="info-box" style="display:none"></div>
-    <div style="font-size:11px;color:var(--text3);margin-top:8px">
-      All API keys and the Notion token live in Netlify environment variables —
-      nothing to paste here. This loads settings from Notion App Settings (ID: <code style="font-family:var(--font-mono);color:var(--text2)">33c9ba2b-3900-8132-b172-f136389ac2e2</code>).
+    <p class="library-message">Loads your saved AI choices, channel style and workspace defaults. Refreshing does not spend AI credits.</p>
+  </div>
+
+  <div class="card" id="keys-card"><div class="outline-heading"><div><span class="studio-eyebrow">THIS DEPLOYMENT</span><h2>Services &amp; credentials</h2></div><button class="btn btn-sm" onclick="loadServiceStatus(true)">Refresh status</button></div><p id="service-status-message" class="library-message" role="status">Open Settings to check configuration. No generation request is made.</p><div id="keys-tbody" class="service-grid"></div></div>
+  <div class="card billing-help"><h2>Where keys and billing live</h2><p>API credentials are configured in <strong>Netlify → Project configuration → Environment variables</strong>. They stay on the server; this page never displays a key. Changing a key requires a new draft to update that draft's functions.</p><p>For Fact-check, the variable is <code>GEMINI_API_KEY</code>. In Google AI Studio, choose the matching project and check <strong>Billing → Credit balance</strong>. Your spend cap limits usage; it does not add credit.</p><div class="btn-row"><a class="btn" href="https://aistudio.google.com/app/billing" target="_blank" rel="noopener">Google AI billing ↗</a><a class="btn" href="https://app.netlify.com/" target="_blank" rel="noopener">Manage server keys ↗</a></div><p class="library-message">Nomad does not read your provider balances. Its cost log is incomplete: web search, voice and other services are not included in a reliable total.</p></div>
+<details class="settings-diagnostics"><summary>Session &amp; diagnostics</summary>  <!-- APP STATE -->
+  <div class="card" id="state-card" style="display:none">
+    <div class="card-title"><span class="icon">🔄</span> App State</div>
+    <div class="kv-grid">
+      <div class="kv-label">Active Episode</div>
+      <div id="state-episode" style="font-family:var(--font-mono);font-size:12px;color:var(--text2)">—</div>
+      <div class="kv-label">Current Stage</div>
+      <div id="state-stage" style="font-family:var(--font-mono);font-size:12px;color:var(--text2)">—</div>
+      <div class="kv-label">Last Updated</div>
+      <div id="state-updated" style="font-family:var(--font-mono);font-size:12px;color:var(--text2)">—</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" onclick="resumeSession()">Resume Session →</button>
+      <button class="btn btn-danger btn-sm" onclick="clearState()">Clear State</button>
     </div>
   </div>
 
-  <!-- KEY STATUS -->
-  <div class="card" id="keys-card" style="display:none">
-    <div class="card-title"><span class="icon">🔐</span> API Key Status</div>
-    <table class="data-table">
-      <thead><tr><th>Service</th><th>Key Preview</th><th>Status</th></tr></thead>
-      <tbody id="keys-tbody"></tbody>
-    </table>
+  <!-- HEALTH -->
+  <div class="card" id="health-card" style="display:none">
+    <div class="card-title"><span class="icon">🚀</span> Live connection test</div>
+    <p class="library-message">This sends a small request to the Gap model and queries YouTube. It does not test voice generation or verify provider balances.</p><div id="health-results"></div>
+    <button class="btn btn-sm" onclick="runHealthCheck()">Test live connections · uses API credits</button>
   </div>
 
+<div id="begin-card" hidden></div></details>
+  </section><section id="settings-models" hidden aria-label="AI choices"><div class="settings-intro"><h2>Choose how the work gets done</h2><p>Manual work and chat imports stay available. API models are used only when you start an AI action.</p></div>
+  <div class="card"><h2>Specialised services</h2><p class="library-message">These services use their own integrations. The writing-model choices below do not change them.</p><div class="service-grid"><article class="service-item"><span class="studio-eyebrow">FACT-CHECK &amp; WEB RESEARCH</span><h3>Gemini + Google Search</h3><p data-fact-model>Fixed server model; refresh Connections to inspect it.</p><span class="badge">Separate API · no automatic fallback</span><p>Review the suggested evidence before saving a verdict. Manual review uses no AI credits.</p></article><article class="service-item"><span class="studio-eyebrow">LOCATION MATCHING</span><h3>Google Maps</h3><p>Optional place lookup. Accept a candidate before saving its coordinates.</p><span class="badge">Separate from Places extraction</span></article><article class="service-item"><span class="studio-eyebrow">VOICE</span><h3>Google Cloud TTS</h3><p>Voice selection and speed live in Produce. Text-model routing does not choose a voice provider.</p><span class="badge">Audio saved on this browser</span></article></div></div>
   <!-- MODEL ROUTING (edits the Notion "🔀 Active Routing" JSON block) -->
   <div class="card" id="models-card" style="display:none">
-    <div class="card-title"><span class="icon">🔀</span> Active Model Routing</div>
+    <div class="outline-heading"><div><span class="studio-eyebrow">CONNECTED ACTIONS</span><h2>Text models</h2></div><span class="badge" id="routing-origin">Built-in defaults</span></div><p class="library-message">Choose a primary model for each action. A fallback can use additional credits after a failure. Extraction stops after one attempt so you decide when to retry.</p>
     <div id="models-table"></div>
-    <div class="btn-row">
-      <button class="btn btn-primary" onclick="saveRouting()">Save Routing to Notion →</button>
-    </div>
-    <div style="font-size:11px;color:var(--text3);margin-top:8px">
-      Pick a model per task from the dropdown. The list is the lookup table
-      <code style="font-family:var(--font-mono)">MODEL_CATALOG</code> in
-      <code style="font-family:var(--font-mono)">index.html</code> — add or retire models there.
-      Providers:
-      <code style="font-family:var(--font-mono)">anthropic · gemini · openai · deepseek · qwen · mistral · xai · openrouter · groq</code>,
-      each needing its <code style="font-family:var(--font-mono)">&lt;PROVIDER&gt;_API_KEY</code> in
-      Netlify env. Saving writes the <strong>🔀 Active Routing</strong> block;
-      <code style="font-family:var(--font-mono)">ai-run</code> picks it up within ~60s — no deploy.
-      <em>Fallback</em> runs automatically if the primary is rate-limited, errors, or is
-      content-filtered. No block yet → built-in
-      <code style="font-family:var(--font-mono)">DEFAULT_ROUTING</code>.
-    </div>
-  </div>
+    <div class="settings-save"><button class="btn btn-primary" id="routing-save" onclick="saveRouting()">Save AI choices</button><p id="routing-save-status" role="status">Changes apply after saving to the existing Notion settings block.</p></div>
+  </div></section><section id="settings-style" hidden aria-label="Channel style"><div class="settings-intro"><h2>Your editorial defaults</h2><p>Set the channel's voice and reusable writing choices. These are defaults for the current workspace.</p></div>
 
   <!-- CHANNEL DNA -->
   <div class="card" id="dna-card" style="display:none">
@@ -1202,7 +1242,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
       <button class="btn btn-primary" onclick="saveDNA()">Save Channel DNA to Notion →</button>
     </div>
     <div style="font-size:11px;color:var(--text3);margin-top:8px">
-      Injected into every model prompt. Saving writes the <strong>📺 Channel DNA</strong>
+      Used by writing prompts that support channel style. Saving writes the <strong>📺 Channel DNA</strong>
       JSON block on the Notion App Settings page — no deploy. Leave a field blank to
       drop it from the prompt.
     </div>
@@ -1233,40 +1273,8 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
     </div>
   </div>
 
-  <!-- APP STATE -->
-  <div class="card" id="state-card" style="display:none">
-    <div class="card-title"><span class="icon">🔄</span> App State</div>
-    <div class="kv-grid">
-      <div class="kv-label">Active Episode</div>
-      <div id="state-episode" style="font-family:var(--font-mono);font-size:12px;color:var(--text2)">—</div>
-      <div class="kv-label">Current Stage</div>
-      <div id="state-stage" style="font-family:var(--font-mono);font-size:12px;color:var(--text2)">—</div>
-      <div class="kv-label">Last Updated</div>
-      <div id="state-updated" style="font-family:var(--font-mono);font-size:12px;color:var(--text2)">—</div>
-    </div>
-    <div class="btn-row">
-      <button class="btn" onclick="resumeSession()">Resume Session →</button>
-      <button class="btn btn-danger btn-sm" onclick="clearState()">Clear State</button>
-    </div>
-  </div>
+</section>
 
-  <!-- HEALTH -->
-  <div class="card" id="health-card" style="display:none">
-    <div class="card-title"><span class="icon">🚀</span> System Health</div>
-    <div id="health-results"></div>
-    <button class="btn btn-sm" onclick="runHealthCheck()">Run Health Check →</button>
-  </div>
-
-  <!-- BEGIN -->
-  <div class="card" id="begin-card" style="display:none">
-    <div class="card-title"><span class="icon">✅</span> Ready to Create</div>
-    <p style="color:var(--text2);margin-bottom:14px">Settings loaded. Choose your next step.</p>
-    <div class="btn-row">
-      <button class="btn" onclick="showStage(7)">Plan →</button>
-      <button class="btn btn-primary" onclick="showStage(1)">Research →</button>
-      <button class="btn" onclick="showStage(2)">Episode Builder →</button>
-    </div>
-  </div>
 </div>
 
 <div class="stage-panel" id="stage-8">
@@ -1294,7 +1302,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
     <div><span class="studio-eyebrow">DISCOVER & COLLECT</span><h1>Library<span class="heading-dot">.</span></h1><p class="subtitle">Small details. New connections. Your next story starts here.</p></div><button class="btn btn-primary" onclick="switchTab('res','youtube')"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg>Add a source</button>
   </div>
 
-  <div class="tabs">
+  <div class="tabs library-tabs">
     <button class="tab active" onclick="switchTab('res','material')">Saved material</button>
     <button class="tab" onclick="switchTab('res','youtube')">Find videos</button>
     <button class="tab" onclick="switchTab('res','prep');renderPrepList()">Analyse</button>
@@ -1393,7 +1401,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
   </div><!-- /res-tab-youtube -->
 
   <!-- PREP TAB — pick source videos, then break each down -->
-  <div id="res-tab-prep" style="display:none">
+  <div id="res-tab-prep" style="display:none"><div class="library-section-head"><div><span class="studio-eyebrow">EXTRACT</span><h2>From source to reusable material</h2><p>Select a video, bring its transcript, then review the extracted rows. Save only the material you want to keep.</p></div><div class="action-service"><span data-action-route="outline"></span><button class="btn btn-sm btn-ghost" onclick="showStage(0);settingsSection('models')">AI choices ↗</button></div></div>
     <p style="font-weight:600;font-size:13px;margin-bottom:10px">Turn saved videos into research rows: <strong>1</strong> pick videos → <strong>2</strong> get transcript &amp; analyse → <strong>3</strong> save the good rows to your tables.</p>
     <div class="tabs" style="margin-bottom:12px">
       <button class="tab active" id="prep-step-1" onclick="prepStep(1)">1 · Select sources</button>
@@ -1436,7 +1444,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
         </div>
       </div>
     </div>
-    <div class="card" id="prep-card-2" style="display:none"><p class="library-message">Choose your input: fetch captions, paste text, or import an Obsidian Markdown/transcript file. Then choose API analysis or your existing chat subscription. API work runs in small resumable parts using the Outline model in Settings.</p>
+    <div class="card" id="prep-card-2" style="display:none"><p class="library-message">Choose your input: fetch captions, paste text, or import an Obsidian Markdown/transcript file. Then choose API analysis or your existing chat subscription. API work runs in small resumable parts using your Material extraction choice in Settings.</p>
       <div class="card-title"><span class="icon">🧪</span> 2 · Get transcript &amp; analyse</div>
       <p style="font-weight:600;font-size:13px;margin-bottom:10px">
         For each video: <strong>Get transcript</strong>, then <strong>Analyse</strong> — the AI pulls
@@ -1451,13 +1459,13 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
     </div>
     <div class="card" id="prep-card-3" style="display:none">
       <div class="card-title"><span class="icon">📤</span> 3 · Save rows to your research tables</div>
-      <p style="font-weight:600;font-size:13px;margin-bottom:10px">The AI's findings, one tab per table. Untick anything wrong, then <strong>Save</strong> — nothing reaches Notion until you do. Places are handled on the <strong>Places</strong> tab. Everything here is unverified until the <strong>Fact-check</strong> tab checks it.</p>
+      <p style="font-weight:600;font-size:13px;margin-bottom:10px">The AI's findings, one tab per table. Untick anything wrong, then <strong>Save</strong> — nothing reaches Notion until you do. Places are handled on the <strong>Places</strong> tab. Use <strong>Fact-check</strong> to review evidence and save your judgement separately.</p>
       <div id="extract-review"><div class="empty-state"><div class="icon">📤</div><p>Analyse a video first.</p></div></div>
     </div>
   </div>
 
   <!-- PLACES TAB -->
-  <div id="res-tab-places" style="display:none">
+  <div id="res-tab-places" style="display:none"><div class="library-section-head"><div><span class="studio-eyebrow">LOCATE</span><h2>Put the story on the map</h2><p>Extract place suggestions, inspect their identity, then save. Browse saved coordinates directly in the Library map.</p></div><div class="action-service"><span data-action-route="places"></span><button class="btn btn-sm btn-ghost" onclick="showStage(0);settingsSection('models')">AI choices ↗</button></div></div>
     <div class="card">
       <div class="card-title"><span class="icon">📍</span> Review extracted places</div>
       <p style="font-weight:600;font-size:13px;margin-bottom:14px">1. Select source videos in Analyse. 2. Extract place suggestions. 3. Review names and evidence, optionally look up map matches, then save selected places. Extraction and map lookup use separate services.</p>
@@ -1477,7 +1485,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
       <div class="card">
         <div class="card-title"><span class="icon">📥</span> Ready to save</div>
         <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Save adds selected new places. Existing places are updated only when selected; empty extracted values never clear saved fields. A Maps candidate must be accepted before its location is saved. Notes and episode links stay intact.</p>
-        <div id="confirmed-list" style="font-size:12px;color:var(--text2);margin-bottom:10px">Nothing picked yet — use <strong>Add ticked → Notion</strong> above.</div>
+        <div id="confirmed-list" style="font-size:12px;color:var(--text2);margin-bottom:10px">Selected suggestions above will be saved. Untick any you do not want to keep.</div>
         <div class="btn-row">
           <button class="btn btn-primary" id="save-places-btn" onclick="saveConfirmedPlaces()">Save selected places to Notion</button>
         </div>
@@ -1486,7 +1494,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
   </div>
 
   <!-- WEB TAB -->
-  <div id="res-tab-web" style="display:none">
+  <div id="res-tab-web" style="display:none"><div class="library-section-head"><div><span class="studio-eyebrow">REVIEW</span><h2>Check the evidence</h2><p>Bring selected material, inspect a source and record your judgement. AI can suggest evidence; you decide what is supported.</p></div><div class="action-service"><span data-action-route="factcheck"></span><button class="btn btn-sm btn-ghost" onclick="showStage(0);settingsSection('models')">AI choices ↗</button></div></div>
     <p style="font-weight:600;font-size:13px;margin-bottom:10px">Review source claims or research a new question. You can check sources yourself, or request AI suggestions and review them before saving.</p>
     <div class="tabs" style="margin-bottom:12px">
       <button class="tab active" id="web-mode-ask" onclick="webMode('ask')">Research a question</button>
@@ -2297,7 +2305,9 @@ function showStage(n) {
   if (n === 2 && typeof enterAssemble === 'function') enterAssemble();
   S.currentStage = n;
   const group = n === 0 ? 'settings' : n === 1 ? 'library' : n === 8 ? 'ideas' : 'episodes';
+  if (n === 0) { renderRoutingTable(); loadServiceStatus(); }
   if (n === 1) initMaterialLibrary();
+  renderActionServices();
   if (n === 8) initLibraryIdeas();
   document.querySelectorAll('[data-nav]').forEach(el => {
     el.classList.toggle('active', el.dataset.nav === group);
@@ -2388,6 +2398,8 @@ function closeModal(id) {
 
 // ─── STAGE 0 — SETTINGS ─────────────────────────────────────────────────────
 async function connectNotion() {
+  if(routingDirty && !confirm('Reload saved settings and discard your unsaved AI choices?'))return;
+  routingDirty=false;
   // The Notion token lives in the Netlify env var NOTION_TOKEN — nothing to paste.
   const statusEl = document.getElementById('notion-status');
   statusEl.style.display = '';
@@ -2399,7 +2411,9 @@ async function connectNotion() {
     S.notionToken = 'env'; // truthy "connected" sentinel used by other stages
     statusEl.className = 'info-box success';
     statusEl.textContent = `✓ Connected as ${me.name || me.bot?.owner?.user?.name || 'Bot'} — loading settings…`;
-    await loadSettingsFromNotion();
+    const loaded=await loadSettingsFromNotion();
+    statusEl.className=loaded?'info-box success':'info-box error';
+    statusEl.textContent=loaded?'Workspace settings loaded from Notion.':'Notion connected, but workspace settings could not be loaded. Reload to retry.';
   } catch (err) {
     statusEl.className = 'info-box error';
     statusEl.textContent = `✗ Connection failed: ${_esc(err.message)} (check the NOTION_TOKEN env var in Netlify)`;
@@ -2414,9 +2428,11 @@ async function loadSettingsFromNotion() {
     renderSettingsUI();
     document.getElementById('nav-0').className = 'nav-status ok';
     // Connection feedback stays in Settings; no routine toast over editorial work.
+    return true;
   } catch (err) {
     toast(`Failed to load settings: ${_esc(err.message)}`, 'error');
     console.error(err);
+    return false;
   }
 }
 
@@ -2504,24 +2520,7 @@ function parseAndApplySettings(blocks) {
 }
 
 function renderSettingsUI() {
-  // Keys card
-  const keysCard = document.getElementById('keys-card');
-  keysCard.style.display = '';
-  const tbody = document.getElementById('keys-tbody');
-  const keyDefs = [
-    { label: 'YouTube Data API v3', k: 'youtube' },
-    { label: 'Anthropic API Key', k: 'anthropic' },
-    { label: 'Google Cloud TTS', k: 'tts' },
-    { label: 'OpenAI (optional)', k: 'openai' },
-    { label: 'Gemini (optional)', k: 'gemini' },
-  ];
-  tbody.innerHTML = keyDefs.map(kd => {
-    const val = S.keys[kd.k] || '';
-    const preview = val ? `${val.substring(0,8)}…${val.slice(-4)}` : '—';
-    const status = val ? '<span class="badge badge-green">✓ Set</span>' : '<span class="badge badge-red">Missing</span>';
-    return `<tr><td>${kd.label}</td><td style="font-family:var(--font-mono);font-size:11px">${preview}</td><td>${status}</td></tr>`;
-  }).join('');
-
+  loadServiceStatus();
   // Model routing card
   document.getElementById('models-card').style.display = '';
   renderRoutingTable();
@@ -2685,27 +2684,73 @@ function routingSelect(kind, task, current) {
     kind === 'fallback' ? `<option value=""${cur ? '' : ' selected'}>— none —</option>` : '';
   const custom =
     cur && !known
-      ? `<optgroup label="Current (not in catalog)"><option value="${cur}" selected>${cur}</option></optgroup>`
+      ? `<optgroup label="Current (not in catalog)"><option value="${_esc(cur)}" selected>${_esc(cur)}</option></optgroup>`
       : '';
   return `<select data-route="${kind}" data-task="${task}"
     style="font-family:var(--font-mono);font-size:11px;width:100%">${none}${custom}${modelOptGroups(known ? cur : '')}</select>`;
 }
 
+let serviceStatus = null, serviceStatusBusy = false, routingDirty = false, routingSaving = false;
+const ACTIVE_ROUTE_INFO = {
+  angle: ['Video discovery', 'Suggest an angle while reviewing source videos.'],
+  theme: ['Episode concept', 'Develop a theme, hook and editorial direction.'],
+  gap: ['Research gaps', 'Identify missing evidence and questions to explore.'],
+  outline: ['Material extraction & outline', 'Analyse transcripts and draft an episode outline. Extraction uses one attempt per part.'],
+  places: ['Places extraction', 'Extract place names from transcripts. Maps matching is a separate service; extraction uses one attempt per part.'],
+  dialogue: ['Script writing', 'Generate dialogue for the episode sections you choose.'],
+  handoff: ['Production handoff', 'Prepare production instructions from your saved episode.'],
+};
+function settingsSection(section) {
+  for(const name of ['connections','models','style']) {
+    document.getElementById(`settings-${name}`).hidden=name!==section;
+    document.querySelector(`[data-settings="${name}"]`).setAttribute('aria-pressed',String(name===section));
+  }
+}
+async function loadServiceStatus(force = false) {
+  if(serviceStatusBusy || (serviceStatus && !force))return;
+  serviceStatusBusy=true;
+  const status=document.getElementById('service-status-message');
+  status.textContent='Checking this deployment’s configuration…';
+  try {
+    const res=await _afetch('/.netlify/functions/service-status',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'},12000);
+    if(!res.ok)throw new Error(`Configuration status unavailable (HTTP ${res.status}).`);
+    const data=await res.json();
+    if(data.checked!=='presence-only' || !data.configured)throw new Error('Configuration response could not be verified.');
+    serviceStatus=data;
+    const labels={notion:'Notion',youtube:'YouTube',maps:'Google Maps',tts:'Google Cloud TTS',...PROVIDER_LABEL};
+    const required={notion:'Workspace and material storage',youtube:'Video discovery',maps:'Optional place matching',tts:'Voice generation',gemini:'Fact-check and web research'};
+    document.getElementById('keys-tbody').innerHTML=Object.entries(labels).map(([key,label])=>`<article class="service-item"><div class="outline-heading"><h3>${_esc(label)}</h3><span class="badge ${data.configured[key]===true?'badge-green':''}">${data.configured[key]===true?'Key configured':'Key not configured'}</span></div><p>${_esc(required[key] || 'Optional text-model provider')}</p></article>`).join('');
+    status.textContent='Key presence checked on this deployment. Validity, model access and remaining credits have not been tested. No paid calls were made.';
+    document.querySelectorAll('[data-fact-model]').forEach(el=>el.textContent=`Server model: ${data.factCheck?.model || 'Unknown'}`);
+    renderActionServices();
+  }catch(e){serviceStatus=null;document.getElementById('keys-tbody').innerHTML='';status.textContent=`${e.message} No connection status is assumed. Refresh to try again.`;}
+  finally{serviceStatusBusy=false;}
+}
+function routeCaption(task) {
+  const route=S.routing?.[task] || DEFAULT_ROUTING_UI[task];
+  return route ? `${PROVIDER_LABEL[route.provider] || route.provider} · ${route.model}` : 'No model selected';
+}
+function renderActionServices() {
+  document.querySelectorAll('[data-action-route]').forEach(el=>{
+    const task=el.dataset.actionRoute;
+    el.textContent=task==='factcheck'?'API: Gemini + Google Search · manual review available':`API: ${routeCaption(task)}${task==='outline'?' · chat import available':''}`;
+  });
+}
+function markRoutingDirty() {
+  routingDirty=true;
+  document.getElementById('routing-save-status').textContent='Unsaved AI choices. Current actions still use the saved settings.';
+}
+
 function renderRoutingTable() {
-  const r = S.routing || DEFAULT_ROUTING_UI;
-  const rows = ROUTING_TASKS.map(task => {
-    const e = r[task] || {};
-    return `<tr>
-      <td style="font-size:12px">${task}</td>
-      <td>${routingSelect('primary', task, e.provider ? e : null)}</td>
-      <td>${routingSelect('fallback', task, e.fallback || null)}</td>
-    </tr>`;
-  }).join('');
-  document.getElementById('models-table').innerHTML = `
-    <table class="data-table">
-      <thead><tr><th>Task</th><th>Primary</th><th>Fallback</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+  document.getElementById('models-card').style.display='';
+  if(routingDirty)return;
+  const r=S.routing || DEFAULT_ROUTING_UI;
+  const card=task=>{const e=r[task] || DEFAULT_ROUTING_UI[task] || {},info=ACTIVE_ROUTE_INFO[task];return `<article class="route-card"><div><h3>${_esc(info?.[0] || task)}</h3><p>${_esc(info?.[1] || 'Reserved setting; no connected action in this version.')}</p></div><label>Primary model${routingSelect('primary',task,e)}</label><label>${['outline','places'].includes(task)?'Fallback (not used for extraction)':'Fallback after failure'}${routingSelect('fallback',task,e.fallback)}</label></article>`;};
+  const active=Object.keys(ACTIVE_ROUTE_INFO),reserved=ROUTING_TASKS.filter(task=>!active.includes(task));
+  document.getElementById('models-table').innerHTML=active.map(card).join('')+`<details class="reserved-routes"><summary>Reserved choices · ${reserved.length} actions not connected yet</summary><p class="library-message">These saved values are preserved for compatibility. Selecting a thumbnail model here does not generate an image.</p>${reserved.map(card).join('')}</details>`;
+  document.getElementById('routing-origin').textContent=S.routingBlockId?'Saved in Notion':'Defaults · no saved block loaded';
+  document.querySelectorAll('[data-route]').forEach(el=>{el.addEventListener('change',markRoutingDirty);el.setAttribute('aria-label',`${el.dataset.route==='primary'?'Primary':'Fallback'} model for ${ACTIVE_ROUTE_INFO[el.dataset.task]?.[0] || el.dataset.task}`);});
+  renderActionServices();
 }
 
 // "provider|model" -> { provider, model }; splits on the FIRST "|" only
@@ -2718,7 +2763,7 @@ function splitRoute(v) {
 }
 
 function collectRouting() {
-  const out = {};
+  const out = {...(S.routing || {})};
   ROUTING_TASKS.forEach(task => {
     const prim = splitRoute(document.querySelector(`[data-route="primary"][data-task="${task}"]`)?.value);
     if (!prim) return;
@@ -2740,23 +2785,18 @@ function codeBlockRichText(str) {
 }
 
 async function saveRouting() {
-  const routing = collectRouting();
-  const json = JSON.stringify(routing, null, 2);
-  if (!S.routingBlockId) {
-    S.routing = routing;
-    navigator.clipboard?.writeText(json);
-    toast('No "🔀 Active Routing" block found on the Notion page. JSON copied to clipboard — paste it into a code block there.', 'warning');
-    return;
-  }
+  if(routingSaving)return;
+  const status=document.getElementById('routing-save-status');
+  if(!S.routingBlockId) {status.textContent='No saved routing block is loaded. Reload workspace settings in Connections, then retry. Your choices have not been saved.';return;}
+  const routing=collectRouting();
+  routingSaving=true;document.getElementById('routing-save').disabled=true;
+  status.textContent='Saving AI choices…';
   try {
-    await notionAPI(`blocks/${S.routingBlockId}`, 'PATCH', {
-      code: { language: 'json', rich_text: codeBlockRichText(json) },
-    });
-    S.routing = routing;
-    toast('Routing saved to Notion. ai-run picks it up within ~60s.', 'success');
-  } catch (e) {
-    toast(`Could not save routing: ${_esc(e.message)}`, 'error');
-  }
+    await notionAPI(`blocks/${S.routingBlockId}`, 'PATCH', {code:{language:'json',rich_text:codeBlockRichText(JSON.stringify(routing,null,2))}});
+    S.routing=routing;routingDirty=false;renderRoutingTable();
+    status.textContent='Saved to Notion. Routed actions pick up these choices within about 60 seconds. Fact-check, Maps and voice keep their separate services.';
+  }catch(e){status.textContent=`Not saved: ${e.message}. Your choices remain here; retry saving.`;}
+  finally{routingSaving=false;document.getElementById('routing-save').disabled=false;}
 }
 
 // --- Channel DNA (edits the Notion "📺 Channel DNA" JSON block) --------------
@@ -2861,8 +2901,6 @@ async function runHealthCheck() {
     results.push({ label: 'AI model router', ok: false, note: e.message });
   }
 
-  // Check TTS
-  results.push({ label: 'Google TTS API', ok: !!S.keys.tts, note: S.keys.tts ? '' : 'Key missing — skipped' });
 
   el.innerHTML = results.map(r =>
     `<div class="row" style="margin-bottom:6px">
@@ -3664,8 +3702,7 @@ function renderBreakdownText(b) {
   return L.join('\n').trim();
 }
 
-// One extraction call, fast model, explicit (no Notion routing round-trip);
-// retry once on a second provider. Returns parsed JSON or throws.
+// Extraction uses the selected task route, with local checkpoints and no automatic fallback.
 async function runExtractCall(transcript, shape, guard, progress = {}) {
   const chunks = transcriptChunks(transcript,4000), key=`extraction-v3:${progress.key || _cheapHash(shape)}:${_cheapHash(transcript)}`;
   let checkpoint=progress.fresh ? null : await localArtifact(key);
@@ -3673,7 +3710,7 @@ async function runExtractCall(transcript, shape, guard, progress = {}) {
   for (let i=0;i<chunks.length;i++) {
     if (checkpoint.outputs[i]) continue;
     progress.status?.(`Part ${i+1} of ${chunks.length} — ${i} completed parts retained on this device.`);
-    const output=await runExtractChunk(chunks[i],shape,guard);
+    const output=await runExtractChunk(chunks[i],shape,guard,progress.task || 'outline');
     if (!output || typeof output!=='object' || Array.isArray(output)) throw new Error('Extraction must return a JSON object.');
     checkpoint.outputs[i]=output;
     await localArtifact(key,checkpoint);
@@ -3697,7 +3734,7 @@ function transcriptChunks(text, limit = 9000) {
   if (rest) chunks.push(rest);
   return chunks;
 }
-async function runExtractChunk(transcript, shape, guard) {
+async function runExtractChunk(transcript, shape, guard, task = 'outline') {
   const sys = 'You extract structured data from travel-video transcripts. Output only valid JSON matching the requested shape. Use "" or [] where the transcript is silent — never invent.';
   const prompt = `Break down this source-video transcript for the Nomad Dimension channel.
 It may be in any language or a rough machine translation — work out the real meaning
@@ -3709,9 +3746,9 @@ ${transcript}
 
 Return ONLY this JSON shape, no markdown:
 ${shape}`;
-  const route=S.routing?.outline || DEFAULT_ROUTING_UI.outline;
+  const route=S.routing?.[task] || DEFAULT_ROUTING_UI[task];
   const req={system:sys,maxTokens:2400,singleAttempt:true,messages:[{role:'user',content:prompt}],provider:route.provider,model:route.model};
-  const raw=(await aiRun('outline',req)).text;
+  const raw=(await aiRun(task,req)).text;
   try { return parseJsonLoose(raw); }
   catch { throw new Error('The result was not valid JSON. Completed parts are retained; try another model or chat.'); }
 
@@ -5586,7 +5623,7 @@ async function extractPlaces(force) {
         return { title: v.title, id: v.id, places: v.breakdown.places, _cached: true };
       }
       try {
-        const r = await runExtractCall(v.transcript, PLACES_SHAPE, guard,{key:`${v.id}:places`,fresh:!!force});
+        const r = await runExtractCall(v.transcript, PLACES_SHAPE, guard,{key:`${v.id}:places`,task:'places',fresh:!!force});
         const places = (r && r.places) || [];
         freshN++;
         // persist into the video's Content Outline so a re-collect is free
@@ -5773,7 +5810,7 @@ function renderConfirmedList() {
   const s = S._placesSaved;
   el.innerHTML = s
     ? `<span style="color:var(--accent3)">✓ Saved ${s.added} new · ${s.updated} refreshed.</span> <a href="${s.url}" target="_blank" rel="noopener" style="color:var(--blue)">Open Places in Notion ↗</a>`
-    : 'Nothing picked yet — use <strong>Add ticked → Notion</strong> above.';
+    : 'Selected suggestions above will be saved. Untick any you do not want to keep.';
 }
 
 let _savingPlaces = false;

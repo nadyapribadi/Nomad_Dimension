@@ -21,6 +21,7 @@ test('every provider entry point rejects anonymous requests before accessing an 
     'ai-run',
     'notion-proxy',
     'library-config',
+    'service-status',
     'tts-proxy',
     'youtube-proxy',
     'maps-proxy',
@@ -29,6 +30,44 @@ test('every provider entry point rejects anonymous requests before accessing an 
   ]) {
     const res = await require(`../${name}`).handler({ httpMethod: 'POST', body: '{}' });
     assert.equal(res.statusCode, 401, name);
+  }
+});
+test('service configuration reveals presence only, makes no upstream call and requires POST', async () => {
+  process.env.APP_PASSWORD = secret;
+  const saved = process.env.GEMINI_API_KEY;
+  const savedDashscope = process.env.DASHSCOPE_API_KEY;
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = () => {
+      throw new Error('No upstream call permitted');
+    };
+    process.env.GEMINI_API_KEY = 'test-secret-must-not-appear';
+    process.env.DASHSCOPE_API_KEY = 'test-qwen-secret';
+    const { handler } = require('../service-status');
+    const event = {
+      httpMethod: 'POST',
+      headers: { cookie: `nomad_session=${makeSession(secret)}` },
+    };
+    const res = await handler(event);
+    const data = JSON.parse(res.body);
+    assert.equal(res.statusCode, 200);
+    assert.equal(data.configured.gemini, true);
+    assert.equal(data.configured.qwen, true);
+    assert.equal(res.body.includes('test-qwen-secret'), false);
+    assert.equal(data.checked, 'presence-only');
+    assert.equal(data.factCheck.model, require('../web-research')._internal.MODEL);
+    assert.equal(res.body.includes('test-secret'), false);
+    assert.ok(Object.values(data.configured).every((value) => typeof value === 'boolean'));
+    assert.equal(res.headers['Cache-Control'], 'no-store');
+    delete process.env.GEMINI_API_KEY;
+    assert.equal(JSON.parse((await handler(event)).body).configured.gemini, false);
+    assert.equal((await handler({ ...event, httpMethod: 'GET' })).statusCode, 405);
+  } finally {
+    global.fetch = originalFetch;
+    if (savedDashscope === undefined) delete process.env.DASHSCOPE_API_KEY;
+    else process.env.DASHSCOPE_API_KEY = savedDashscope;
+    if (saved === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = saved;
   }
 });
 test('idea configuration exposes only database IDs and fails closed when missing', async () => {
