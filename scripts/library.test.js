@@ -605,6 +605,73 @@ test('pasted transcripts reject oversized input without truncation or writes', a
   assert.equal(t.calls.length, 0);
 });
 
+test('shared column filters support exact categories, multi-select, numeric and date ranges', () => {
+  const t = setup();
+  assert.equal(t.run("tableValueMatches('Tokyo','tok','text')"), true);
+  assert.equal(t.run("tableValueMatches('Tokyo','tok','select')"), false);
+  assert.equal(t.run("tableValueMatches(['Food','Culture'],'Culture','multi_select')"), true);
+  assert.equal(t.run("tableValueMatches('30',{min:'20',max:'40'},'number')"), true);
+  assert.equal(t.run("tableValueMatches('3',{min:'20'},'number')"), false);
+  assert.equal(t.run("tableValueMatches('Unknown',{min:'20'},'number')"), true);
+  assert.equal(
+    t.run("tableValueMatches('2026-09-12',{min:'2026-09-01',max:'2026-09-30'},'date')"),
+    true
+  );
+  assert.equal(t.run("tableValueMatches('2025-09-12',{min:'2026-09-01'},'date')"), false);
+});
+
+test('a manual review cannot save a default or absent judgement', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [
+    {
+      id: 'source',
+      name: 'A claim',
+      store: 'research',
+      _proposal: { verdict: '', source_url: '', note: '' },
+    },
+  ];
+  await t.run("saveVerdictProposal('source',document.getElementById('save'))");
+  assert.equal(t.calls.length, 0);
+  assert.match(t.element('fact-review-error').textContent, /Choose a judgement/);
+  assert.ok(S.vlib[0]._proposal);
+});
+
+test('renaming a new place retains its selection and cannot rename an existing original', () => {
+  const t = setup(),
+    S = t.run('S');
+  S.extractedPlaces = [{ name: 'Old name' }, { name: 'Existing', is_existing: true }];
+  S.placeSkip = new Set(['old name']);
+  t.run("editPlaceName(0,'New name');editPlaceName(1,'Changed')");
+  assert.equal(S.extractedPlaces[0].name, 'New name');
+  assert.ok(S.placeSkip.has('new name'));
+  assert.equal(S.placeSkip.has('old name'), false);
+  assert.equal(S.extractedPlaces[1].name, 'Existing');
+});
+
+test('duplicate review starts with no archive selection and blocks stale originals', async () => {
+  const t = setup(),
+    item = t.add('research', 'A short claim'),
+    S = t.run('S');
+  S.vlib = [
+    {
+      id: item.material.id,
+      store: 'research',
+      name: 'A short claim',
+      fields: 'Evidence',
+      lastEdited: item.material.lastEdited,
+    },
+  ];
+  t.run('tidyVlib()');
+  assert.equal(S._vlibArch.size, 0);
+  S._vlibArch.add(item.material.id);
+  S._vlibConfirm = true;
+  t.pages.get(item.material.id).last_edited_time = '2099-01-01T00:00:00.000Z';
+  await t.run("archiveVlib(document.getElementById('archive'))");
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 0);
+  assert.equal(S.vlib.length, 1);
+});
+
 test('Places extraction uses the Places route with one model attempt', async () => {
   const t = setup(),
     S = t.run('S');

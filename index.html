@@ -1103,6 +1103,30 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
 #stage-0 a:not(.btn),.library-detail a { color:var(--accent); text-underline-offset:3px; }
 @media(max-width:1100px) { .route-card { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } .route-card>div { grid-column:1/-1; } .route-card p { max-width:none; } .library-section-head { flex-wrap:wrap; } .action-service { max-width:none; width:100%; } }
 @media(max-width:600px) { #stage-0 .card { padding:18px; } .settings-nav { gap:2px; } .settings-nav .btn { font-size:12px; padding:10px; } .route-card { grid-template-columns:minmax(0,1fr); gap:14px; } .service-grid { grid-template-columns:minmax(0,1fr); } .settings-save { flex-direction:column; align-items:stretch; } .library-section-head h2 { font-size:23px; } }
+
+.table-column-control { margin-top:10px; min-width:140px; }
+.table-column-control input,.table-column-control select { width:100%; min-height:34px; font-family:var(--font-body); font-size:12px; }
+.table-column-control .column-range { display:flex; gap:5px; min-width:190px; }
+.table-column-control .column-range input { min-width:0; }
+.table-filter-summary { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding:12px; font-size:12px; color:var(--text2); }
+.review-table-wrap,#ep-queue-area { overflow:auto; max-width:100%; }
+.review-table-wrap { border:1px solid var(--border); border-radius:10px; }
+.review-dialog { width:min(880px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow:auto; background:var(--surface); border-radius:14px; padding:28px; }
+.review-dialog h3 { margin:18px 0; }
+.review-dialog p,.review-dialog details { margin:12px 0; line-height:1.65; }
+.review-dialog label { display:block; font-size:13px; margin:16px 0; }
+.review-dialog input,.review-dialog select,.review-dialog textarea { display:block; width:100%; margin-top:7px; }
+.review-dialog .verdict-proposal { min-width:0; padding:0; border:0; }
+.review-dialog .verdict-proposal summary { font-size:13px; color:var(--text2); }
+.review-dialog a { color:var(--accent); }
+.review-dialog .source-context { white-space:pre-wrap; overflow-wrap:anywhere; }
+.map-evidence { padding:18px; background:var(--surface2); border-radius:10px; margin:20px 0; }
+@media(max-width:600px) { .review-dialog { padding:18px; } .review-dialog .outline-heading { gap:12px; flex-wrap:wrap; } }
+
+#fact-material-picker { margin:10px 0 24px; border-bottom:1px solid var(--border); padding-bottom:18px; }
+#fact-material-picker summary { cursor:pointer; font-weight:600; margin-bottom:16px; font-size:16px; }
+#fact-material-count { color:var(--text2); font-size:12px; font-weight:400; }
+.review-step-heading { font-size:18px; margin:20px 0; }
 </style>
 </head>
 <body>
@@ -1467,7 +1491,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
   <!-- PLACES TAB -->
   <div id="res-tab-places" style="display:none"><div class="library-section-head"><div><span class="studio-eyebrow">LOCATE</span><h2>Put the story on the map</h2><p>Extract place suggestions, inspect their identity, then save. Browse saved coordinates directly in the Library map.</p></div><div class="action-service"><span data-action-route="places"></span><button class="btn btn-sm btn-ghost" onclick="showStage(0);settingsSection('models')">AI choices ↗</button></div></div>
     <div class="card">
-      <div class="card-title"><span class="icon">📍</span> Review extracted places</div>
+      <div class="outline-heading"><h3>1. Choose sources</h3><div class="idea-actions"><button class="btn" onclick="openSavedPlaces()">Browse saved places</button><button class="btn" onclick="openSavedPlaces();setLibraryView('map')">Open saved map</button><button class="btn" onclick="switchTab('res','prep');prepStep(1)">Choose source videos</button></div></div>
       <p style="font-weight:600;font-size:13px;margin-bottom:14px">1. Select source videos in Analyse. 2. Extract place suggestions. 3. Review names and evidence, optionally look up map matches, then save selected places. Extraction and map lookup use separate services.</p>
       <button class="btn btn-primary" onclick="extractPlaces()">Extract from selected transcripts</button>
       <button class="btn btn-ghost btn-sm" onclick="extractPlaces(true)" title="Runs the AI again on every selected transcript — uses credits">↻ Re-find (fresh, uses credits)</button>
@@ -1477,13 +1501,13 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
     <div id="places-review-area" style="display:none">
       <div class="card">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <div class="card-title" style="margin:0"><span class="icon">🗂️</span> Places found — pick which to save</div>
+          <div class="card-title" style="margin:0"><span class="icon">🗂️</span> 2. Review place suggestions</div>
           <div style="flex:1"></div>
         </div>
-        <div class="idea-actions"><button class="btn" onclick="openSavedPlaces()">Browse saved places</button><button class="btn" id="places-match-button" onclick="reviewPlaceMatches(this)">Look up selected on Maps (API)</button></div><p id="places-review-status" role="status" class="library-message"></p><div id="places-list"></div>
+        <div class="idea-actions"><button class="btn" id="places-match-button" onclick="reviewPlaceMatches(this)">Look up selected on Maps (API)</button></div><p id="places-review-status" role="status" class="library-message"></p><div id="places-list"></div>
       </div>
       <div class="card">
-        <div class="card-title"><span class="icon">📥</span> Ready to save</div>
+        <div class="card-title"><span class="icon">📥</span> 3. Save reviewed selection</div>
         <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Save adds selected new places. Existing places are updated only when selected; empty extracted values never clear saved fields. A Maps candidate must be accepted before its location is saved. Notes and episode links stay intact.</p>
         <div id="confirmed-list" style="font-size:12px;color:var(--text2);margin-bottom:10px">Selected suggestions above will be saved. Untick any you do not want to keep.</div>
         <div class="btn-row">
@@ -1516,9 +1540,8 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
       </div>
       <div id="web-status" style="font-size:12px;color:var(--text3);margin-top:10px"></div>
     </div>
-    <div class="card" id="web-verify-panel" style="display:none"><button class="btn" onclick="verifyLibrarySelection()">Use selected Library material</button><p id="verify-save-status" role="status" class="library-message"></p>
-      <div class="card-title"><span class="icon">✅</span> Fact-check rows</div>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:10px">1. Load or bring selected Library rows. 2. Ask for suggested checks. 3. Inspect the sources and edit each verdict. 4. Save reviewed checks. The original claim text stays unchanged.</p>
+    <div class="card" id="web-verify-panel" style="display:none"><p id="verify-save-status" role="status" class="library-message"></p><details id="fact-material-picker" open><summary>1. Choose material <span id="fact-material-count"></span></summary><button class="btn" onclick="verifyLibrarySelection()">Use selected Library material</button>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:10px">Bring your Library selection or load a table below. You can review each claim manually, or select rows for AI suggestions.</p>
       <div class="tabs" style="margin-bottom:10px">
         <button class="tab active" id="vsrc-saved" onclick="setVerifySource('saved')">Rows already saved in Notion</button>
         <button class="tab" id="vsrc-session" onclick="setVerifySource('session')">Rows found this session (not saved yet)</button>
@@ -1532,7 +1555,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
         <button class="btn btn-sm btn-primary" onclick="searchLibrary(this)">Load / search →</button>
         <button class="btn btn-sm btn-ghost" id="vlib-dedupe-btn" onclick="findDuplicates(this)" title="Load the ticked tables and group near-duplicate + thin rows so you can archive them">🧹 Find duplicates in these tables</button>
       </div>
-      <div id="vlib-results"></div>
+      </details><h3 class="review-step-heading">2. Review evidence and save your judgement</h3><div id="vlib-results"></div>
     </div>
     <div class="card" id="web-new-rows">
       <div class="card-title"><span class="icon">📤</span> New rows found on the web — save to tables</div>
@@ -2005,6 +2028,8 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
   </div>
 </div>
 
+<div class="modal-overlay" id="fact-review-modal" role="dialog" aria-modal="true" aria-labelledby="fact-review-title"><section class="review-dialog"><div class="outline-heading"><h2 id="fact-review-title">Review evidence</h2><button class="btn" onclick="closeModal('fact-review-modal')">Close review</button></div><div id="fact-review-content"></div><p id="fact-review-error" role="status" class="library-message"></p></section></div>
+<div class="modal-overlay" id="place-review-modal" role="dialog" aria-modal="true" aria-labelledby="place-review-title"><section class="review-dialog"><div class="outline-heading"><h2 id="place-review-title">Review place</h2><button class="btn" onclick="closeModal('place-review-modal');renderPlacesReview()">Done reviewing</button></div><div id="place-review-content"></div></section></div>
 <div class="modal-overlay" id="extract-chat-modal" role="dialog" aria-modal="true" aria-labelledby="extract-chat-title"><div class="confirm-paper" style="width:min(900px,95vw);max-height:90dvh;overflow:auto"><h2 id="extract-chat-title">Analyse in your own chat</h2><p>Copy this task into a chat subscription you already use. Review its output here before saving. No Nomad API call is made.</p><label>Task<textarea id="extract-chat-task" rows="6" readonly></textarea></label><label>Returned JSON<textarea id="extract-chat-result" rows="6" oninput="document.getElementById('extract-chat-use').disabled=true"></textarea></label><pre id="extract-chat-review" style="white-space:pre-wrap;max-height:220px;overflow:auto"></pre><div class="idea-actions"><button class="btn" onclick="closeModal('extract-chat-modal')">Close</button><button class="btn" onclick="reviewExtractionChat()">Review result</button><button class="btn btn-primary" id="extract-chat-use" onclick="useExtractionChat()" disabled>Use result &amp; save to source</button></div></div></div>
 <div class="modal-overlay" id="library-detail-modal" role="dialog" aria-modal="true" aria-labelledby="library-detail-title"><aside id="library-detail" class="library-detail" hidden aria-label="Material details"></aside></div>
 <div class="modal-overlay" id="idea-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="idea-confirm-title" aria-describedby="idea-confirm-message">
@@ -2391,6 +2416,7 @@ function openModal(id) {
   modal.querySelector?.('button, input, textarea, select')?.focus();
 }
 function closeModal(id) {
+  if (id === 'place-review-modal') renderPlacesReview();
   if (id === 'library-detail-modal') document.getElementById('library-detail').hidden = true;
   document.getElementById(id).classList.remove('open'); modalReturnFocus?.focus();
   if (id === 'idea-confirm-modal' && LIB.confirmResolve) { const resolve=LIB.confirmResolve; LIB.confirmResolve=null; resolve(false); }
@@ -3397,12 +3423,63 @@ function queueFiltered() {
 }
 
 function selectAllQueue() {
-  for (const { i } of queueFiltered()) S.epSelected.add(i);
+  const visible=visibleTableKeys('source-review-table');
+  for (const { i } of queueFiltered()) if(!visible || visible.has(String(i)))S.epSelected.add(i);
   document.getElementById('ep-sel-count').textContent = `${S.epSelected.size} selected`;
   renderQueue();
   renderPrepList();
-  if (S.epSelected.size) prepStep(2);
+
 }
+
+// Shared column filters for every generated data table. Filtering never changes selection.
+const TABLE_VIEWS = new Map();
+function tableView(id) { if(!TABLE_VIEWS.has(id))TABLE_VIEWS.set(id,{filters:{}});return TABLE_VIEWS.get(id); }
+function tableValueMatches(value, filter, kind='text') {
+  if(!filter)return true;
+  if(kind==='number' || kind==='date') {
+    if(value==='' || value==null || value==='Unknown')return true;
+    const n=kind==='date'?Date.parse(value):Number(value);
+    if(!Number.isFinite(n))return true;
+    const convert=v=>kind==='date'?Date.parse(v):Number(v);
+    return (!filter.min || n>=convert(filter.min)) && (!filter.max || n<=convert(filter.max));
+  }
+  const values=Array.isArray(value)?value:[value];
+  return kind==='select' || kind==='multi_select' ? values.some(v=>String(v).toLowerCase()===String(filter).toLowerCase()) : values.join(' · ').toLowerCase().includes(String(filter).toLowerCase());
+}
+function tableCellValue(cell) {
+  if(cell?.dataset.filterValues){try{return JSON.parse(cell.dataset.filterValues);}catch{/* text fallback */}}
+  return cell?.dataset.filterValue ?? cell?.textContent?.trim() ?? '';
+}
+function enhanceTable(id) {
+  const table=document.getElementById(id);if(!table?.tHead || !table.tBodies?.length)return;
+  const view=tableView(id),headers=[...table.tHead.rows[0].cells];
+  headers.forEach((th,i)=>{
+    if(th.dataset.filterKind==='none' || !th.textContent.trim())return;
+    const label=th.dataset.label || th.textContent.trim(),kind=th.dataset.filterKind || 'text';th.dataset.label=label;
+    const field=view.filters[label];
+    const values=[...new Set([...table.tBodies[0].rows].filter(r=>r.cells.length===headers.length).flatMap(r=>{const value=tableCellValue(r.cells[i]);return Array.isArray(value)?value:[value];}).filter(v=>v!==''))].sort((a,b)=>String(a).localeCompare(String(b)));
+    if(field && typeof field==='string' && !values.includes(field))values.push(field);
+    const cell=document.createElement('div');cell.className='table-column-control';
+    const control=(type,bound)=>`<input type="${type}" aria-label="${bound==='min'?'Minimum':'Maximum'} ${_esc(label)}" placeholder="${bound==='min'?'Min':'Max'}" value="${_esc(field?.[bound] || '')}" data-bound="${bound}">`;
+    cell.innerHTML=kind==='number' || kind==='date'?`<div class="column-range">${control(kind==='date'?'date':'number','min')}${control(kind==='date'?'date':'number','max')}</div>`:kind==='select' || kind==='multi_select'?`<select aria-label="Filter ${_esc(label)}"><option value="">All</option>${values.map(v=>`<option value="${_esc(v)}" ${v===field?'selected':''}>${_esc(v)}</option>`).join('')}</select>`:`<input type="search" aria-label="Filter ${_esc(label)}" placeholder="Filter…" value="${_esc(field || '')}">`;
+    th.appendChild(cell);
+    cell.addEventListener('input',event=>{if(event.target.dataset.bound){view.filters[label] ||= {};view.filters[label][event.target.dataset.bound]=event.target.value;}else view.filters[label]=event.target.value;applyTableFilters(id);});
+    cell.addEventListener('change',event=>{if(event.target.tagName==='SELECT'){view.filters[label]=event.target.value;applyTableFilters(id);}});
+  });
+  const summary=document.createElement('div');summary.className='table-filter-summary';summary.id=`${id}-summary`;
+  summary.innerHTML=`<span role="status"></span><button type="button" class="btn btn-sm btn-ghost">Clear column filters</button>`;
+  summary.querySelector('button').addEventListener('click',()=>{view.filters={};table.tHead.querySelectorAll('.table-column-control input,.table-column-control select').forEach(el=>el.value='');applyTableFilters(id);});
+  table.parentElement.insertBefore(summary,table);applyTableFilters(id);
+}
+function applyTableFilters(id) {
+  const table=document.getElementById(id);if(!table?.tHead)return;
+  const headers=[...table.tHead.rows[0].cells],view=tableView(id),rows=[...table.tBodies[0].rows];let shown=0,total=0,hiddenSelected=0;
+  for(const row of rows){if(row.cells.length!==headers.length)continue;total++;row.hidden=!headers.every((th,i)=>tableValueMatches(tableCellValue(row.cells[i]),view.filters[th.dataset.label || th.textContent.trim()],th.dataset.filterKind || 'text'));if(!row.hidden)shown++;else if(row.querySelector('input[type=checkbox]:checked'))hiddenSelected++;}
+  // Duplicate cluster labels remain with their visible member rows.
+  rows.forEach((row,i)=>{if(row.cells.length===headers.length)return;const next=rows.slice(i+1).findIndex(r=>r.cells.length!==headers.length);row.hidden=!rows.slice(i+1,next<0?undefined:i+1+next).some(r=>!r.hidden);});
+  const summary=document.getElementById(`${id}-summary`);if(summary)summary.querySelector('span').textContent=`${shown} of ${total} rows shown${hiddenSelected?` · ${hiddenSelected} selected outside filters`:''}. Filters do not change your selection.`;
+}
+function visibleTableKeys(id) {const table=document.getElementById(id);if(!table?.tBodies)return null;return new Set([...table.tBodies[0].rows].filter(r=>!r.hidden && r.dataset.rowKey!==undefined).map(r=>r.dataset.rowKey));}
 
 function renderQueue() {
   const area = document.getElementById('ep-queue-area');
@@ -3413,19 +3490,20 @@ function renderQueue() {
   const clip = (s) => (s && s.length > 130 ? s.slice(0, 129) + '…' : s || '');
   area.innerHTML = `
     <div style="font-size:11px;color:var(--text3);margin-bottom:6px">${rows.length} / ${S.epQueue.length}</div>
-    <table class="data-table">
-      <thead><tr><th></th><th>Title</th><th>Channel</th><th>Prep</th><th>Status</th></tr></thead>
+    <table class="data-table" id="source-review-table">
+      <thead><tr><th></th><th>Title</th><th data-filter-kind="select">Channel</th><th data-filter-kind="select">Prep</th><th data-filter-kind="select">Status</th></tr></thead>
       <tbody>
         ${rows.map(({ v, i }) => `
-          <tr onclick="toggleEpVideo(${i})" style="cursor:pointer" id="ep-row-${i}">
+          <tr data-row-key="${i}" onclick="toggleEpVideo(${i})" style="cursor:pointer" id="ep-row-${i}">
             <td><input type="checkbox" id="ep-cb-${i}" ${S.epSelected.has(i) ? 'checked' : ''}></td>
-            <td style="font-weight:500">${_esc(v.title)}<div style="font-size:11px;color:var(--text3);font-weight:400">${_esc(clip(v.angle))}</div>${v.region ? `<div style="font-size:10px;color:var(--text3)">📍 ${_esc(v.region)}</div>` : ''}</td>
+            <td data-filter-value="${_esc(v.title+' '+v.angle+' '+v.region)}" style="font-weight:500">${_esc(v.title)}<div style="font-size:11px;color:var(--text3);font-weight:400">${_esc(clip(v.angle))}</div>${v.region ? `<div style="font-size:10px;color:var(--text3)">📍 ${_esc(v.region)}</div>` : ''}</td>
             <td style="font-size:12px;color:var(--text2)">${_esc(v.channel)}</td>
-            <td style="font-size:11px;color:var(--text3)">${v.transcript ? '📄' : '·'} ${v.breakdown ? '📋' : '·'}${(() => { const m = Object.values(v.mined || {}).reduce((a, b) => a + b, 0); return m ? ` <span style="color:var(--amber)">⛏${m}</span>` : ''; })()}</td>
+            <td data-filter-value="${v.breakdown?'Analysed':v.transcript?'Transcript ready':'Needs transcript'}" style="font-size:11px;color:var(--text3)">${v.transcript ? '📄' : '·'} ${v.breakdown ? '📋' : '·'}${(() => { const m = Object.values(v.mined || {}).reduce((a, b) => a + b, 0); return m ? ` <span style="color:var(--amber)">⛏${m}</span>` : ''; })()}</td>
             <td><span class="badge ${statusBadge[v.status] || 'badge'}">${_esc(v.status)}</span></td>
           </tr>`).join('') || '<tr><td colspan="5" style="color:var(--text3);font-size:12px;padding:10px">No videos match.</td></tr>'}
       </tbody>
     </table>`;
+  enhanceTable('source-review-table');
 }
 
 function toggleEpVideo(i) {
@@ -4104,28 +4182,29 @@ function renderReviewInto(elId, src) {
     <div class="tabs" style="margin-bottom:10px">${tabs}</div>
     ${savedBanner}
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${active}',this,'${src}')">Save ticked to ${cfg.label} →</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',true)">Tick all</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',false)">Untick all</button>
+      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${active}',this,'${src}')">Save selected to ${cfg.label} →</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',true)">Select shown</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',false)">Clear shown</button>
       <span style="font-size:11px;color:var(--text3)">${built.length} row${built.length === 1 ? '' : 's'}${dupN ? ` · <span style="color:var(--amber)">${dupN} already saved</span>` : ''}</span>
     </div>
     <div style="overflow:auto;max-height:60vh;border:1px solid var(--border);border-radius:var(--radius)">
-    <table class="data-table" style="font-size:12px">
-      <thead><tr><th style="width:24px"></th><th>${_esc(cfg.titleProp)}</th>${cols.map(c => `<th>${_esc(c)}</th>`).join('')}</tr></thead>
+    <table id="review-${src}-${active}" class="data-table" style="font-size:12px">
+      <thead><tr><th style="width:24px"></th><th>${_esc(cfg.titleProp)}</th>${cols.map(c => `<th data-filter-kind="${Object.values(built).map(b=>b.p[c]).find(Boolean)?.number!==undefined?'number':Object.values(built).some(b=>b.p[c]?.select)?'select':Object.values(built).some(b=>b.p[c]?.multi_select)?'multi_select':Object.values(built).some(b=>b.p[c]?.date)?'date':'text'}">${_esc(c)}</th>`).join('')}</tr></thead>
       <tbody>
       ${built.map(({ it, p, dup, same }) => {
         const off = skip.has(it._key);
         const tag = same
           ? ' <span style="font-size:10px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:0 4px;white-space:nowrap">already saved from this video</span>'
           : dup ? ' <span style="font-size:10px;color:var(--text3);border:1px solid var(--border);border-radius:4px;padding:0 4px;white-space:nowrap">already saved</span>' : '';
-        return `<tr style="opacity:${off ? 0.4 : 1}">
+        return `<tr data-row-key="${_esc(it._key)}">
           <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview(${_esc(JSON.stringify(it._key))},'${src}',this)" style="width:14px;flex:none"></td>
-          <td style="font-weight:500;max-width:220px;white-space:normal;${same ? 'text-decoration:line-through' : ''}" title="${_esc(it.verify_note || '')}">${it._verified ? '✅ ' : ''}${_esc(cfg.name(it) || '(unnamed)')}${tag}</td>
-          ${cols.map(c => `<td style="max-width:240px;white-space:normal">${_esc(_propText(p[c]))}</td>`).join('')}
+          <td data-filter-value="${_esc(cfg.name(it))}" style="font-weight:500;max-width:220px;white-space:normal;${same ? 'text-decoration:line-through' : ''}" title="${_esc(it.verify_note || '')}">${it._verified ? '✅ ' : ''}${_esc(cfg.name(it) || '(unnamed)')}${tag}</td>
+          ${cols.map(c => `<td data-filter-value="${_esc(p[c]?.number ?? p[c]?.date?.start ?? _propText(p[c]))}" ${p[c]?.multi_select?`data-filter-values="${_esc(JSON.stringify(p[c].multi_select.map(x=>x.name)))}"`: ''} style="max-width:240px;white-space:normal">${_esc(_propText(p[c]))}</td>`).join('')}
         </tr>`;
       }).join('')}
       </tbody>
     </table></div>`;
+  enhanceTable(`review-${src}-${active}`);
 }
 
 // Fetch every title already in a store's Notion DB (paginated), cache it, then
@@ -4169,7 +4248,9 @@ function reviewAll(src, key, on) {
   const s = _skipSet(src);
   const existing = S._existing[key] || new Set();
   const nm = (it) => String(RESEARCH_STORES[key].name(it) || '').trim().toLowerCase();
+  const visible=visibleTableKeys(`review-${src}-${key}`);
   for (const it of poolFor(key, src)) {
+    if(visible && !visible.has(it._key))continue;
     if (on && !existing.has(nm(it))) s.delete(it._key);   // "all" = all that aren't already in Notion
     else s.add(it._key);
   }
@@ -4182,7 +4263,7 @@ function toggleReview(key, src, cb) {
   const off = !s.has(key);
   if (off) s.add(key); else s.delete(key);
   const tr = cb && cb.closest('tr');
-  if (tr) { tr.style.opacity = off ? 0.4 : 1; }         // targeted update — skip the full table rebuild
+  if (tr) { applyTableFilters(`review-${src}-${_reviewTab[src]}`); }         // targeted update — skip the full table rebuild
   else renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
 }
 
@@ -4455,6 +4536,8 @@ function renderVlibResults() {
     el.innerHTML = `<div class="empty-state" style="padding:20px"><p>${S._vlibSource === 'session' ? 'No unsaved rows this session — analyse some videos first.' : 'Nothing loaded — type a keyword and Load, or leave it blank to load a whole table.'}</p></div>`;
     return;
   }
+  const picker=document.getElementById('fact-material-picker');if(picker)picker.open=false;
+  document.getElementById('fact-material-count').textContent=`· ${rows.length} loaded`;
   if (S._vlibTidy) return renderVlibTidy(el, rows);
   const skip = (S._vlibSkip ||= new Set());
   const rk = (r) => r.id || r._key;          // saved rows key by page id, session rows by _key
@@ -4462,35 +4545,45 @@ function renderVlibResults() {
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
       <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="runLibVerify(this)">Suggest checks (${n}) · API</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(true)">Tick all</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(false)">Untick all</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(true)">Select shown</button>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(false)">Clear shown</button>
       ${S._vlibSource === 'session' ? '' : '<button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">🧹 Find duplicates</button>'}
       <span style="font-size:11px;color:var(--text3)">${rows.length} row${rows.length === 1 ? '' : 's'}</span>
     </div>
     <div class="library-message">Suggestions are not saved until you review them and choose Save reviewed check. Existing status: <span class="badge badge-green" style="font-size:9px">confirmed</span> web backs it · <span class="badge badge-amber" style="font-size:9px">corrected</span> web says otherwise (fix in the note) · <span class="badge" style="font-size:9px">unsupported</span> no web evidence found · <span class="badge badge-amber" style="font-size:9px">unfinished</span> run again to retry · <em>— not checked</em> not run yet. Rows fill in live as the run works through them.</div>
     <div style="overflow:auto;max-height:55vh;border:1px solid var(--border);border-radius:var(--radius)">
-    <table class="data-table" style="font-size:12px">
-      <thead><tr><th style="width:24px"></th><th>Table</th><th>Name</th><th>Fields</th><th>Verify</th></tr></thead>
+    <table id="fact-review-table" class="data-table" style="font-size:12px">
+      <thead><tr><th style="width:24px"></th><th data-filter-kind="select">Table</th><th>Name</th><th>Fields</th><th data-filter-kind="select">Review status</th></tr></thead>
       <tbody>
       ${rows.map(r => {
         const k = rk(r);
         const off = skip.has(k);
-        return `<tr id="vlrow-${_esc(k)}" style="opacity:${off ? 0.4 : 1}">
+        return `<tr id="vlrow-${_esc(k)}" data-row-key="${_esc(k)}">
           <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleVlib(${_esc(JSON.stringify(k))})" style="width:14px;flex:none"></td>
           <td style="white-space:nowrap;color:var(--text3)">${RESEARCH_STORES[r.store].label}</td>
-          <td style="max-width:200px;white-space:normal;font-weight:500">${_esc(r.name)}<button class="btn btn-sm" data-key="${_esc(k)}" onclick="startManualVerdict(this.dataset.key)">Review manually</button></td>
+          <td data-filter-value="${_esc(r.name)}" style="max-width:200px;white-space:normal;font-weight:500">${_esc(r.name)}<button class="btn btn-sm" data-key="${_esc(k)}" onclick="startManualVerdict(this.dataset.key)">Review manually</button></td>
           <td style="max-width:320px;white-space:normal;color:var(--text2)">${_esc(r.fields)}</td>
-          <td id="vlver-${_esc(k)}" style="max-width:200px;white-space:normal">${_vlibVerifyCell(r)}${renderVerdictProposal(r)}</td>
+          <td data-filter-value="${r._proposal?'Ready to review':_esc(r._newStatus || r.status || (r._retry?'Unfinished':'Not checked'))}" id="vlver-${_esc(k)}" style="max-width:200px;white-space:normal">${_vlibVerifyCell(r)}${r._proposal?`<button class="btn btn-sm" data-key="${_esc(k)}" onclick="openFactReview(this.dataset.key)">Review suggestion</button>`:''}</td>
         </tr>`;
       }).join('')}
       </tbody>
     </table></div>`;
+  enhanceTable('fact-review-table');
 }
 
 // Verify-column cell for one row: verdict badge / unfinished / "not checked".
 
 function openManualResearch() { const q=document.getElementById('web-query').value.trim();if(!q){toast('Enter a research question first');return;}window.open('https://www.google.com/search?q='+encodeURIComponent(q),'_blank','noopener,noreferrer'); }
-async function startManualVerdict(key) {const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r || r._proposal)return;r._proposal={verdict:'unsupported',source_url:'',note:'',baseEdited:r.lastEdited || null};await localArtifact(`verify-proposal:${key}`,r._proposal);renderVlibResults();}
+async function startManualVerdict(key) {
+  const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r)return;
+  if(!r._proposal){r._proposal={verdict:'',source_url:'',note:'',baseEdited:r.lastEdited || null};await localArtifact(`verify-proposal:${key}`,r._proposal);}
+  renderVlibResults();openFactReview(key);
+}
+function openFactReview(key) {
+  const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r?._proposal)return;
+  document.getElementById('fact-review-content').innerHTML=`<p class="studio-eyebrow">${_esc(RESEARCH_STORES[r.store].label)} · ${r.id?'Saved material':'Unsaved extraction'}</p><h3>${_esc(r.name)}</h3><details><summary>Original fields &amp; context</summary><p class="source-context">${_esc(r.fields)}</p>${r.id?`<a href="https://www.notion.so/${_esc(r.id.replace(/-/g,''))}" target="_blank" rel="noopener">Edit original in Notion ↗</a>`:''}</details><p>Your judgement changes the verification record. It does not rewrite the original claim.</p>${renderVerdictProposal(r)}`;
+  document.getElementById('fact-review-error').textContent='';openModal('fact-review-modal');
+}
 async function verifyLibrarySelection() {
   const selected=Object.values(LIB.selected);if(!selected.length){document.getElementById('verify-save-status').textContent='Select material in Saved material first.';return;}
   S._vlibSource='saved';S._vlibTidy=false;S._vlibSkip=new Set();
@@ -4501,18 +4594,23 @@ async function verifyLibrarySelection() {
 function renderVerdictProposal(r) {
   if(!r._proposal)return '';
   const v=r._proposal,k=r.id || r._key;
-  return `<details open class="verdict-proposal"><summary>Suggested check · not saved</summary><label>Verdict<select data-key="${_esc(k)}" onchange="editVerdictProposal(this.dataset.key,'verdict',this.value)">${['confirmed','corrected','unsupported'].map(x=>`<option ${v.verdict===x?'selected':''}>${x}</option>`).join('')}</select></label><label>Source URL<input data-key="${_esc(k)}" value="${_esc(v.source_url || '')}" oninput="editVerdictProposal(this.dataset.key,'source_url',this.value)"></label><a href="${_esc(safeURL(v.source_url))}" target="_blank" rel="noopener">Inspect source ↗</a><label>Review note<textarea rows="4" data-key="${_esc(k)}" oninput="editVerdictProposal(this.dataset.key,'note',this.value)">${_esc([v.corrected_value && `Suggested correction: ${v.corrected_value}`,v.note].filter(Boolean).join('\n'))}</textarea></label><button class="btn btn-sm" data-key="${_esc(k)}" onclick="saveVerdictProposal(this.dataset.key,this)">Save reviewed check</button><button class="btn btn-sm btn-ghost" data-key="${_esc(k)}" onclick="discardVerdictProposal(this.dataset.key)">Discard suggestion</button></details>`;
+  return `<details open class="verdict-proposal"><summary>Your review · not saved</summary><label>Verdict<select data-key="${_esc(k)}" onchange="editVerdictProposal(this.dataset.key,'verdict',this.value)"><option value="">Choose a judgement</option>${['confirmed','corrected','unsupported'].map(x=>`<option ${v.verdict===x?'selected':''}>${x}</option>`).join('')}</select></label><label>Source URL<input data-key="${_esc(k)}" value="${_esc(v.source_url || '')}" oninput="editVerdictProposal(this.dataset.key,'source_url',this.value)"></label><a data-review-source href="${_esc(safeURL(v.source_url))}" ${safeURL(v.source_url)==='#'?'hidden':''} target="_blank" rel="noopener">Inspect source ↗</a><label>Correction, if needed<input data-key="${_esc(k)}" value="${_esc(v.corrected_value || '')}" oninput="editVerdictProposal(this.dataset.key,'corrected_value',this.value)"></label><label>Review note<textarea rows="4" data-key="${_esc(k)}" oninput="editVerdictProposal(this.dataset.key,'note',this.value)">${_esc(v.note || '')}</textarea></label><button class="btn btn-sm" data-key="${_esc(k)}" onclick="saveVerdictProposal(this.dataset.key,this)">Save reviewed check</button><button class="btn btn-sm btn-ghost" data-key="${_esc(k)}" onclick="discardVerdictProposal(this.dataset.key)">Discard suggestion</button></details>`;
 }
-function editVerdictProposal(key,field,value) {const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r?._proposal)return;r._proposal[field]=value;localArtifact(`verify-proposal:${key}`,r._proposal).catch(()=>{});}
-async function discardVerdictProposal(key) {const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r)return;r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);renderVlibResults();}
+function editVerdictProposal(key,field,value) {
+  const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r?._proposal)return;r._proposal[field]=value;
+  if(field==='source_url'){const link=document.querySelector('[data-review-source]');if(link){link.href=safeURL(value);link.hidden=safeURL(value)==='#';}}
+  localArtifact(`verify-proposal:${key}`,r._proposal).catch(()=>{document.getElementById('fact-review-error').textContent='Could not retain this edit on this device. Keep the review open until you save it.';});
+}
+async function discardVerdictProposal(key) {const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r)return;r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);closeModal('fact-review-modal');renderVlibResults();}
 async function saveVerdictProposal(key,btn) {
   const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r?._proposal || r._saving)return;
   r._saving=true;btn.disabled=true;
   try {
+    if(!['confirmed','corrected','unsupported'].includes(r._proposal.verdict))throw new Error('Choose a judgement before saving.');
     if(['confirmed','corrected'].includes(r._proposal.verdict) && safeURL(r._proposal.source_url)==='#')throw new Error('Add a usable source URL before confirming or correcting this claim.');
     if((r._proposal.note || '').length+(r._proposal.source_url || '').length+(r._proposal.corrected_value || '').length>1750)throw new Error('Keep the review note and source under 1,750 characters; no text has been truncated.');
-    await _writeVerdict(r,r._proposal);r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);document.getElementById('verify-save-status').textContent=`Saved reviewed check for ${r.name}. The original claim was not rewritten.`;
-  }catch(e){document.getElementById('verify-save-status').textContent=e.message;}finally{r._saving=false;renderVlibResults();}
+    await _writeVerdict(r,r._proposal);r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);document.getElementById('verify-save-status').textContent=`Saved reviewed check for ${r.name}. The original claim was not rewritten.`;closeModal('fact-review-modal');
+  }catch(e){document.getElementById('verify-save-status').textContent=e.message;document.getElementById('fact-review-error').textContent=e.message;}finally{r._saving=false;btn.disabled=false;renderVlibResults();}
 }
 
 function _vlibVerifyCell(r) {
@@ -4530,7 +4628,8 @@ function _vlibVerifyCell(r) {
 function _vlibPaintRow(r) {
   const k = r.id || r._key;
   const cell = document.getElementById(`vlver-${k}`);
-  if (cell) cell.innerHTML = _vlibVerifyCell(r);
+  if (cell) {cell.innerHTML = _vlibVerifyCell(r);cell.dataset.filterValue=r._proposal?'Ready to review':r._newStatus || r.status || (r._retry?'Unfinished':'Not checked');}
+  applyTableFilters('fact-review-table');
   const tr = document.getElementById(`vlrow-${k}`);
   if (tr && (r._newStatus || (S._vlibSkip && S._vlibSkip.has(k)))) {
     tr.style.opacity = 0.4;
@@ -4544,26 +4643,15 @@ function toggleVlib(id) {
   renderVlibResults();
 }
 function vlibAll(on) {
-  S._vlibSkip = on ? new Set() : new Set((S.vlib || []).map(r => r.id || r._key));
+  const visible=visibleTableKeys('fact-review-table');S._vlibSkip ||= new Set();
+  for(const r of S.vlib || []){const key=r.id || r._key;if(visible && !visible.has(key))continue;if(on)S._vlibSkip.delete(key);else S._vlibSkip.add(key);}
   renderVlibResults();
 }
 
 // ─── Tidy mode: cluster near-dupes per store, pre-check the redundant/thin ───
 function tidyVlib() {
-  S._vlibTidy = !S._vlibTidy;
-  if (S._vlibTidy) {
-    const arch = new Set();
-    const byStore = {};
-    for (const r of S.vlib) (byStore[r.store] ||= []).push(r);
-    for (const list of Object.values(byStore)) {
-      for (const c of _clusterRows(list)) {
-        if (c.rows.length > 1) for (const r of c.rows) if (r.id !== c.keepId) arch.add(r.id);
-      }
-      for (const r of list) if (_thinName(r.name)) arch.add(r.id);
-    }
-    S._vlibArch = arch;
-    S._vlibConfirm = false;
-  }
+  S._vlibTidy=!S._vlibTidy;
+  if(S._vlibTidy){S._vlibArch=new Set();S._vlibConfirm=false;}
   renderVlibResults();
 }
 function toggleArch(id) {
@@ -4583,7 +4671,7 @@ function renderVlibTidy(el, rows) {
     const clusters = _clusterRows(list);
     const rowHtml = (r, inCluster) => {
       const on = arch.has(r.id);
-      if (on && inCluster) dupN++;
+      if (inCluster) dupN++;
       const thin = _thinName(r.name);
       return `<tr style="opacity:${on ? 0.4 : 1}">
         <td><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleArch('${r.id}')" style="width:14px;flex:none"></td>
@@ -4594,7 +4682,7 @@ function renderVlibTidy(el, rows) {
     const parts = [];
     for (const c of clusters) {
       if (c.rows.length > 1) {
-        parts.push(`<tr><td colspan="3" style="background:var(--bg2);font-size:10px;color:var(--text3);padding:3px 8px">≈ ${c.rows.length} similar — the unchecked row is kept</td></tr>`);
+        parts.push(`<tr><td colspan="3" style="background:var(--bg2);font-size:10px;color:var(--text3);padding:3px 8px">≈ ${c.rows.length} similar — inspect before selecting anything to archive</td></tr>`);
         parts.push(c.rows.slice().sort((a, b) => (a.id === c.keepId ? -1 : b.id === c.keepId ? 1 : 0)).map(r => rowHtml(r, true)).join(''));
       } else if (_thinName(c.rows[0].name)) {
         thinN++;
@@ -4602,18 +4690,19 @@ function renderVlibTidy(el, rows) {
       }
     }
     if (parts.length) blocks.push(`<div style="font-weight:600;font-size:11px;color:var(--text2);margin:10px 0 4px">${RESEARCH_STORES[store].label}</div>
-      <table class="data-table" style="font-size:12px"><tbody>${parts.join('')}</tbody></table>`);
+      <table id="duplicate-${store}" class="data-table" style="font-size:12px"><thead><tr><th></th><th>Material</th><th>Fields</th></tr></thead><tbody>${parts.join('')}</tbody></table>`);
   }
   const total = arch.size;
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
       <button class="btn btn-sm ${S._vlibConfirm ? 'btn-danger' : 'btn-primary'}" style="padding:2px 10px" onclick="archiveVlib(this)" ${total ? '' : 'disabled'}>${S._vlibConfirm ? `Confirm — archive ${total}` : `Archive checked (${total}) →`}</button>
       <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">✕ done</button>
-      <span style="font-size:11px;color:var(--text3)">${dupN} look like duplicates · ${thinN} look thin · checked rows move to Notion trash (you can restore them)</span>
+      <span style="font-size:11px;color:var(--text3)">${dupN} rows in similar groups · ${thinN} have short or vague names · checked rows move to Notion trash (you can restore them)</span>
     </div>
     <div style="overflow:auto;max-height:55vh;border:1px solid var(--border);border-radius:var(--radius);padding:0 8px 8px">
       ${blocks.join('') || '<div class="empty-state" style="padding:20px"><p>No near-duplicates or thin rows found. 🎉</p></div>'}
     </div>`;
+  Object.keys(byStore).forEach(store=>enhanceTable(`duplicate-${store}`));
 }
 
 let _vlibArchiving = false;
@@ -4628,7 +4717,7 @@ async function archiveVlib(btn) {
   let failed = 0;
   try {
     for (const id of ids) {
-      try { await notionAPI(`pages/${id}`, 'PATCH', { archived: true }); gone.add(id); }
+      try { const row=S.vlib.find(r=>r.id===id),current=await notionAPI(`pages/${id}`);if(current.archived || current.in_trash || (row?.lastEdited && current.last_edited_time!==row.lastEdited))throw new Error('Source changed; reload before archiving.');await notionAPI(`pages/${id}`, 'PATCH', { archived: true }); gone.add(id); }
       catch (e) { failed++; console.error('archive failed', id, e); }
     }
     // drop ONLY the rows that actually archived — keep failures visible to retry
@@ -5714,7 +5803,7 @@ function setPlaceField(i, field, value) {
 async function enrichPlacesFromMaps(selectedOnly = false) {
   // Enrich existing rows too — that's how "Update in DB" gets fresh data
   // (rating / address / closed status drift over the years).
-  const targets = S.extractedPlaces.filter(p=>!selectedOnly || !S.placeSkip?.has(p.name.toLowerCase()));
+  const targets = S.extractedPlaces.filter(p=>!p._saved && (!selectedOnly || !S.placeSkip?.has(p.name.toLowerCase())));
   if (!targets.length) return 0;
   let matched = 0;
   await mapPool(targets, 5, async (p) => {
@@ -5763,9 +5852,20 @@ const shortFrom = (arr) => (arr || [])
 // ones already in the DB so a blind "Queue" won't re-push them.
 function renderPlacesReview() {
   const rows=S.extractedPlaces,skip=(S.placeSkip ||= new Set()),selected=rows.filter(p=>!skip.has(p.name.toLowerCase()) && !p._saved);
-  document.getElementById('places-list').innerHTML=`<div class="idea-actions"><button class="btn btn-sm" onclick="placesPick('new')">Select new</button><button class="btn btn-sm" onclick="placesPick('all')">Select all</button><button class="btn btn-sm" onclick="placesPick('none')">Clear selection</button><span>${selected.length} selected · ${rows.length} suggestions</span></div>`+rows.map((p,i)=>`<article class="place-review-item"><div class="review-item-heading"><label><input type="checkbox" aria-label="Select place ${_esc(p.name)}" ${!skip.has(p.name.toLowerCase()) && !p._saved?'checked':''} ${p._saved?'disabled':''} onchange="togglePlace(${i},this)"> ${_esc(p.name)} ${_esc(hasCJK(p.name_local)?p.name_local:'')}</label><span class="badge">${p._saved?'Saved':p.is_existing?'Existing place':'New place'}</span></div><p>${_esc(p.what_happens_here || 'No description recorded.')}</p><p class="library-message">Source: ${_esc(shortFrom(p.from))}</p><div class="library-toolbar"><label>Prefecture<select ${p._saved?'disabled':''} onchange="setPlaceField(${i},'prefecture',this.value)">${PREFECTURES.map(pref=>`<option ${p.prefecture===pref?'selected':''}>${_esc(pref)}</option>`).join('')}</select></label>${FOOD_TYPES.has(p.type)?`<label>Halal<select ${p._saved?'disabled':''} onchange="setPlaceField(${i},'halal',this.value)">${['Unknown','Yes','Partial','No'].map(x=>`<option ${p.halal===x?'selected':''}>${x}</option>`).join('')}</select></label>`:''}<span class="library-message">${_esc(p.type)} · ${p._acceptedMaps?'Map identity accepted':p.prefFromGuess?'Location inferred; review it':'Location not independently verified'}</span></div><details><summary>Original details and map evidence</summary><p>Area: ${_esc(p.area || 'Unknown')} · Price mentioned: ${_esc(p.price_if_spoken || 'Not recorded')}</p><p>Food: ${_esc(p.food_here || 'Not recorded')}</p><a href="${_esc(safeURL(p.google_maps_url))}" target="_blank" rel="noopener">Inspect on Google Maps ↗</a>${p.mapsCandidate?`<div class="match-context"><strong>Suggested match: ${_esc(p.mapsCandidate.name)}</strong><p>${_esc(p.mapsCandidate.address || '')}</p><a href="${_esc(safeURL(p.mapsCandidate.mapsUri))}" target="_blank" rel="noopener">Check candidate ↗</a><button class="btn" onclick="acceptMapsMatch(${i})">Accept this location</button></div>`:''}</details></article>`).join('');
-  document.getElementById('confirmed-list').textContent=selected.length ? `${selected.filter(p=>!p.is_existing).length} new · ${selected.filter(p=>p.is_existing).length} existing selected. Save is the only action that writes these place rows.` : 'Select places above to save.';
+  document.getElementById('places-list').innerHTML=`<div class="idea-actions"><button class="btn btn-sm" onclick="placesPick('new')">Select new shown</button><button class="btn btn-sm" onclick="placesPick('all')">Select shown</button><button class="btn btn-sm" onclick="placesPick('none')">Clear shown</button><span>${selected.length} selected · ${rows.length} suggestions</span></div><div class="review-table-wrap"><table class="data-table" id="places-review-table"><thead><tr><th></th><th>Name</th><th data-filter-kind="select">Type</th><th data-filter-kind="select">Prefecture</th><th data-filter-kind="select">State</th><th>Sources</th><th data-filter-kind="none">Review</th></tr></thead><tbody>${rows.map((p,i)=>`<tr data-row-key="${i}"><td><input type="checkbox" aria-label="Select place ${_esc(p.name)}" ${!skip.has(p.name.toLowerCase()) && !p._saved?'checked':''} ${p._saved?'disabled':''} onchange="togglePlace(${i},this)"></td><td>${_esc(p.name)}</td><td>${_esc(p.type)}</td><td>${_esc(p.prefecture || 'Unknown')}</td><td>${p._saved?'Saved':p._saveError?'Save failed':p.is_existing?'Existing place':'New place'}</td><td>${_esc(shortFrom(p.from))}</td><td><button class="btn btn-sm" onclick="openPlaceReview(${i})">Review details</button></td></tr>`).join('')}</tbody></table></div>`;
+  enhanceTable('places-review-table');
+  document.getElementById('confirmed-list').textContent=selected.length?`${selected.filter(p=>!p.is_existing).length} new · ${selected.filter(p=>p.is_existing).length} existing selected. Saving includes selected rows outside filters.`:'Select reviewed places above to save.';
   document.getElementById('save-places-btn').disabled=!selected.length || _savingPlaces;
+}
+function openPlaceReview(i) {
+  const p=S.extractedPlaces[i];if(!p)return;
+  const readonly=p._saved || p.is_existing;
+  document.getElementById('place-review-content').innerHTML=`<p class="studio-eyebrow">${p._saved?'Saved':p.is_existing?'Existing place':'New suggestion'}</p><label>Name<input value="${_esc(p.name)}" ${readonly?'readonly':''} oninput="editPlaceName(${i},this.value)"></label><label>Type<select ${readonly?'disabled':''} onchange="setPlaceField(${i},'type',this.value)">${[...new Set([...PLACE_TYPES,p.type])].map(x=>`<option ${p.type===x?'selected':''}>${_esc(x)}</option>`).join('')}</select></label><label>Description<textarea rows="4" ${readonly?'readonly':''} oninput="setPlaceField(${i},'what_happens_here',this.value)">${_esc(p.what_happens_here || '')}</textarea></label><label>Prefecture<select ${p._saved?'disabled':''} onchange="setPlaceField(${i},'prefecture',this.value)">${PREFECTURES.map(x=>`<option ${p.prefecture===x?'selected':''}>${_esc(x)}</option>`).join('')}</select></label><label>Halal<select ${p._saved?'disabled':''} onchange="setPlaceField(${i},'halal',this.value)">${['Unknown','Yes','Partial','No'].map(x=>`<option ${p.halal===x?'selected':''}>${x}</option>`).join('')}</select></label><p>Source: ${_esc(shortFrom(p.from))}</p><details><summary>Other extracted details (read-only)</summary><dl>${[['Local name',p.name_local],['Romaji',p.romaji],['Area',p.area],['Price mentioned',p.price_if_spoken],['Food mentioned',p.food_here],['Coordinates',typeof p.lat==='number'?`${p.lat}, ${p.lng}`:''],['Website',p.website],['Rating',p.rating],['Map summary',p.maps_summary]].map(([label,value])=>`<dt>${_esc(label)}</dt><dd>${_esc(value ?? 'Not recorded')}</dd>`).join('')}</dl></details><p>${p._saved?'This place has been saved.':p.is_existing?'Only reviewed location fields, prefecture, halal and source links can be updated here. Edit other original fields in Notion.':'Edits stay in this review until you select the place and save it.'}</p>${p.existing_id?`<a href="https://www.notion.so/${_esc(p.existing_id.replace(/-/g,''))}" target="_blank" rel="noopener">Open original in Notion ↗</a>`:''}<p role="status">${_esc(p._saveError || '')}</p><section class="map-evidence"><h3>Location evidence</h3><p>${_esc(p.address || p.area || 'No address recorded.')} · ${p._acceptedMaps?'Map identity accepted':'Location not independently verified'}</p>${safeURL(p.google_maps_url)!=='#'?`<a href="${_esc(safeURL(p.google_maps_url))}" target="_blank" rel="noopener">Inspect Google Maps ↗</a>`:''}${p.mapsCandidate?`<h4>${_esc(p.mapsCandidate.name)}</h4><p>${_esc(p.mapsCandidate.address || '')}</p><a href="${_esc(safeURL(p.mapsCandidate.mapsUri))}" target="_blank" rel="noopener">Inspect candidate ↗</a><button class="btn" ${p._saved?'disabled':''} onclick="acceptMapsMatch(${i});openPlaceReview(${i})">Accept this location</button>`:''}</section>`;
+  openModal('place-review-modal');
+}
+function editPlaceName(i,value) {
+  const p=S.extractedPlaces[i];if(!p || p._saved || p.is_existing)return;
+  const skipped=S.placeSkip.has(p.name.toLowerCase());S.placeSkip.delete(p.name.toLowerCase());setPlaceField(i,'name',value);if(skipped)S.placeSkip.add(value.toLowerCase());
 }
 function openSavedPlaces() { document.getElementById('library-category').value='places';libraryCategoryChanged();switchTab('res','material'); }
 async function reviewPlaceMatches(btn) {
@@ -5780,12 +5880,8 @@ function togglePlace(i,cb) {
 
 // 'new' = only ones not in the DB · 'all' = everything · 'none'
 function placesPick(mode) {
-  const lc = (p) => p.name.toLowerCase();
-  S.placeSkip = new Set(
-    mode === 'none' ? S.extractedPlaces.map(lc)
-      : mode === 'new' ? S.extractedPlaces.filter(p => p.is_existing).map(lc)
-        : []
-  );
+  const visible=visibleTableKeys('places-review-table');S.placeSkip ||= new Set();
+  S.extractedPlaces.forEach((p,i)=>{if(p._saved || (visible && !visible.has(String(i))))return;const key=p.name.toLowerCase();if(mode==='none' || (mode==='new' && p.is_existing))S.placeSkip.add(key);else S.placeSkip.delete(key);});
   renderPlacesReview();
 }
 
@@ -5851,6 +5947,7 @@ async function saveConfirmedPlaces() {
     for (const p of S.confirmedPlaces) {
       if (p._saved) continue;
       try {
+        if(!p.name.trim() || p.name.length>240 || (p.what_happens_here || '').length>1900)throw new Error('Review the name (1–240 characters) and description (up to 1,900 characters) before saving.');
         if (p.is_existing && p.existing_id) {
           const current=await notionAPI(`pages/${p.existing_id}`);
           if(current.archived || current.in_trash || (p.existingLastEdited && current.last_edited_time!==p.existingLastEdited))throw new Error('Place changed in Notion. Reload and review before updating.');
@@ -5867,7 +5964,7 @@ async function saveConfirmedPlaces() {
           p._createKey=`place-create:${p.name.trim().toLowerCase()}`;
           if(p._createUncertain || await localArtifact(p._createKey))throw new Error('An earlier creation may still be completing. Inspect Notion before attempting another create.');
           p._createUncertain=true;await localArtifact(p._createKey,{at:new Date().toISOString()});
-          await notionAPI('pages', 'POST', {
+          const created=await notionAPI('pages', 'POST', {
             parent: { database_id: DB_IDS.places },
             properties: {
               'Name': { title: [{ text: { content: p.name } }] },
@@ -5875,7 +5972,7 @@ async function saveConfirmedPlaces() {
               ...machineProps(p),
             },
           });
-          added++;await localArtifact(p._createKey,null);
+          p.existing_id=created.id;added++;await localArtifact(p._createKey,null);
         }
         p._saved = true;
       } catch (err) { if(err.status>=400 && err.status<500){p._createUncertain=false;if(p._createKey)await localArtifact(p._createKey,null);}failed++;p._saveError=err.message; }
