@@ -168,3 +168,8 @@ TTS accepts at most 4,500 UTF-8 bytes per line. Provider response validation
 varies by adapter; errors are returned to the caller. LLM routing has bounded
 retry/fallback. Other writes are recovered at the workflow layer where possible.
 Source-caption timing is optional; missing timing is null, never invented.
+
+`ai-run` accepts optional `singleAttempt: true` for extraction: one provider attempt,
+a 20-second model budget, and no automatic retry/fallback. This does not guarantee
+a live model response or erase potential costs from a timed-out request. The client
+retains completed extraction parts and asks the operator to resume explicitly.

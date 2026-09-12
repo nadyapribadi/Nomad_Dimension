@@ -57,7 +57,17 @@ exports.handler = async (event) => {
     return respond(400, { error: 'Invalid JSON' });
   }
 
-  const { task, provider, model, system, messages, maxTokens, temperature, episode } = payload;
+  const {
+    task,
+    provider,
+    model,
+    system,
+    messages,
+    maxTokens,
+    temperature,
+    episode,
+    singleAttempt,
+  } = payload;
 
   // Resolve provider+model: explicit override > Notion "Active Routing" > DEFAULT_ROUTING.
   let p = provider;
@@ -82,6 +92,7 @@ exports.handler = async (event) => {
       messages,
       maxTokens,
       temperature,
+      singleAttempt: singleAttempt === true,
     });
   } catch (err) {
     return respond(STATUS_BY_CODE[err.code] || 500, {

@@ -78,7 +78,7 @@ const FAILOVER = new Set(['rate_limited', 'network', 'provider_error', 'content_
 async function callModel(req, deps = {}) {
   const fetchImpl = deps.fetch || globalThis.fetch;
   const env = deps.env || process.env;
-  const deadline = Date.now() + 48000;
+  const deadline = Date.now() + (req.singleAttempt ? 20000 : 48000);
   const timedFetch = (url, options) =>
     fetchImpl(url, {
       ...options,
@@ -112,7 +112,7 @@ async function callModel(req, deps = {}) {
     const adapter = ADAPTERS[prov];
     if (!adapter) throw taxonomyError('invalid_request', `unknown provider "${prov}"`);
     let lastErr;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < (req.singleAttempt ? 1 : 2); attempt++) {
       try {
         if (Date.now() >= deadline)
           throw taxonomyError('network', 'Model request deadline reached');
@@ -131,7 +131,7 @@ async function callModel(req, deps = {}) {
         return { ...res, costUsd: cost(mdl, res.usage) };
       } catch (err) {
         lastErr = err;
-        if (!RETRYABLE.has(err.code) || attempt === 1) throw err;
+        if (req.singleAttempt || !RETRYABLE.has(err.code) || attempt === 1) throw err;
         await sleep(500 * (attempt + 1));
       }
     }
@@ -142,7 +142,7 @@ async function callModel(req, deps = {}) {
     return await runAttempts(provider, model);
   } catch (err) {
     const fb = req.fallback || (routed && routed.fallback);
-    if (fb && fb.provider && fb.model && FAILOVER.has(err.code)) {
+    if (!req.singleAttempt && fb && fb.provider && fb.model && FAILOVER.has(err.code)) {
       return runAttempts(fb.provider, fb.model);
     }
     throw err;

@@ -291,3 +291,14 @@ test('cost math', () => {
   assert.equal(cost('gemini-3.6-flash', { inputTokens: 0, outputTokens: 1_000_000 }), 0.4);
   assert.equal(cost('unknown-model', { inputTokens: 1, outputTokens: 1 }), null);
 });
+
+test('single-attempt extraction does not repeat a failed request or charge through a fallback', async () => {
+  const fetch = mockFetch(() => httpErr(504, { error: { message: 'timeout' } }));
+  await assert.rejects(
+    callModel(
+      { task: 'outline', singleAttempt: true, messages: [{ role: 'user', content: 'Transcript' }] },
+      { fetch, env }
+    )
+  );
+  assert.equal(fetch.calls.length, 1);
+});

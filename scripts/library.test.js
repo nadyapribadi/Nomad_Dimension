@@ -106,7 +106,7 @@ function setup() {
         rows = rows.filter((p) =>
           f.relation
             ? p.properties[f.property]?.relation?.some((r) => r.id === f.relation.contains)
-            : text(p.properties[f.property]) === f.rich_text.equals
+            : text(p.properties[f.property]) === (f.rich_text || f.title).equals
         );
       }
       result = { results: rows, has_more: false };
@@ -430,4 +430,238 @@ test('map fitting keeps date-line neighbors together instead of spanning the wor
   run('fitLibraryMap()');
   assert.ok(LIB.map.x < 0.01 || LIB.map.x > 0.99);
   assert.ok(LIB.map.z >= 8);
+});
+
+test('search reveals hidden-field matches and escapes highlighted content', () => {
+  const t = setup(),
+    item = t.add('research', 'A quiet town');
+  item.material.properties.Detail = {
+    type: 'rich_text',
+    rich_text: [{ text: { content: 'A <script>market</script> opens early.' } }],
+  };
+  t.LIB.rows.research = [item.material];
+  t.LIB.filters = { search: 'market' };
+  assert.equal(t.run('filteredLibraryRows().length'), 1);
+  assert.match(t.run('libMatchExcerpt(LIB.rows.research[0])'), /Detail/);
+  assert.match(t.run('libMatchExcerpt(LIB.rows.research[0])'), /<mark>market<\/mark>/);
+  assert.doesNotMatch(t.run('libMatchExcerpt(LIB.rows.research[0])'), /<script>/);
+});
+
+test('column filters and numeric ranges narrow rows without losing saved selection', () => {
+  const t = setup(),
+    a = t.add('prices', 'Admission'),
+    b = t.add('prices', 'Tea');
+  a.material.properties.Amount = { type: 'number', number: 500 };
+  b.material.properties.Amount = { type: 'number', number: 100 };
+  t.LIB.rows.prices = [a.material, b.material];
+  t.LIB.selected[a.material.key] = a.material;
+  t.LIB.filters = { category: 'prices', ranges: { Amount: { max: '200' } } };
+  assert.equal(t.run('filteredLibraryRows()[0].name'), 'Tea');
+  assert.equal(Object.keys(t.LIB.selected).length, 1);
+  t.LIB.filters = { category: 'prices', columns: { Item: 'admission' } };
+  assert.equal(t.run('filteredLibraryRows()[0].name'), 'Admission');
+});
+
+test('analysis resumes completed parts after timeout and after restoring checkpoints', async () => {
+  const t = setup();
+  let calls = 0,
+    fail = true;
+  t.c.runExtractChunk = async (text) => {
+    calls++;
+    if (fail && calls === 2) throw new Error('504');
+    return { summary: text.slice(0, 1), research: [{ statement: text.slice(0, 1) }] };
+  };
+  t.c.transcript = 'A'.repeat(4000) + 'B'.repeat(4000) + 'C'.repeat(100);
+  await assert.rejects(
+    t.run("runExtractCall(transcript,'schema','guard',{key:'source:p1'})"),
+    /504/
+  );
+  assert.equal(calls, 2);
+  fail = false;
+  const result = await t.run("runExtractCall(transcript,'schema','guard',{key:'source:p1'})");
+  assert.equal(calls, 4);
+  assert.equal(result.research.length, 3);
+  await t.run("runExtractCall(transcript,'schema','guard',{key:'source:p1'})");
+  assert.equal(calls, 4);
+});
+
+test('saving a completed analysis retries Notion without another model call', async () => {
+  const t = setup(),
+    item = t.add('activities', 'Source fixture'),
+    S = t.run('S');
+  const v = {
+    id: item.material.id,
+    title: 'Source',
+    transcript: 'Transcript '.repeat(20),
+    _breakdownUnsaved: true,
+  };
+  S.epQueue = [v];
+  S.epSelected = new Set([0]);
+  v.breakdown = t.run("composeBreakdown(S.epQueue[0],{summary:'Saved work'},{research:[]})");
+  let aiCalls = 0;
+  t.c.runExtractCall = async () => {
+    aiCalls++;
+    throw new Error('Should not call AI');
+  };
+  t.c.renderPrepList = () => {};
+  t.c.renderExtractReview = () => {};
+  await t.run('prepRunBreakdown(0)');
+  assert.equal(aiCalls, 0);
+  assert.equal(v._breakdownUnsaved, false);
+  assert.ok(t.calls.some((c) => c.method === 'PATCH'));
+});
+
+test('fact-check generation makes a review proposal without writing original material', async () => {
+  const t = setup(),
+    item = t.add('research', 'A claim'),
+    S = t.run('S');
+  S.vlib = [
+    {
+      id: item.material.id,
+      name: 'A claim',
+      store: 'research',
+      fields: 'Context',
+      lastEdited: item.material.lastEdited,
+    },
+  ];
+  S._vlibSkip = new Set();
+  t.c._verifyBatch = async () => ({
+    verified: [
+      {
+        name: 'A claim',
+        verdict: 'confirmed',
+        source_url: 'https://example.org/evidence',
+        note: 'Read this source.',
+      },
+    ],
+  });
+  await t.run('runLibVerify()');
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 0);
+  assert.ok(S.vlib[0]._proposal);
+  t.c.key = item.material.id;
+  await t.run("saveVerdictProposal(key,document.getElementById('save'))");
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 1);
+  assert.equal(S.vlib[0]._proposal, null);
+});
+
+test('reviewed checks reject newer source versions and retain the proposal', async () => {
+  const t = setup(),
+    item = t.add('research', 'A claim'),
+    S = t.run('S');
+  S.vlib = [
+    {
+      id: item.material.id,
+      name: 'A claim',
+      store: 'research',
+      lastEdited: 'old',
+      _proposal: { verdict: 'confirmed', source_url: 'https://example.org', note: 'Evidence' },
+    },
+  ];
+  t.c.key = item.material.id;
+  await t.run("saveVerdictProposal(key,document.getElementById('save'))");
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 0);
+  assert.ok(S.vlib[0]._proposal);
+  assert.match(t.element('verify-save-status').textContent, /changed/);
+});
+
+test('pasted transcripts reject oversized input without truncation or writes', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.epQueue = [{ id: 'source', transcript: 'Original transcript' }];
+  t.element('prep-paste-box-0').value = 'a'.repeat(190001);
+  await t.run('prepUsePasted(0)');
+  assert.equal(S.epQueue[0].transcript, 'Original transcript');
+  assert.equal(t.calls.length, 0);
+});
+
+test('a failed transcript save can be recovered for review without replacing saved text or fetching', async () => {
+  const t = setup(),
+    S = t.run('S');
+  const draft = 'A locally retained transcript with enough text for review.';
+  S.epQueue = [{ id: 'source', transcript: 'Original transcript' }];
+  t.c.renderPrepList = () => {};
+  t.c.notionAPI = async () => {
+    throw new Error('Network unavailable');
+  };
+  t.element('prep-paste-box-0').value = draft;
+  await t.run('prepUsePasted(0)');
+  assert.equal(await t.c.localArtifact('transcript-draft:source'), draft);
+  S.epQueue[0] = {
+    id: 'source',
+    transcript: 'Newer saved transcript',
+    _transcriptDraft: await t.c.localArtifact('transcript-draft:source'),
+  };
+  t.element('prep-paste-box-0').value = '';
+  t.run('recoverTranscriptDraft(0)');
+  assert.equal(t.element('prep-paste-box-0').value, draft);
+  assert.equal(S.epQueue[0].transcript, 'Newer saved transcript');
+  assert.match(t.element('prep-status-0').textContent, /review/);
+});
+
+test('updating an existing place preserves saved fields when extraction has no accepted location', async () => {
+  const t = setup(),
+    item = t.add('places', 'A lake'),
+    S = t.run('S'),
+    page = t.pages.get(item.material.id);
+  page.properties.Address = {
+    type: 'rich_text',
+    rich_text: [{ text: { content: 'Verified address' } }],
+  };
+  page.properties.Coordinates = { type: 'rich_text', rich_text: [{ text: { content: '35,138' } }] };
+  page.properties.Type = { type: 'select', select: { name: 'Lake' } };
+  S.extractedPlaces = [
+    {
+      name: 'A lake',
+      type: 'Other',
+      prefecture: 'Unknown',
+      is_existing: true,
+      existing_id: page.id,
+      existingLastEdited: page.last_edited_time,
+      fromIds: [],
+      from: [],
+    },
+  ];
+  S.placeSkip = new Set();
+  await t.run('saveConfirmedPlaces()');
+  const patch = t.calls.find((c) => c.method === 'PATCH');
+  assert.ok(patch);
+  assert.equal(patch.body.properties.Address, undefined);
+  assert.equal(patch.body.properties.Coordinates, undefined);
+  assert.equal(patch.body.properties.Type, undefined);
+  assert.equal(patch.body.properties['Last Verified'], undefined);
+  assert.equal(t.text(page.properties.Address), 'Verified address');
+});
+
+test('manual fact checks require evidence before confirming and cause no AI calls', async () => {
+  const t = setup(),
+    item = t.add('research', 'Claim'),
+    S = t.run('S');
+  S.vlib = [
+    {
+      id: item.material.id,
+      name: 'Claim',
+      store: 'research',
+      lastEdited: item.material.lastEdited,
+    },
+  ];
+  t.c.key = item.material.id;
+  await t.run('startManualVerdict(key)');
+  t.run("editVerdictProposal(key,'verdict','confirmed')");
+  await t.run("saveVerdictProposal(key,document.getElementById('save'))");
+  assert.equal(t.calls.length, 0);
+  assert.match(t.element('verify-save-status').textContent, /source URL/);
+});
+
+test('external chat import requires a reviewed unchanged source and result', async () => {
+  const t = setup(),
+    item = t.add(),
+    S = t.run('S');
+  S.epQueue = [{ id: item.material.id, transcript: 'A source transcript long enough for review.' }];
+  t.run('openExtractionChat(0)');
+  t.element('extract-chat-result').value = JSON.stringify({ summary: 'A summary', activities: [] });
+  t.run('reviewExtractionChat()');
+  S.epQueue[0].transcript = 'Changed transcript';
+  await t.run('useExtractionChat()');
+  assert.equal(t.calls.length, 0);
+  assert.match(t.element('extract-chat-review').textContent, /changed/);
 });
