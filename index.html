@@ -4646,20 +4646,21 @@ async function runLibVerify(btn) {
   const byStore = {};
   for (const r of rows) (byStore[r.store] ||= []).push(r);
   const tally = { confirmed: 0, corrected: 0, unsupported: 0 };
-  let done = 0, unfinished = 0, wErr = 0;
+  let done = 0, unfinished = 0, wErr = 0, stopReason = '';
   const total = rows.length;
   const tick = () => { if (btn) btn.textContent = `Checking ${done + unfinished}/${total}…`; };
   const mark = (r) => { r._retry = true; unfinished++; _vlibPaintRow(r); tick(); };
 
-  // Try a group in one grounded call; on a slow / malformed / 5xx reply, split
-  // and recurse; a single row that still fails is marked "unfinished" and left
-  // ticked so a re-run retries only the leftovers.
+  // Each group gets one call. Billing failures stop all remaining groups;
+  // completed suggestions stay available and unchecked rows remain selected.
   async function verifyGroup(store, grp) {
     let res;
     try {
       res = await _verifyBatch(store, grp.map(r => ({ name: r.name, detail: r.fields.slice(0, 300) })));
     } catch (e) {
-      toast(`${RESEARCH_STORES[store].label}: ${e.message}. No automatic paid retry was made.`,'error');
+      if (/prepay|billing|credits?.{0,35}(depleted|exhausted|insufficient)|insufficient.{0,20}(credits?|balance)/i.test(e.message)) {
+        stopReason='Google rejected the API request for billing or prepaid credits. Check AI Studio → Billing for the project used by the deployed API key; the monthly spend cap is a separate limit.';
+      } else toast(`${RESEARCH_STORES[store].label}: ${e.message}. No automatic paid retry was made.`,'error');
       grp.forEach(mark);
       return;
     }
@@ -4681,11 +4682,19 @@ async function runLibVerify(btn) {
   }
 
   try {
-    for (const [store, srows] of Object.entries(byStore)) {
-      for (let i = 0; i < srows.length; i += 4) await verifyGroup(store, srows.slice(i, i + 4));
+    verification: for (const [store, srows] of Object.entries(byStore)) {
+      for (let i = 0; i < srows.length; i += 4) {
+        await verifyGroup(store, srows.slice(i, i + 4));
+        if(stopReason)break verification;
+      }
     }
     if (S.vlib.some(r => !r.id)) renderExtractReview();
     renderVlibResults();
+    if(stopReason) {
+      document.getElementById('verify-save-status').textContent=`Checks stopped. ${stopReason} ${done} suggestions retained; ${total-done} rows remain selected. No automatic retry or provider switch was made. You can review manually.`;
+      toast('Checks stopped: Gemini billing needs attention. See the message below the table.','error');
+      return;
+    }
     toast([
       `${done} suggestions ready for review`,
       tally.corrected && `${tally.corrected} corrected`,

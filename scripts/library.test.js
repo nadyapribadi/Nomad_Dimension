@@ -544,6 +544,37 @@ test('fact-check generation makes a review proposal without writing original mat
   assert.equal(S.vlib[0]._proposal, null);
 });
 
+test('depleted credits stop later fact-check groups and preserve completed suggestions and pending rows', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 12 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+    fields: 'Context',
+  }));
+  S._vlibSkip = new Set();
+  let calls = 0;
+  t.c._verifyBatch = async (store, items) => {
+    calls++;
+    if (calls === 2) throw new Error('Your prepayment credits are depleted.');
+    return {
+      verified: items.map((item) => ({
+        name: item.name,
+        verdict: 'unsupported',
+        note: 'Needs investigation',
+      })),
+    };
+  };
+  await t.run('runLibVerify()');
+  assert.equal(calls, 2);
+  assert.equal(S.vlib.filter((r) => r._proposal).length, 4);
+  assert.equal(S.vlib.filter((r) => !S._vlibSkip.has(r.id)).length, 8);
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 0);
+  assert.match(t.element('verify-save-status').textContent, /Checks stopped/);
+  assert.match(t.element('verify-save-status').textContent, /8 rows remain selected/);
+});
+
 test('reviewed checks reject newer source versions and retain the proposal', async () => {
   const t = setup(),
     item = t.add('research', 'A claim'),
