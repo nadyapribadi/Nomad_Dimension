@@ -20,6 +20,7 @@ test('every provider entry point rejects anonymous requests before accessing an 
   for (const name of [
     'ai-run',
     'notion-proxy',
+    'library-config',
     'tts-proxy',
     'youtube-proxy',
     'maps-proxy',
@@ -28,6 +29,33 @@ test('every provider entry point rejects anonymous requests before accessing an 
   ]) {
     const res = await require(`../${name}`).handler({ httpMethod: 'POST', body: '{}' });
     assert.equal(res.statusCode, 401, name);
+  }
+});
+test('idea configuration exposes only database IDs and fails closed when missing', async () => {
+  process.env.APP_PASSWORD = secret;
+  const event = {
+    httpMethod: 'POST',
+    body: '{}',
+    headers: { cookie: `nomad_session=${makeSession(secret)}` },
+  };
+  const oldCollections = process.env.NOTION_COLLECTIONS_DATABASE_ID;
+  const oldPlacements = process.env.NOTION_PLACEMENTS_DATABASE_ID;
+  try {
+    delete process.env.NOTION_COLLECTIONS_DATABASE_ID;
+    delete process.env.NOTION_PLACEMENTS_DATABASE_ID;
+    const { handler } = require('../library-config');
+    assert.equal((await handler(event)).statusCode, 503);
+    process.env.NOTION_COLLECTIONS_DATABASE_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    process.env.NOTION_PLACEMENTS_DATABASE_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+    const response = await handler(event);
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(Object.keys(JSON.parse(response.body)).sort(), ['collections', 'placements']);
+    assert.equal(response.headers['Cache-Control'], 'no-store');
+  } finally {
+    if (oldCollections === undefined) delete process.env.NOTION_COLLECTIONS_DATABASE_ID;
+    else process.env.NOTION_COLLECTIONS_DATABASE_ID = oldCollections;
+    if (oldPlacements === undefined) delete process.env.NOTION_PLACEMENTS_DATABASE_ID;
+    else process.env.NOTION_PLACEMENTS_DATABASE_ID = oldPlacements;
   }
 });
 test('guard fails closed when unconfigured and rejects cross-site authenticated calls', async () => {

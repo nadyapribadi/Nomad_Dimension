@@ -60,7 +60,10 @@ exports.handler = async (event) => {
   try {
     const res = await fetch(url, fetchOptions);
     const data = await res.json();
-    return respond(res.status, data);
+    const result = respond(res.status, data);
+    const retryAfter = res.headers?.get('retry-after');
+    if (retryAfter) result.headers['Retry-After'] = retryAfter;
+    return result;
   } catch (err) {
     return respond(500, { error: err.message });
   }

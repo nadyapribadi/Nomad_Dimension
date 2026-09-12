@@ -1,6 +1,6 @@
 # Netlify Functions — Provider boundary
 
-Seven provider functions and `session.js` serve the single-operator app.
+Provider functions, `session.js`, and `library-config.js` serve the single-operator app.
 Provider keys come only from private server environment variables; the browser
 sends no provider keys or Notion token.
 
@@ -25,6 +25,7 @@ resource ancestry checks. The integration's permissions remain the data scope.
 | Function                        | Server environment                                                     |
 | ------------------------------- | ---------------------------------------------------------------------- |
 | `session.js` and every provider | `APP_PASSWORD` required                                                |
+| `library-config.js`             | `NOTION_COLLECTIONS_DATABASE_ID`, `NOTION_PLACEMENTS_DATABASE_ID`      |
 | `notion-proxy.js`               | `NOTION_TOKEN`                                                         |
 | `tts-proxy.js`                  | `GOOGLE_TTS_API_KEY`                                                   |
 | `youtube-proxy.js`              | `YOUTUBE_API_KEY`                                                      |
@@ -61,7 +62,13 @@ Forwards to `https://api.notion.com/v1/{endpoint}`.
 }
 ```
 
-Adds `Notion-Version: 2022-06-28`. Returns the raw Notion response + status.
+Adds `Notion-Version: 2022-06-28`. Returns the raw Notion response + status and
+forwards Retry-After when present.
+
+`library-config.js` accepts authenticated `POST {}` and returns `{ collections,
+placements }`, containing only configured database IDs. Missing/invalid IDs return
+503; keys and Notion tokens are never included. The frontend verifies table access
+before using these IDs.
 
 ## `tts-proxy.js`
 
