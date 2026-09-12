@@ -467,3 +467,110 @@ test('audio retry generates only missing lines and restores the complete ordered
     ['01-001-KAI.mp3', '01-002-MIA.mp3']
   );
 });
+
+test('a saved section plan can change before dialogue exists and survives reload', async () => {
+  const h = setup();
+  h.run("epTemplate('blank')");
+  await h.run('createEpisode();');
+  await h.run('loadSections();');
+  h.run(
+    "editPlanDraft(0, 'title', 'A question worth asking'); editPlanDraft(0, 'duration', '1.5'); editScriptDraft(0, 'brief', 'Source: https://example.org/report');"
+  );
+  await h.run('saveSectionPlan(0)');
+  await h.run('loadSections()');
+  assert.equal(h.S.sections[0].title, 'A question worth asking');
+  assert.equal(h.S.sections[0].duration, 1.5);
+  assert.equal(h.S.sections[0].dialogue, '');
+  assert.match(h.S.sections[0].brief, /example.org/);
+});
+
+test('chat import requires a reviewed unchanged result and never writes approved content', async () => {
+  const h = setup();
+  h.S.sections = [
+    {
+      id: 'chat-section',
+      title: 'Opening',
+      dialogue: '',
+      brief: 'Evidence',
+      version: 0,
+      locked: false,
+      duration: 1,
+    },
+  ];
+  h.run('openChatTask(0)');
+  h.element('assist-result').value = 'KAI: A reviewed observation.';
+  await h.run('applyChatImport()');
+  assert.equal(h.S.sections[0].draftDialogue, undefined);
+  h.run('previewChatImport()');
+  await h.run('applyChatImport()');
+  assert.equal(h.S.sections[0].draftDialogue, 'KAI: A reviewed observation.');
+  assert.equal(h.S.sections[0].dialogue, '');
+  assert.equal(h.S.sections[0].locked, false);
+  assert.equal(h.calls.length, 0);
+});
+
+test('chat handoff refuses stale context even when returned dialogue is valid', () => {
+  const h = setup();
+  h.S.sections = [
+    {
+      id: 'chat-section',
+      title: 'Opening',
+      dialogue: '',
+      brief: 'Evidence',
+      version: 0,
+      locked: false,
+      duration: 1,
+    },
+  ];
+  h.run('openChatTask(0)');
+  h.element('assist-result').value = 'KAI: A valid line.';
+  h.S.sections[0].draftBrief = 'Different source material';
+  h.run('previewChatImport()');
+  assert.match(h.element('assist-status').textContent, /section changed/);
+  assert.equal(h.S.assist.reviewed, null);
+});
+
+test('saving dialogue detects a newer server version and preserves the local draft', async () => {
+  const h = setup();
+  h.run("epTemplate('blank')");
+  await h.run('createEpisode()');
+  await h.run('loadSections()');
+  h.run("editScriptDraft(0, 'dialogue', 'KAI: My local draft.');");
+  const sec = h.S.sections[0];
+  h.pages.get(sec.id).properties['Dialogue Content'] = {
+    rich_text: [{ text: { content: 'MIA: A newer saved version.' } }],
+  };
+  await assert.rejects(
+    h.run("persistDialogue(S.sections[0], 'KAI: My local draft.', S.sections[0].brief)"),
+    /another session/
+  );
+  assert.equal(h.S.sections[0].draftDialogue, 'KAI: My local draft.');
+  assert.equal(
+    h.pages.get(sec.id).properties['Dialogue Content'].rich_text[0].text.content,
+    'MIA: A newer saved version.'
+  );
+});
+
+test('episode snapshots distinguish local drafts and exclude credentials', () => {
+  const h = setup();
+  h.S.activeEpisode = 'Test episode';
+  h.S.keys = { private: 'must-not-export' };
+  h.S.sections = [
+    {
+      id: 'section',
+      title: 'Opening',
+      dialogue: 'KAI: Saved.',
+      draftDialogue: 'MIA: Local edit.',
+      brief: 'Source notes',
+      version: 2,
+      locked: false,
+      duration: 1,
+    },
+  ];
+  const data = h.run('episodeSnapshot()');
+  assert.equal(data.status, 'draft');
+  assert.equal(data.sections[0].dialogue, 'MIA: Local edit.');
+  assert.equal(data.sections[0].saved.dialogue, 'KAI: Saved.');
+  assert.equal(data.audioIncluded, false);
+  assert.doesNotMatch(JSON.stringify(data), /must-not-export/);
+});
