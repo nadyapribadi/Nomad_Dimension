@@ -535,6 +535,7 @@ test('fact-check generation makes a review proposal without writing original mat
       },
     ],
   });
+  t.c.confirmIdeaChange = async () => true;
   await t.run('runLibVerify()');
   assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 0);
   assert.ok(S.vlib[0]._proposal);
@@ -566,6 +567,7 @@ test('depleted credits stop later fact-check groups and preserve completed sugge
       })),
     };
   };
+  t.c.confirmIdeaChange = async () => true;
   await t.run('runLibVerify()');
   assert.equal(calls, 2);
   assert.equal(S.vlib.filter((r) => r._proposal).length, 4);
@@ -794,4 +796,219 @@ test('external chat import requires a reviewed unchanged source and result', asy
   await t.run('useExtractionChat()');
   assert.equal(t.calls.length, 0);
   assert.match(t.element('extract-chat-review').textContent, /changed/);
+});
+
+test('candidate identity retains same-title observations and source provenance', () => {
+  const t = setup(),
+    S = t.run('S');
+  S.webExtract = {
+    prices: [
+      { item: 'Shower', amount: 300, source_url: 'https://example.com/a' },
+      { item: 'Shower', amount: 500, source_url: 'https://example.com/a' },
+      { item: 'Shower', amount: 300, source_url: 'https://example.com/b' },
+      { item: 'Shower', amount: 300, source_url: 'https://example.com/a' },
+    ],
+  };
+  const pool = t.run("poolFor('prices','web')");
+  assert.equal(pool.length, 3);
+  assert.equal(new Set(pool.map((it) => it._key)).size, 3);
+});
+
+test('story beats, advice and translated quotes become reviewable source material', () => {
+  const t = setup();
+  t.c.v = {
+    id: 'source-1',
+    title: 'A journey',
+    url: 'https://example.com/video',
+    transcript: 'source',
+  };
+  const result = t.run(
+    "composeBreakdown(v,{beats:[{moment:'Unexpected fog'}],tips:['Start early'],quotes:[{text:'Space between',original_text:'間',timestamp:'02:10'}]},{research:[]})"
+  );
+  assert.equal(result.research.length, 3);
+  assert.equal(result.research[2].original_text, '間');
+  assert.equal(result.research[2].source_page_id, 'source-1');
+  assert.equal(result.research[2].needs_verification, true);
+});
+
+function candidateSetup() {
+  const t = setup();
+  t.run('renderReviewInto=()=>{}');
+  t.run(
+    "S.webExtract={glossary:[{term:'Ma',meaning:'Space between',source_url:'https://example.com/source',source_excerpt:'Original passage',timestamp:'02:10'}]}"
+  );
+  t.c.candidate = t.run("poolFor('glossary','web')[0]");
+  return t;
+}
+
+test('pending candidates never create records; accepted candidates retain receipt and original wording', async () => {
+  const t = candidateSetup();
+  await t.run("pushStore('glossary',null,'web')");
+  assert.equal(t.calls.length, 0);
+  t.run(
+    "REVIEW.edits[candidate._key]={meaning:'Reviewed meaning'};REVIEW.decisions[candidate._key]='accepted'"
+  );
+  await t.run("pushStore('glossary',null,'web')");
+  assert.equal(t.calls.filter((c) => c.endpoint === 'pages').length, 1);
+  t.c.saved = [...t.pages.values()][0];
+  const evidence = t.run('materialEvidence(saved.children)');
+  assert.equal(evidence.observation.meaning, 'Reviewed meaning');
+  assert.equal(t.text(t.c.saved.properties.English), 'Reviewed meaning');
+  assert.equal(evidence.original.meaning, 'Space between');
+  assert.equal(evidence.observation.source_url, 'https://example.com/source');
+  assert.equal(evidence.observation.timestamp, '02:10');
+  assert.equal(t.run("poolFor('glossary','web').length"), 0);
+});
+
+test('a lost create response is reconciled by evidence on retry without a duplicate', async () => {
+  const t = candidateSetup();
+  t.run("REVIEW.decisions[candidate._key]='accepted'");
+  let fail = true;
+  t.c.after = async (call) => {
+    if (call.endpoint === 'pages' && fail) {
+      fail = false;
+      throw new Error('Response lost');
+    }
+  };
+  await t.run("pushStore('glossary',null,'web')");
+  assert.equal(t.pages.size, 1);
+  assert.equal(t.run("poolFor('glossary','web').length"), 1);
+  await t.run("pushStore('glossary',null,'web')");
+  assert.equal(t.pages.size, 1);
+  assert.equal(t.calls.filter((c) => c.endpoint === 'pages').length, 1);
+  assert.equal(t.run("poolFor('glossary','web').length"), 0);
+  assert.equal(t.run('S._pushErrors.glossary'), undefined);
+});
+
+test('read-back 404 after creation retains the uncertain-save marker', async () => {
+  const t = candidateSetup();
+  t.run("REVIEW.decisions[candidate._key]='accepted'");
+  t.c.before = async (call) => {
+    if (call.endpoint.startsWith('blocks/')) {
+      const e = new Error('Read unavailable');
+      e.status = 404;
+      throw e;
+    }
+  };
+  await t.run("pushStore('glossary',null,'web')");
+  assert.equal(t.pages.size, 1);
+  assert.equal(
+    [...t.local.entries()].some(([k, v]) => k.startsWith('material-create-v2:') && !!v),
+    true
+  );
+  t.c.before = null;
+  await t.run("pushStore('glossary',null,'web')");
+  assert.equal(t.calls.filter((c) => c.endpoint === 'pages').length, 1);
+});
+
+test('a rejected create can be retried and a legacy same-title record is preserved', async () => {
+  const t = candidateSetup();
+  const legacy = t.add('glossary', 'Ma');
+  t.run("REVIEW.decisions[candidate._key]='accepted'");
+  let fail = true;
+  t.c.before = async (call) => {
+    if (call.endpoint === 'pages' && fail) {
+      fail = false;
+      const e = new Error('Rejected');
+      e.status = 400;
+      throw e;
+    }
+  };
+  await t.run("pushStore('glossary',null,'web')");
+  assert.equal(t.pages.size, 1);
+  await t.run("pushStore('glossary',null,'web')");
+  assert.equal(t.pages.size, 2);
+  assert.ok(t.pages.has(legacy.material.id));
+});
+
+test('unverified place suggestions do not invent country or verification date', () => {
+  const t = setup();
+  const p = t.run("RESEARCH_STORES.places.props({name:'A lake'})");
+  assert.equal(p.Country, undefined);
+  assert.equal(p['Last Verified'], undefined);
+  assert.doesNotMatch(p['Google Maps URL'].url, /Japan/);
+});
+
+test('review decisions, edits and unfinished form drafts restore without selecting rows', async () => {
+  const t = candidateSetup();
+  t.run(
+    "REVIEW.decisions[candidate._key]='accepted';REVIEW.edits[candidate._key]={meaning:'Edited'};REVIEW.drafts[candidate._key]={meaning:'Unfinished'}"
+  );
+  await t.run('persistReviews()');
+  t.run('REVIEW.loaded=false;REVIEW.decisions={};REVIEW.edits={};REVIEW.drafts={}');
+  await t.run('restoreReviews()');
+  assert.equal(t.run('REVIEW.decisions[candidate._key]'), 'accepted');
+  assert.equal(t.run('REVIEW.drafts[candidate._key].meaning'), 'Unfinished');
+  assert.equal(t.run('REVIEW.selected'), undefined);
+});
+
+test('cancelling a paid fact-check scope confirmation makes no request', async () => {
+  const t = setup();
+  t.run("S.vlib=[{id:'claim',store:'research',name:'Claim'}];S._vlibSkip=new Set()");
+  let requested = false;
+  t.c._verifyBatch = async () => {
+    requested = true;
+  };
+  t.c.confirmIdeaChange = async () => false;
+  await t.run('runLibVerify()');
+  assert.equal(requested, false);
+  assert.equal(t.run('_libVerifying'), false);
+});
+
+test('editing one material field preserves unrelated rich text and sends only changed properties', async () => {
+  const t = setup(),
+    item = t.add('activities', 'A walk');
+  t.LIB.rows.activities = [item.material];
+  t.c.editRow = item.material;
+  t.run(
+    "materialEdit={row:editRow,fields:{Activity:'Morning walk','Source URL':'https://youtube.com/watch?v=example'}};renderMaterialLibrary=()=>{};openLibraryDetail=()=>{}"
+  );
+  await t.run("saveMaterialEdit(document.getElementById('edit-save'))");
+  const patch = t.calls.find((c) => c.method === 'PATCH');
+  assert.deepEqual(Object.keys(patch.body.properties), ['Activity']);
+  assert.equal(t.LIB.rows.activities[0].name, 'Morning walk');
+});
+
+test('a newer original blocks material editing and leaves the recovery draft intact', async () => {
+  const t = setup(),
+    item = t.add('activities', 'A walk');
+  t.LIB.rows.activities = [item.material];
+  t.c.editRow = item.material;
+  t.pages.get(item.material.id).last_edited_time = '2026-09-13T10:00:00.000Z';
+  t.run("materialEdit={row:editRow,fields:{Activity:'Morning walk'}}");
+  await t.c.localArtifact(`material-edit:${item.material.id}`, {
+    baseEdited: item.material.lastEdited,
+    fields: { Activity: 'Morning walk' },
+  });
+  await t.run("saveMaterialEdit(document.getElementById('edit-save'))");
+  assert.equal(
+    t.calls.some((c) => c.method === 'PATCH'),
+    false
+  );
+  assert.match(t.element('material-edit-status').textContent, /Original changed/);
+  assert.equal(t.local.get(`material-edit:${item.material.id}`).fields.Activity, 'Morning walk');
+});
+
+test('place review edits, selection and accepted location survive local recovery', async () => {
+  const t = setup();
+  t.run(
+    "S.extractedPlaces=[{name:'A lake',prefecture:'Unknown',_acceptedMaps:true,lat:35,lng:138,_editedFields:new Set(['halal'])}];S.placeSkip=new Set(['a lake'])"
+  );
+  await t.run('retainPlacesReview()');
+  t.run('S.extractedPlaces=[];S.placeSkip=new Set();renderPlacesReview=()=>{}');
+  await t.run('restorePlacesReview()');
+  assert.equal(t.run('S.extractedPlaces[0]._acceptedMaps'), true);
+  assert.equal(t.run("S.extractedPlaces[0]._editedFields.has('halal')"), true);
+  assert.equal(t.run("S.placeSkip.has('a lake')"), true);
+});
+
+test('opening location work from a URL-only material does not treat its URL as a Notion relation', () => {
+  const t = setup(),
+    item = t.add('places', 'A lake');
+  t.LIB.rows.places = [item.material];
+  t.LIB.detailKey = item.material.key;
+  t.run('switchTab=()=>{};renderPlacesReview=()=>{};closeLibraryDetail=()=>{};matchCurrentPlace()');
+  assert.equal(t.run('S.extractedPlaces[0].existing_id'), item.material.id);
+  assert.equal(t.run('S.extractedPlaces[0].fromIds.length'), 0);
+  assert.equal(t.calls.length, 0);
 });

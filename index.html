@@ -1127,6 +1127,59 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
 #fact-material-picker summary { cursor:pointer; font-weight:600; margin-bottom:16px; font-size:16px; }
 #fact-material-count { color:var(--text2); font-size:12px; font-weight:400; }
 .review-step-heading { font-size:18px; margin:20px 0; }
+
+/* Library workspace: content first; optional controls and contextual actions. */
+.library-nav{display:flex;align-items:center;gap:28px;border-bottom:1px solid var(--border);margin-bottom:20px;min-width:0;}
+.library-nav a{padding:14px 0;color:var(--text2);text-decoration:none;font-weight:600;border-bottom:2px solid transparent;}
+.library-nav a[aria-current=page]{color:var(--accent);border-color:var(--accent);}
+.library-nav span{margin-left:auto;font-size:12px;color:var(--text2);}
+#library-return{margin-bottom:16px;}#library-return[hidden],.library-tray[hidden]{display:none;}
+#stage-1 .stage-header{margin-bottom:12px;}#stage-1 .stage-header .subtitle{display:none;}
+#stage-1 .stage-header .studio-eyebrow{display:none;}
+.library-toolbar{margin:16px 0;gap:10px;}.library-toolbar label:first-child{flex:3 1 220px;}
+#library-workbench:not(.filters-open) .library-optional-filter,#library-workbench:not(.filters-open) .material-column-filter{display:none;}
+.library-table th{padding-top:10px;padding-bottom:10px;}.material-column-filter{margin-top:10px;}
+.library-table .column-sort{min-width:0;}.library-selection-tools{justify-content:flex-end;gap:12px;}
+.library-selection-tools #library-count{margin-left:auto;}.library-selection-tools label{font-size:12px;}
+.library-tray{padding:12px 16px;border:1px solid var(--border);background:var(--surface);border-radius:10px;position:sticky;bottom:12px;z-index:5;flex-wrap:wrap;box-shadow:0 6px 18px #0001;}
+.library-toolbar .icon-tooltip,.reader-heading .icon-tooltip{right:0;left:auto;transform:none;}
+.library-tray p{flex:1 1 220px;}.library-tray .icon-tooltip{right:0;left:auto;transform:none;}
+.library-table td:first-child input{width:24px;height:24px;}.source-open{white-space:normal;text-align:left;}
+.review-reader{width:min(900px,calc(100vw - 32px));max-height:92dvh;overflow:auto;overscroll-behavior:contain;background:var(--surface);border-radius:14px;padding:28px;}
+.reader-heading,.reader-actions,.review-summary{display:flex;gap:16px;justify-content:space-between;align-items:center;flex-wrap:wrap;}
+.reader-actions{position:sticky;bottom:-28px;background:var(--surface);padding:16px 0;border-top:1px solid var(--border);}
+.record-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:24px 0;}.record-fields label{margin:0;}.record-fields textarea{width:100%;min-height:60px;}
+.review-summary p{margin:8px 0;color:var(--text2);max-width:600px;}.review-categories,.review-bulk{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0;align-items:center;}
+.review-categories span{margin-left:5px;color:var(--text2);}.review-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:10px;}
+.review-table-wrap td p{margin:8px 0 0;color:var(--text2);font-size:12px;}.review-table-wrap td{min-width:160px;max-width:380px;white-space:normal;}.review-table-wrap td:first-child{min-width:44px;width:44px;}
+.table-column-control{display:none;}.filters-open .table-column-control{display:block;}.table-filter-summary{flex-wrap:wrap;gap:10px;}
+.channel-option{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:8px;background:var(--surface);}.channel-option .chip{border:0;border-radius:6px;margin:0;min-height:44px;}.channel-option .chip-rm{border:0;background:transparent;min-width:44px;min-height:44px;cursor:pointer;color:var(--text2);}
+.capture-source{max-width:800px;}.capture-source h2{font-size:24px;}.capture-source label{margin:18px 0;}.source-discovery summary{padding:18px 0;cursor:pointer;font-weight:600;}
+#res-tab-prep .library-section-head{padding-bottom:8px;}#res-tab-prep .action-service{padding:8px 12px;min-width:0;border:0;background:transparent;font-size:12px;}
+#res-tab-prep .card-title{font-size:18px;}#prep-card-1 .btn-row{flex-wrap:wrap;}#prep-card-2>p,#prep-card-2>p+div+p{display:none;}
+.data-table input[type=checkbox]{width:24px!important;height:24px;cursor:pointer;}.btn:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px;}
+@media(max-width:850px){.library-tray{position:static;}#library-workbench .library-table-wrap{max-width:100%;}#library-workbench{min-width:0;}}
+@media(max-width:600px){#stage-1{padding:16px;}#stage-1 .stage-header h1{font-size:28px;}#stage-1 .stage-header{align-items:center;}.library-nav{margin-bottom:12px;}.library-toolbar{margin:12px 0;}.library-toolbar label:first-child{flex-basis:100%;}.library-toolbar label{flex:1 1 100px;}.library-selection-tools #library-count{width:100%;margin:0;font-size:12px;}.library-table thead{display:none;}#library-workbench.filters-open .library-table thead{display:table-header-group;}.library-table td:first-child{width:44px;}.library-table td:not(:first-child)::before{font-size:11px;}.library-table tr{margin:8px 0;}.review-reader{width:100%;max-height:100dvh;border-radius:0;padding:20px;}.record-fields{grid-template-columns:1fr;}.reader-actions{bottom:-20px;}#candidate-review-modal{padding:0;}.library-section-head h2{font-size:21px;}.library-section-head{gap:8px;}.action-service{padding:8px!important;border:0;background:transparent;}#res-tab-web>.library-section-head>div:first-child p{display:none;}.review-summary .btn{width:100%;}}
+
+
+#res-tab-prep[data-step="1"]>.library-section-head{display:none;}
+#source-selection-actions[hidden],#source-batch-actions[hidden]{display:none;}
+.source-extra-filters summary{cursor:pointer;padding:10px;font-weight:600;}
+.source-extra-filters[open]{flex-basis:100%;}.source-extra-filters .idea-actions{padding:8px 0;}
+.source-record-actions h3{font-size:15px;margin:18px 0 10px;}.source-record-actions details{margin-top:20px;}.source-record-actions summary{cursor:pointer;}
+#prep-card-1{padding:16px 0;background:none;border:0;box-shadow:none;}
+#res-tab-prep .table-filter-summary{margin-top:10px;}
+@media(max-width:600px){#res-tab-prep>.tabs{gap:12px;}#res-tab-prep>.tabs .tab{font-size:11px;}#ep-q-filters #ep-q-search{min-width:0;flex-basis:180px;}#ep-q-filters{gap:8px!important;}#res-tab-prep .card{padding:16px;}#res-tab-prep #prep-card-1{padding:0;}#stage-1 .library-section-head p{margin-bottom:4px;}.library-table th .column-sort{padding-bottom:0;}#library-workbench .library-selection-tools{gap:8px;margin-bottom:0;}#library-workbench .library-selection-tools #library-count{margin-top:6px;}#library-load-status{margin:6px 0;}}
+
+.reader-pagination{display:flex;align-items:center;gap:12px;margin:14px 0;color:var(--text2);font-size:12px;}
+#library-detail .reader-actions{justify-content:flex-start;gap:10px;padding:14px 0;}
+.library-error:empty{display:none;}
+#library-detail dd{overflow-wrap:anywhere;}
+#material-evidence{margin:16px 0;line-height:1.65;}#material-evidence pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;margin:12px 0;}#material-evidence details{margin-top:12px;}
+.source-open{text-align:left!important;white-space:normal;}
+
+.table-filter-summary{justify-content:flex-start;padding:8px 0;}.table-filter-summary [data-clear-filters][hidden]{display:none;}
+@media(max-width:600px){#source-review-table,#source-review-table tbody{display:block;width:100%;}#source-review-table thead{display:none;}#source-review-table.filters-open thead{display:block;}#source-review-table.filters-open thead tr{display:flex;flex-wrap:wrap;}#source-review-table.filters-open th{flex:1 1 140px;}#source-review-table tbody tr{display:block;position:relative;border:1px solid var(--border);border-radius:10px;padding:14px;margin:10px 0;background:var(--surface);}#source-review-table tbody tr[hidden]{display:none;}#source-review-table td{display:block;padding:4px 0;border:0;white-space:normal;}#source-review-table td:first-child{position:absolute;right:14px;top:14px;}#source-review-table td:nth-child(2){padding-right:40px;}#source-review-table .source-open{padding:0;font-size:15px;line-height:1.5;}#source-review-table td:nth-child(n+3){display:inline-block;margin:6px 14px 0 0;}#source-review-table td:nth-child(n+3)::before{content:attr(data-label);display:block;font-size:11px;color:var(--text3);margin-bottom:5px;}}
 </style>
 </head>
 <body>
@@ -1323,26 +1376,21 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
      ═══════════════════════════════════════════ -->
 <div class="stage-panel" id="stage-1">
   <div class="stage-header">
-    <div><span class="studio-eyebrow">DISCOVER & COLLECT</span><h1>Library<span class="heading-dot">.</span></h1><p class="subtitle">Small details. New connections. Your next story starts here.</p></div><button class="btn btn-primary" onclick="switchTab('res','youtube')"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg>Add a source</button>
+    <div><span class="studio-eyebrow">DISCOVER & COLLECT</span><h1>Library<span class="heading-dot">.</span></h1><p class="subtitle">Research you can turn into a story.</p></div><button class="btn btn-primary" onclick="switchTab('res','youtube')"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg>Add a source</button>
   </div>
 
-  <div class="tabs library-tabs">
-    <button class="tab active" onclick="switchTab('res','material')">Saved material</button>
-    <button class="tab" onclick="switchTab('res','youtube')">Find videos</button>
-    <button class="tab" onclick="switchTab('res','prep');renderPrepList()">Analyse</button>
-    <button class="tab" onclick="switchTab('res','places')">Places</button>
-    <button class="tab" onclick="switchTab('res','web');webMode('verify');renderWebReview()">Fact-check</button>
-  </div>
+  <nav class="library-nav" aria-label="Library views"><a href="#library/material" data-library-nav="material" onclick="switchTab('res','material');return false">Material</a><a href="#library/prep" data-library-nav="sources" onclick="openSources();return false">Sources</a><span id="library-location" role="status"></span></nav>
+  <div id="library-return" hidden><button class="btn btn-sm" onclick="returnToLibrary()">← Back</button></div>
 
   <div id="res-tab-material">
   <section id="library-workbench" aria-label="Saved material library">
     <div class="library-toolbar">
       <label>Search material<input id="library-search" type="search" placeholder="Search titles and all saved fields…" oninput="libraryFilterChanged()"></label>
-      <label>Table<select id="library-category" onchange="libraryCategoryChanged()"><option value="all">All eight tables</option></select></label>
-      <label>Source<select id="library-source" onchange="libraryFilterChanged()"><option value="">Any source</option><option value="unknown">Source not recorded</option></select></label>
+      <label>View<select id="library-category" onchange="libraryCategoryChanged()"><option value="all">All material</option></select></label>
+      <label class="library-optional-filter">Source<select id="library-source" onchange="libraryFilterChanged()"><option value="">Any source</option><option value="unknown">Source not recorded</option></select></label>
       <label hidden>Verification<select id="library-verification" onchange="libraryFilterChanged()"><option value="">Any status</option><option value="unknown">Not checked</option></select></label>
       <label hidden>Sort<select id="library-sort" onchange="libraryFilterChanged()"><option value="name">Name A–Z</option><option value="recent">Recently updated</option></select></label>
-      <button type="button" class="btn icon-button" id="library-reload" aria-label="Refresh material" onclick="loadMaterialLibrary(true)" onmouseenter="this.classList.remove('tooltip-dismissed')" onfocus="this.classList.remove('tooltip-dismissed')"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 8a8 8 0 0 0-14-3L3 8m0-5v5h5M4 16a8 8 0 0 0 14 3l3-3m0 5v-5h-5"/></svg><span class="icon-tooltip" role="tooltip">Refresh material</span></button>
+      <button class="btn" id="library-filters-toggle" aria-expanded="false" onclick="toggleLibraryFilters()">Filters</button><button type="button" class="btn icon-button" id="library-reload" aria-label="Refresh material" onclick="loadMaterialLibrary(true)" onmouseenter="this.classList.remove('tooltip-dismissed')" onfocus="this.classList.remove('tooltip-dismissed')"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 8a8 8 0 0 0-14-3L3 8m0-5v5h5M4 16a8 8 0 0 0 14 3l3-3m0 5v-5h-5"/></svg><span class="icon-tooltip" role="tooltip">Refresh material</span></button>
     </div>
     <details hidden><summary>Filter a category field</summary><div class="library-toolbar">
       <label>Field<select id="library-field" onchange="libraryFilterChanged()"><option value="">Choose a table first</option></select></label>
@@ -1350,33 +1398,35 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
       <label>Minimum number<input type="number" id="library-min" oninput="libraryFilterChanged()"></label>
       <label>Maximum number<input type="number" id="library-max" oninput="libraryFilterChanged()"></label>
     </div><p>Numeric bounds apply to number fields only. Use a single currency or unit before comparing values. Unknown values stay visible and are labelled.</p></details>
-    <p class="library-message">Search includes every saved field, even fields not shown below. Use column filters to narrow one field.</p><div id="library-load-status" class="library-message" role="status"></div>
+    <div id="library-load-status" class="library-message" role="status"></div>
     <div id="library-errors" class="library-message"></div>
-    <div class="idea-actions"><button class="btn btn-sm" id="library-select-shown" onclick="librarySelectVisible()">Select shown rows</button><label style="margin:0"><input type="checkbox" id="library-selected-only" onchange="libraryFilterChanged()" style="width:auto"> Only selected</label><span id="library-count" role="status"></span></div>
+    <div class="idea-actions library-selection-tools"><button class="btn btn-sm" id="library-select-shown" onclick="librarySelectVisible()">Select shown rows</button><label style="margin:0"><input type="checkbox" id="library-selected-only" onchange="libraryFilterChanged()" style="width:auto"> Only selected</label><span id="library-count" role="status"></span></div>
     <div id="library-active-filters" class="idea-actions" aria-label="Active filters"></div>
-    <div class="idea-actions" role="group" aria-label="Material view"><button class="btn btn-sm" id="library-view-table" aria-pressed="true" onclick="setLibraryView('table')">Table</button><button class="btn btn-sm" id="library-view-map" aria-pressed="false" onclick="setLibraryView('map')">Map of places</button></div>
+    <div class="idea-actions" role="group" aria-label="Material view"><button class="btn btn-sm" id="library-view-table" aria-pressed="true" onclick="setLibraryView('table')">Table</button><button class="btn btn-sm" id="library-view-map" aria-pressed="false" onclick="setLibraryView('map')">Map</button></div>
     <div class="library-grid detail-closed" id="library-grid"><div id="library-table-view" class="library-table-wrap" tabindex="0" aria-label="Material table"><table class="library-table"><thead id="library-head"></thead><tbody id="library-rows"></tbody></table></div><section id="library-map-view" hidden aria-label="Places map">
       <p id="library-map-status" role="status" class="library-message"></p>
       <div class="idea-actions" role="group" aria-label="Map controls"><button class="btn btn-sm" onclick="libraryMapZoom(1)" aria-label="Zoom in">+</button><button class="btn btn-sm" onclick="libraryMapZoom(-1)" aria-label="Zoom out">−</button><button class="btn btn-sm" onclick="fitLibraryMap()">Fit places</button><button class="btn btn-sm" onclick="setLibraryView('table')">See all matching rows</button></div>
       <div id="library-map-canvas" tabindex="0" role="group" aria-label="Places map. Use arrow keys to pan, plus and minus to zoom. Drag to move the map."><div id="library-map-tiles" aria-hidden="true"></div><div id="library-map-pins"></div><output id="library-map-zoom" class="map-zoom-label"></output><a class="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></div>
       <p id="library-map-error" class="library-error" role="status"></p><p class="library-message">Scroll or double-click to zoom; drag to pan. Saved coordinates only; locations may need verification. Choose a marker to inspect its source and select material. Nearby pins do not establish a travel route.</p>
     </section></div><div class="library-pagination"><span id="library-page-status" role="status"></span><button id="library-more" class="btn" onclick="libraryShowMore()" hidden>Show next 60 rows</button><button id="library-all" class="btn btn-sm" onclick="libraryShowAll()" hidden>Show all matches</button></div>
-    <div class="library-tray"><p id="library-selection-count" role="status">No material selected. Select a row to start an idea.</p><button class="btn" onclick="libraryReviewSelection()">Review selection</button><button class="btn" onclick="switchTab('res','web');webMode('verify');verifyLibrarySelection()">Check facts</button><button class="btn btn-primary" onclick="libraryCollect()">Collect into idea <span aria-hidden="true">↗</span></button><button type="button" class="btn icon-button" aria-label="Clear selection" onclick="libraryClearSelection()" onmouseenter="this.classList.remove('tooltip-dismissed')" onfocus="this.classList.remove('tooltip-dismissed')"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg><span class="icon-tooltip" role="tooltip">Clear selection</span></button></div>
-    <p>No episode required. Selections stay with you when you change a table or filter. Collecting and saving use no AI credits.</p>
+    <div class="library-tray" hidden><p id="library-selection-count" role="status">No material selected. Select a row to start an idea.</p><button class="btn" onclick="libraryReviewSelection()">Review selection</button><button class="btn" onclick="switchTab('res','web');webMode('verify');verifyLibrarySelection()">Check facts</button><button class="btn btn-primary" onclick="openIdeaDestination()">Add to idea…</button><button type="button" class="btn icon-button" aria-label="Clear selection" onclick="libraryClearSelection()" onmouseenter="this.classList.remove('tooltip-dismissed')" onfocus="this.classList.remove('tooltip-dismissed')"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg><span class="icon-tooltip" role="tooltip">Clear selection</span></button></div>
+
   </section>
   </div>
   <div id="res-tab-youtube" style="display:none">
+  <section class="capture-source card"><h2>Add a source</h2><p>Save a video link, then paste or import its transcript. No AI call is made when saving.</p><label>Source title<input id="capture-title" maxlength="240" placeholder="A name you will recognise"></label><label>Video URL<input id="capture-url" type="url" placeholder="https://www.youtube.com/watch?v=…"></label><button class="btn btn-primary" onclick="captureSource(this)">Save and open source</button><p id="capture-status" role="status"></p></section>
+  <details class="source-discovery"><summary>Find videos from channels</summary>
   <div class="card">
     <div class="card-title"><span class="icon">📺</span> Source Channels</div>
     <div id="channel-chips-area" class="channel-chips"></div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <input type="text" id="new-channel-input" placeholder="Add channel name or ID…" style="max-width:260px">
+      <input type="text" id="new-channel-input" aria-label="Channel name or ID" placeholder="Add channel name or ID…" style="max-width:260px">
       <button class="btn btn-sm" onclick="addChannel()">+ Add</button>
       <button class="btn btn-sm btn-ghost" onclick="saveChannels()">Save channel list</button>
     </div>
     <div class="row" style="flex-wrap:wrap">
-      <input type="text" id="yt-keyword" placeholder="Fetch keyword (optional)…" style="max-width:220px">
-      <select id="yt-max-results" style="width:110px">
+      <input type="text" id="yt-keyword" aria-label="Search channel videos" placeholder="Fetch keyword (optional)…" style="max-width:220px">
+      <select id="yt-max-results" aria-label="Maximum videos" style="width:110px">
         <option value="10">10 videos</option>
         <option value="20" selected>20 videos</option>
         <option value="50">50 videos</option>
@@ -1394,16 +1444,17 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
     </div>
   </div>
 
+  </details>
   <div id="yt-results-area" style="display:none">
     <!-- post-fetch filter/sort — instant, no API calls -->
     <div class="card" style="padding:12px 14px;margin-bottom:12px">
       <div class="row" style="flex-wrap:wrap;gap:8px">
-        <input type="text" id="ytf-text" oninput="renderYTVideos()" placeholder="Filter title / description / tags / channel…" style="flex:1;min-width:200px">
-        <input type="number" id="ytf-minviews" oninput="renderYTVideos()" placeholder="min views" style="width:110px">
+        <input type="text" id="ytf-text" aria-label="Filter videos" oninput="renderYTVideos()" placeholder="Filter title / description / tags / channel…" style="flex:1;min-width:200px">
+        <input type="number" id="ytf-minviews" aria-label="Minimum views" oninput="renderYTVideos()" placeholder="min views" style="width:110px">
         <input type="number" id="ytf-mindur" oninput="renderYTVideos()" placeholder="shortest (min)" style="width:110px" title="minimum length in minutes">
         <input type="number" id="ytf-maxdur" oninput="renderYTVideos()" placeholder="longest (min)" style="width:110px" title="maximum length in minutes">
-        <select id="ytf-channel" onchange="renderYTVideos()" style="width:150px"><option value="">all channels</option></select>
-        <select id="ytf-sort" onchange="renderYTVideos()" style="width:150px">
+        <select id="ytf-channel" aria-label="Filter by channel" onchange="renderYTVideos()" style="width:150px"><option value="">all channels</option></select>
+        <select id="ytf-sort" aria-label="Sort videos" onchange="renderYTVideos()" style="width:150px">
           <option value="views">Sort: views ↓</option>
           <option value="date">Sort: newest</option>
           <option value="dateAsc">Sort: oldest</option>
@@ -1425,56 +1476,55 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
   </div><!-- /res-tab-youtube -->
 
   <!-- PREP TAB — pick source videos, then break each down -->
-  <div id="res-tab-prep" style="display:none"><div class="library-section-head"><div><span class="studio-eyebrow">EXTRACT</span><h2>From source to reusable material</h2><p>Select a video, bring its transcript, then review the extracted rows. Save only the material you want to keep.</p></div><div class="action-service"><span data-action-route="outline"></span><button class="btn btn-sm btn-ghost" onclick="showStage(0);settingsSection('models')">AI choices ↗</button></div></div>
+  <div id="res-tab-prep" style="display:none"><div class="library-section-head"><div><h2>Sources</h2><p>Open a source to read its transcript and review reusable material.</p></div><div class="action-service"><span data-action-route="outline"></span><button class="btn btn-sm btn-ghost" onclick="showStage(0);settingsSection('models')">AI choices ↗</button></div></div>
     <p style="font-weight:600;font-size:13px;margin-bottom:10px">Turn saved videos into research rows: <strong>1</strong> pick videos → <strong>2</strong> get transcript &amp; analyse → <strong>3</strong> save the good rows to your tables.</p>
     <div class="tabs" style="margin-bottom:12px">
-      <button class="tab active" id="prep-step-1" onclick="prepStep(1)">1 · Select sources</button>
-      <button class="tab" id="prep-step-2" onclick="prepStep(2)">2 · Analyse</button>
-      <button class="tab" id="prep-step-3" onclick="prepStep(3)">3 · Review &amp; save rows</button>
+      <button class="tab active" id="prep-step-1" onclick="prepStep(1)">Source list</button>
+      <button class="tab" id="prep-step-2" onclick="prepStep(2)">Transcript & extraction</button>
+      <button class="tab" id="prep-step-3" onclick="prepStep(3)">Review material</button>
     </div>
     <div class="card" id="prep-card-1">
-      <div class="card-title"><span class="icon">📋</span> 1 · Pick source videos</div>
-      <div class="btn-row" style="margin-top:0;margin-bottom:10px">
-        <button class="btn btn-sm" onclick="loadSourceQueue()">↻ Load my saved videos</button>
+
+      <div class="btn-row" id="source-selection-actions" style="margin-top:0;margin-bottom:10px"><button class="btn" onclick="prepStep(2)">Open selected sources</button>
         <div style="flex:1"></div>
         <span id="ep-sel-count" style="font-size:12px;color:var(--text2)">0 selected</span>
         <button class="btn btn-sm btn-ghost" onclick="selectAllQueue()">Select all shown</button>
         <button class="btn btn-sm btn-ghost" onclick="clearEpSelection()">Clear</button>
       </div>
       <div class="row" id="ep-q-filters" style="flex-wrap:wrap;gap:6px;margin-bottom:10px;display:none">
-        <input type="text" id="ep-q-search" oninput="renderQueue()" placeholder="title / channel / angle…" style="flex:1;min-width:160px">
-        <input type="text" id="ep-q-region" oninput="renderQueue()" placeholder="region / prefecture" style="width:150px">
-        <select id="ep-q-channel" onchange="renderQueue()" style="width:150px"><option value="">all channels</option></select>
-        <select id="ep-q-prep" onchange="renderQueue()" style="width:170px">
+        <input type="text" id="ep-q-search" aria-label="Search sources" oninput="renderQueue()" placeholder="title / channel / angle…" style="flex:1;min-width:160px">
+        <button class="btn btn-sm" onclick="loadSourceQueue()">Refresh</button><details class="source-extra-filters"><summary>Region &amp; sort</summary><div class="idea-actions"><input type="text" id="ep-q-region" aria-label="Source region" oninput="renderQueue()" placeholder="region / prefecture" style="width:150px">
+        <select hidden id="ep-q-channel" aria-label="Source channel" onchange="renderQueue()" style="width:150px"><option value="">all channels</option></select>
+        <select hidden id="ep-q-prep" aria-label="Preparation status" onchange="renderQueue()" style="width:170px">
           <option value="">any state</option>
           <option value="none">no transcript yet</option>
           <option value="tx">transcript, not analysed</option>
           <option value="done">analysed</option>
         </select>
-        <select id="ep-q-status" onchange="renderQueue()" style="width:140px">
+        <select hidden id="ep-q-status" aria-label="Usage status" onchange="renderQueue()" style="width:140px">
           <option value="">any status</option>
-          <option>Available</option><option>Partially Used</option>
+          <option>Available</option><option>Partially Used</option><option>Fully Used</option>
         </select>
-        <select id="ep-q-sort" onchange="renderQueue()" style="width:130px">
+        <select id="ep-q-sort" aria-label="Sort sources" onchange="renderQueue()" style="width:130px">
           <option value="new">newest</option>
           <option value="title">title A–Z</option>
           <option value="channel">by channel</option>
-        </select>
+        </select></div></details>
       </div>
       <div id="ep-queue-area">
         <div class="empty-state">
           <div class="icon">📋</div>
-          <p>Load your saved videos, then tick the ones to analyse.</p>
+          <p>Your source videos will appear here. Open one to begin, or add a source.</p>
         </div>
       </div>
     </div>
     <div class="card" id="prep-card-2" style="display:none"><p class="library-message">Choose your input: fetch captions, paste text, or import an Obsidian Markdown/transcript file. Then choose API analysis or your existing chat subscription. API work runs in small resumable parts using your Material extraction choice in Settings.</p>
-      <div class="card-title"><span class="icon">🧪</span> 2 · Get transcript &amp; analyse</div>
+      <div class="card-title"><span class="icon">🧪</span> Transcript & extraction</div>
       <p style="font-weight:600;font-size:13px;margin-bottom:10px">
         For each video: <strong>Get transcript</strong>, then <strong>Analyse</strong> — the AI pulls
-        out activities, food, transport and source claims. The analysis is saved with the source; you separately review which rows to add to the Library. Places have their own review tab.
+        out activities, food, transport and source claims. The analysis is saved with the source; you separately review which rows to add to the Library. Use Extract places when you want to locate the places mentioned.
       </p>
-      <div class="btn-row" style="margin-top:0;margin-bottom:12px">
+      <div class="btn-row" id="source-batch-actions" style="margin-top:0;margin-bottom:12px"><button class="btn" onclick="switchTab('res','places')">Extract places from these sources</button>
         <button class="btn btn-sm" id="prep-fetch-all" onclick="prepFetchAll(this)">Get all transcripts</button>
         <button class="btn btn-sm btn-primary" id="prep-analyse-all" onclick="prepAnalyseAll(this)">Analyse all</button>
         <span style="font-size:11px;color:var(--text3)">…or do them one at a time below</span>
@@ -1482,15 +1532,15 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
       <div id="ep-prep-list"></div>
     </div>
     <div class="card" id="prep-card-3" style="display:none">
-      <div class="card-title"><span class="icon">📤</span> 3 · Save rows to your research tables</div>
-      <p style="font-weight:600;font-size:13px;margin-bottom:10px">The AI's findings, one tab per table. Untick anything wrong, then <strong>Save</strong> — nothing reaches Notion until you do. Places are handled on the <strong>Places</strong> tab. Use <strong>Fact-check</strong> to review evidence and save your judgement separately.</p>
+      <div class="card-title"><span class="icon">📤</span> Keep the useful material</div>
+      <p>Review, edit and accept candidates across categories. Save accepted material in one action. Review decisions are kept on this device.</p>
       <div id="extract-review"><div class="empty-state"><div class="icon">📤</div><p>Analyse a video first.</p></div></div>
     </div>
   </div>
 
   <!-- PLACES TAB -->
   <div id="res-tab-places" style="display:none"><div class="library-section-head"><div><span class="studio-eyebrow">LOCATE</span><h2>Put the story on the map</h2><p>Extract place suggestions, inspect their identity, then save. Browse saved coordinates directly in the Library map.</p></div><div class="action-service"><span data-action-route="places"></span><button class="btn btn-sm btn-ghost" onclick="showStage(0);settingsSection('models')">AI choices ↗</button></div></div>
-    <div class="card">
+    <div class="card" id="places-source-tools">
       <div class="outline-heading"><h3>1. Choose sources</h3><div class="idea-actions"><button class="btn" onclick="openSavedPlaces()">Browse saved places</button><button class="btn" onclick="openSavedPlaces();setLibraryView('map')">Open saved map</button><button class="btn" onclick="switchTab('res','prep');prepStep(1)">Choose source videos</button></div></div>
       <p style="font-weight:600;font-size:13px;margin-bottom:14px">1. Select source videos in Analyse. 2. Extract place suggestions. 3. Review names and evidence, optionally look up map matches, then save selected places. Extraction and map lookup use separate services.</p>
       <button class="btn btn-primary" onclick="extractPlaces()">Extract from selected transcripts</button>
@@ -1548,7 +1598,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
       </div>
       <div class="field" style="margin-bottom:8px">
         <label>Keyword <span style="color:var(--text3);font-weight:400">— leave blank to load everything</span></label>
-        <input type="text" id="vlib-q" placeholder="place · region · dish · topic — matches any field" onkeydown="if(event.key==='Enter')searchLibrary(this)">
+        <input type="text" id="vlib-q" aria-label="Search material for evidence review" placeholder="place · region · dish · topic — matches any field" onkeydown="if(event.key==='Enter')searchLibrary(this)">
       </div>
       <div id="vlib-stores-pick" style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-bottom:10px"></div>
       <div class="btn-row" style="margin-bottom:10px">
@@ -2030,6 +2080,9 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
 
 <div class="modal-overlay" id="fact-review-modal" role="dialog" aria-modal="true" aria-labelledby="fact-review-title"><section class="review-dialog"><div class="outline-heading"><h2 id="fact-review-title">Review evidence</h2><button class="btn" onclick="closeModal('fact-review-modal')">Close review</button></div><div id="fact-review-content"></div><p id="fact-review-error" role="status" class="library-message"></p></section></div>
 <div class="modal-overlay" id="place-review-modal" role="dialog" aria-modal="true" aria-labelledby="place-review-title"><section class="review-dialog"><div class="outline-heading"><h2 id="place-review-title">Review place</h2><button class="btn" onclick="closeModal('place-review-modal');renderPlacesReview()">Done reviewing</button></div><div id="place-review-content"></div></section></div>
+<div class="modal-overlay" id="idea-destination-modal" role="dialog" aria-modal="true" aria-labelledby="destination-title"><div class="review-reader"><div class="reader-heading"><h2 id="destination-title">Add material to an idea</h2><button class="btn" onclick="closeModal('idea-destination-modal')">Close</button></div><label>Destination<select id="destination-choice"></select></label><label>Working title for a new or untitled idea<input id="destination-name" maxlength="240"></label><p id="destination-status" role="status"></p><button class="btn btn-primary" id="destination-save" onclick="saveIdeaDestination(this)">Add and save</button></div></div>
+<div class="modal-overlay" id="material-edit-modal" role="dialog" aria-modal="true" aria-labelledby="material-edit-title"><div class="review-reader"><div class="reader-heading"><h2 id="material-edit-title">Edit material</h2><button class="btn" onclick="closeModal('material-edit-modal')">Close</button></div><div id="material-edit-fields" class="record-fields"></div><p id="material-edit-status" role="status"></p><button class="btn btn-primary" onclick="saveMaterialEdit(this)">Save field changes</button></div></div>
+<div class="modal-overlay" id="candidate-review-modal" role="dialog" aria-modal="true" aria-labelledby="candidate-review-title"><div class="review-reader"><div class="reader-heading"><h2 id="candidate-review-title">Review material</h2><button class="btn" onclick="closeModal('candidate-review-modal')">Close</button></div><p id="candidate-source"></p><p>Edit the extracted wording, then accept or skip. Source identity is retained. Your decision is stored on this device until you save accepted material.</p><div id="candidate-fields" class="record-fields"></div><p id="candidate-error" class="library-error" role="alert"></p><div class="reader-actions"><button class="btn" onclick="saveCandidateReview('skipped',true)">Skip and next</button><button class="btn" onclick="saveCandidateReview('accepted')">Accept</button><button class="btn btn-primary" onclick="saveCandidateReview('accepted',true)">Accept and next</button></div></div></div>
 <div class="modal-overlay" id="extract-chat-modal" role="dialog" aria-modal="true" aria-labelledby="extract-chat-title"><div class="confirm-paper" style="width:min(900px,95vw);max-height:90dvh;overflow:auto"><h2 id="extract-chat-title">Analyse in your own chat</h2><p>Copy this task into a chat subscription you already use. Review its output here before saving. No Nomad API call is made.</p><label>Task<textarea id="extract-chat-task" rows="6" readonly></textarea></label><label>Returned JSON<textarea id="extract-chat-result" rows="6" oninput="document.getElementById('extract-chat-use').disabled=true"></textarea></label><pre id="extract-chat-review" style="white-space:pre-wrap;max-height:220px;overflow:auto"></pre><div class="idea-actions"><button class="btn" onclick="closeModal('extract-chat-modal')">Close</button><button class="btn" onclick="reviewExtractionChat()">Review result</button><button class="btn btn-primary" id="extract-chat-use" onclick="useExtractionChat()" disabled>Use result &amp; save to source</button></div></div></div>
 <div class="modal-overlay" id="library-detail-modal" role="dialog" aria-modal="true" aria-labelledby="library-detail-title"><aside id="library-detail" class="library-detail" hidden aria-label="Material details"></aside></div>
 <div class="modal-overlay" id="idea-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="idea-confirm-title" aria-describedby="idea-confirm-message">
@@ -2358,13 +2411,49 @@ async function openWorkspace(mode) {
   renderSections();
 }
 
+function toggleLibraryFilters() {
+  const root=document.getElementById('library-workbench'),open=!root.classList.contains('filters-open');root.classList.toggle('filters-open',open);document.getElementById('library-filters-toggle').setAttribute('aria-expanded',String(open));
+}
+let libraryRoute='material',restoringLibraryRoute=false,placesFromMaterial=false;
+function updateLibraryRoute(tab) {
+  if(tab!=='places')placesFromMaterial=false;
+  libraryRoute=tab;
+  document.getElementById('places-source-tools').hidden=tab==='places' && placesFromMaterial;
+  document.querySelectorAll('[data-library-nav]').forEach(el=>el.setAttribute('aria-current',el.dataset.libraryNav===(['prep','youtube'].includes(tab) || tab==='places'&&!placesFromMaterial?'sources':'material')?'page':'false'));
+  const back=document.getElementById('library-return');if(back)back.hidden=['material','prep'].includes(tab);
+  const label=document.getElementById('library-location');if(label)label.textContent=({youtube:'Add source',web:'Evidence review',places:'Place extraction'})[tab] || '';
+  if(!restoringLibraryRoute && globalThis.history?.pushState && globalThis.location?.hash!==`#library/${tab}`)history.pushState(null,'',`#library/${tab}`);
+}
+function returnToLibrary() {if(libraryRoute==='places'&&placesFromMaterial){switchTab('res','material');return;}if(['youtube','places'].includes(libraryRoute))openSources();else switchTab('res','material');}
+async function openSources() {switchTab('res','prep');prepStep(1);if(!S.epQueue.length)await loadSourceQueue();}
+function openSourceRecord(i) {S.epSelected=new Set([i]);document.getElementById('ep-sel-count').textContent='1 source open';renderPrepList();prepStep(2);}
+async function captureSource(btn) {
+  const title=document.getElementById('capture-title').value.trim(),url=document.getElementById('capture-url').value.trim(),status=document.getElementById('capture-status');
+  if(!title || !libSafeURL(url)){status.textContent='Enter a title and a valid https or http video URL.';return;}
+  btn.disabled=true;status.textContent='Saving source…';
+  const intent=`capture-source:${url}`;
+  try{
+    const rows=await notionQueryAll(DB_IDS.sourceVideos);let page=rows.find(r=>r.properties?.['userDefined:YouTube URL']?.url===url);
+    if(!page){if(await localArtifact(intent))throw new Error('An earlier save may have reached Notion. Inspect your sources before trying again.');await localArtifact(intent,{url,title});page=await notionAPI('pages','POST',{parent:{database_id:DB_IDS.sourceVideos},properties:{'Video Title':{title:libRT(title)},'userDefined:YouTube URL':{url}}});}
+    await localArtifact(intent,null);await loadSourceQueue();await openSources();const i=S.epQueue.findIndex(v=>v.id===page.id);if(i>=0)openSourceRecord(i);status.textContent='Source saved.';
+  }catch(e){if(e.status>=400&&e.status<500)await localArtifact(intent,null);status.textContent=`Not completed: ${e.message}`;}
+  finally{btn.disabled=false;}
+}
+function restoreLibraryRoute() {
+  const tab=globalThis.location?.hash?.match(/^#library\/(material|prep|youtube|places|web)$/)?.[1] || 'material';
+  restoringLibraryRoute=true;showStage(1);switchTab('res',tab);if(tab==='prep')openSources();if(tab==='web'){webMode('verify');renderWebReview();}restoringLibraryRoute=false;
+}
+globalThis.addEventListener?.('popstate',restoreLibraryRoute);
+
 // ─── TAB SWITCHING ───────────────────────────────────────────────────────────
 // Works for any number of tab bars — scopes to the .tabs inside the active
 // stage panel and marks the .tab whose onclick names this tab.
 function switchTab(prefix, tab) {
+  if(prefix==='res')updateLibraryRoute(tab);
   document.querySelectorAll(`[id^="${prefix}-tab-"]`).forEach(el => (el.style.display = 'none'));
   const panel = document.getElementById(`${prefix}-tab-${tab}`);
   if (panel) panel.style.display = '';
+  if(prefix==='res' && tab==='material')initMaterialLibrary();
   syncWorkspaceTabs();
   const activePanel = document.querySelector('.stage-panel.active');
   const tabBar = activePanel && activePanel.querySelector('.tabs');
@@ -2418,7 +2507,8 @@ function openModal(id) {
 function closeModal(id) {
   if (id === 'place-review-modal') renderPlacesReview();
   if (id === 'library-detail-modal') document.getElementById('library-detail').hidden = true;
-  document.getElementById(id).classList.remove('open'); modalReturnFocus?.focus();
+  document.getElementById(id).classList.remove('open');
+  if(modalReturnFocus?.isConnected && modalReturnFocus.getClientRects?.().length)modalReturnFocus.focus();else if(document.getElementById('stage-1').classList.contains?.('active'))document.getElementById('library-search')?.focus();
   if (id === 'idea-confirm-modal' && LIB.confirmResolve) { const resolve=LIB.confirmResolve; LIB.confirmResolve=null; resolve(false); }
 }
 
@@ -2964,16 +3054,13 @@ function writeAppState(fields) {
 function renderChannelChips() {
   const area = document.getElementById('channel-chips-area');
   area.innerHTML = S.channels.map((ch, i) =>
-    `<div class="chip active" data-ch="${i}" onclick="toggleChannel(${i})">
-      ${_esc(ch)}
-      <span class="chip-rm" onclick="removeChannel(event,${i})">×</span>
-    </div>`
+    `<span class="channel-option"><button class="chip active" data-ch="${i}" aria-pressed="true" onclick="toggleChannel(${i})">${_esc(ch)}</button><button class="chip-rm" aria-label="Remove channel ${_esc(ch)}" onclick="removeChannel(event,${i})">×</button></span>`
   ).join('');
 }
 
 function toggleChannel(i) {
   const chip = document.querySelector(`[data-ch="${i}"]`);
-  chip?.classList.toggle('active');
+  chip?.classList.toggle('active');chip?.setAttribute('aria-pressed',String(chip.classList.contains('active')));
 }
 
 function removeChannel(e, i) {
@@ -3159,7 +3246,7 @@ function renderYTVideos() {
   grid.innerHTML = rows.map(({ v, i }) => {
     const inNotion = known.has(v.id);
     return `
-    <div class="video-card ${S.ytSelected.has(i) ? 'selected' : ''}${inNotion ? ' in-notion' : ''}" onclick="toggleYTVideo(${i})">
+    <div role="button" tabindex="0" aria-label="Select ${_esc(v.title)}" aria-pressed="${S.ytSelected.has(i)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleYTVideo(${i})}" class="video-card ${S.ytSelected.has(i) ? 'selected' : ''}${inNotion ? ' in-notion' : ''}" onclick="toggleYTVideo(${i})">
       ${v.thumbnail
         ? `<img class="video-thumb" src="${_esc(safeURL(v.thumbnail))}" alt="${_esc(v.title)}" loading="lazy">`
         : `<div class="video-thumb-placeholder">🎥</div>`}
@@ -3346,7 +3433,6 @@ async function loadSourceQueue() {
     // Show every source video except ones fully consumed — you may reuse
     // footage across episodes, and Prep runs before an episode exists.
     const data = await notionQueryAll(DB_IDS.sourceVideos, {
-      filter: { property: 'B-Roll Status', select: { does_not_equal: 'Fully Used' } },
       sorts: [{ timestamp: 'created_time', direction: 'descending' }],
       page_size: 100,
     });
@@ -3385,7 +3471,7 @@ async function loadSourceQueue() {
       if(draft?._hash===`full-v3:${txHash(v)}` && JSON.stringify(draft)!==JSON.stringify(v.breakdown)) {v.breakdown=draft;v.outline=renderBreakdownText(draft);v._breakdownUnsaved=true;v._prepStatus='A locally retained analysis is ready to save; no new AI call is needed.';}
     }
     if (!S.epQueue.length) {
-      area.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>No videos in queue. Push videos from the YouTube tab first.</p></div>';
+      area.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>No sources yet. Use Add a source to save a video URL and begin with its transcript.</p></div>';
       return;
     }
 
@@ -3395,7 +3481,7 @@ async function loadSourceQueue() {
     chSel.innerHTML = '<option value="">all channels</option>' + channels.map(c => `<option>${_esc(c)}</option>`).join('');
     document.getElementById('ep-q-filters').style.display = 'flex';
     renderQueue();
-    toast(`Loaded ${S.epQueue.length} videos`, 'success');
+    document.getElementById('ep-sel-count').textContent='0 selected';
   } catch (err) {
     area.innerHTML = `<div class="info-box error">Failed to load: ${_esc(err.message)}</div>`;
   }
@@ -3454,6 +3540,7 @@ function enhanceTable(id) {
   const table=document.getElementById(id);if(!table?.tHead || !table.tBodies?.length)return;
   const view=tableView(id),headers=[...table.tHead.rows[0].cells];
   headers.forEach((th,i)=>{
+    for(const row of table.tBodies[0].rows)if(row.cells[i])row.cells[i].dataset.label=th.dataset.label || th.textContent.trim();
     if(th.dataset.filterKind==='none' || !th.textContent.trim())return;
     const label=th.dataset.label || th.textContent.trim(),kind=th.dataset.filterKind || 'text';th.dataset.label=label;
     const field=view.filters[label];
@@ -3467,8 +3554,10 @@ function enhanceTable(id) {
     cell.addEventListener('change',event=>{if(event.target.tagName==='SELECT'){view.filters[label]=event.target.value;applyTableFilters(id);}});
   });
   const summary=document.createElement('div');summary.className='table-filter-summary';summary.id=`${id}-summary`;
-  summary.innerHTML=`<span role="status"></span><button type="button" class="btn btn-sm btn-ghost">Clear column filters</button>`;
-  summary.querySelector('button').addEventListener('click',()=>{view.filters={};table.tHead.querySelectorAll('.table-column-control input,.table-column-control select').forEach(el=>el.value='');applyTableFilters(id);});
+  summary.innerHTML=`<button type="button" class="btn btn-sm" data-toggle-filters aria-expanded="${!!view.open}">Filters</button><span role="status"></span><button type="button" class="btn btn-sm btn-ghost" data-clear-filters>Reset filters</button>`;
+  table.classList.toggle('filters-open',!!view.open);
+  summary.querySelector('[data-toggle-filters]').addEventListener('click',event=>{view.open=!view.open;table.classList.toggle('filters-open',view.open);event.currentTarget.setAttribute('aria-expanded',String(view.open));});
+  summary.querySelector('[data-clear-filters]').addEventListener('click',()=>{view.filters={};table.tHead.querySelectorAll('.table-column-control input,.table-column-control select').forEach(el=>el.value='');applyTableFilters(id);});
   table.parentElement.insertBefore(summary,table);applyTableFilters(id);
 }
 function applyTableFilters(id) {
@@ -3477,11 +3566,12 @@ function applyTableFilters(id) {
   for(const row of rows){if(row.cells.length!==headers.length)continue;total++;row.hidden=!headers.every((th,i)=>tableValueMatches(tableCellValue(row.cells[i]),view.filters[th.dataset.label || th.textContent.trim()],th.dataset.filterKind || 'text'));if(!row.hidden)shown++;else if(row.querySelector('input[type=checkbox]:checked'))hiddenSelected++;}
   // Duplicate cluster labels remain with their visible member rows.
   rows.forEach((row,i)=>{if(row.cells.length===headers.length)return;const next=rows.slice(i+1).findIndex(r=>r.cells.length!==headers.length);row.hidden=!rows.slice(i+1,next<0?undefined:i+1+next).some(r=>!r.hidden);});
-  const summary=document.getElementById(`${id}-summary`);if(summary)summary.querySelector('span').textContent=`${shown} of ${total} rows shown${hiddenSelected?` · ${hiddenSelected} selected outside filters`:''}. Filters do not change your selection.`;
+  const summary=document.getElementById(`${id}-summary`);if(summary){const active=Object.values(view.filters).filter(v=>typeof v==='object'?v.min||v.max:v).length;summary.querySelector('span').textContent=`${shown} of ${total} shown${hiddenSelected?` · ${hiddenSelected} selected outside filters`:''}`;summary.querySelector('[data-toggle-filters]').textContent=active?`Filters (${active})`:'Filters';summary.querySelector('[data-clear-filters]').hidden=!active;summary.title='Filters do not change your selection.';}
 }
 function visibleTableKeys(id) {const table=document.getElementById(id);if(!table?.tBodies)return null;return new Set([...table.tBodies[0].rows].filter(r=>!r.hidden && r.dataset.rowKey!==undefined).map(r=>r.dataset.rowKey));}
 
 function renderQueue() {
+  document.getElementById('source-selection-actions').hidden=!S.epSelected.size;
   const area = document.getElementById('ep-queue-area');
   if (!area || !S.epQueue.length) return;
   const rows = queueFiltered();
@@ -3489,16 +3579,15 @@ function renderQueue() {
   const statusBadge = { 'Available': 'badge-green', 'Partially Used': 'badge-amber', 'Fully Used': 'badge' };
   const clip = (s) => (s && s.length > 130 ? s.slice(0, 129) + '…' : s || '');
   area.innerHTML = `
-    <div style="font-size:11px;color:var(--text3);margin-bottom:6px">${rows.length} / ${S.epQueue.length}</div>
     <table class="data-table" id="source-review-table">
       <thead><tr><th></th><th>Title</th><th data-filter-kind="select">Channel</th><th data-filter-kind="select">Prep</th><th data-filter-kind="select">Status</th></tr></thead>
       <tbody>
         ${rows.map(({ v, i }) => `
-          <tr data-row-key="${i}" onclick="toggleEpVideo(${i})" style="cursor:pointer" id="ep-row-${i}">
-            <td><input type="checkbox" id="ep-cb-${i}" ${S.epSelected.has(i) ? 'checked' : ''}></td>
-            <td data-filter-value="${_esc(v.title+' '+v.angle+' '+v.region)}" style="font-weight:500">${_esc(v.title)}<div style="font-size:11px;color:var(--text3);font-weight:400">${_esc(clip(v.angle))}</div>${v.region ? `<div style="font-size:10px;color:var(--text3)">📍 ${_esc(v.region)}</div>` : ''}</td>
+          <tr data-row-key="${i}" id="ep-row-${i}">
+            <td><input type="checkbox" id="ep-cb-${i}" aria-label="Select ${_esc(v.title)}" onchange="toggleEpVideo(${i})" ${S.epSelected.has(i) ? 'checked' : ''}></td>
+            <td data-filter-value="${_esc(v.title+' '+v.angle+' '+v.region)}" style="font-weight:500"><button class="btn btn-ghost source-open" onclick="openSourceRecord(${i})">${_esc(v.title)}</button><div style="font-size:11px;color:var(--text3);font-weight:400">${_esc(clip(v.angle))}</div>${v.region ? `<div style="font-size:10px;color:var(--text3)">📍 ${_esc(v.region)}</div>` : ''}</td>
             <td style="font-size:12px;color:var(--text2)">${_esc(v.channel)}</td>
-            <td data-filter-value="${v.breakdown?'Analysed':v.transcript?'Transcript ready':'Needs transcript'}" style="font-size:11px;color:var(--text3)">${v.transcript ? '📄' : '·'} ${v.breakdown ? '📋' : '·'}${(() => { const m = Object.values(v.mined || {}).reduce((a, b) => a + b, 0); return m ? ` <span style="color:var(--amber)">⛏${m}</span>` : ''; })()}</td>
+            <td data-filter-value="${v.breakdown?'Analysed':v.transcript?'Transcript ready':'Needs transcript'}" style="font-size:11px;color:var(--text3)">${v.breakdown?'Extracted':v.transcript?'Transcript ready':'Needs transcript'}${(() => { const m = Object.values(v.mined || {}).reduce((a, b) => a + b, 0); return m ? ` <span style="color:var(--amber)">⛏${m}</span>` : ''; })()}</td>
             <td><span class="badge ${statusBadge[v.status] || 'badge'}">${_esc(v.status)}</span></td>
           </tr>`).join('') || '<tr><td colspan="5" style="color:var(--text3);font-size:12px;padding:10px">No videos match.</td></tr>'}
       </tbody>
@@ -3527,6 +3616,7 @@ function clearEpSelection() {
 // ─── Research · Prep (transcript + breakdown per ticked source video) ────────
 // Three-step strip inside the Prep tab — one card visible at a time.
 function prepStep(n) {
+  document.getElementById('res-tab-prep').dataset.step=String(n);
   for (let k = 1; k <= 3; k++) {
     const card = document.getElementById(`prep-card-${k}`);
     const tab = document.getElementById(`prep-step-${k}`);
@@ -3538,11 +3628,13 @@ function prepStep(n) {
 }
 
 function renderPrepList() {
+  document.getElementById('source-selection-actions').hidden=!S.epSelected.size;
+  document.getElementById('source-batch-actions').hidden=S.epSelected.size<2;
   const el = document.getElementById('ep-prep-list');
   if (!el) return;
   const sel = [...S.epSelected].map(i => ({ i, v: S.epQueue[i] })).filter(x => x.v);
   if (!sel.length) {
-    el.innerHTML = '<div class="empty-state"><div class="icon">🧪</div><p>Tick some videos in <strong>1 · Select sources</strong> first.</p></div>';
+    el.innerHTML = '<div class="empty-state"><div class="icon">🧪</div><p>Open a source from the Source list to read or import its transcript.</p></div>';
     return;
   }
   el.innerHTML = sel.map(({ i, v }) => {
@@ -3560,18 +3652,19 @@ function renderPrepList() {
         ${minedTotal ? `<span class="badge" title="${_esc(minedStr)}">⛏ ${minedTotal} row${minedTotal === 1 ? '' : 's'} saved from this video</span>` : ''}
       </div>
       <p class="library-message">${v.transcript ? `API analysis: up to ${2*transcriptChunks(v.transcript,4000).length} small calls; completed parts are reused. Or use another chat with your subscription.` : 'Import, paste, or fetch captions to begin.'}</p>
-      <div class="row" style="flex-wrap:wrap;gap:8px">
-        <button class="btn btn-sm ${v.transcript ? '' : 'btn-primary'}" onclick="prepFetchTranscript(${i})" id="prep-tx-btn-${i}">${v.transcript ? 'Re-fetch transcript' : 'Get transcript'}</button>
-        <button class="btn btn-sm ${v.transcript ? 'btn-ghost' : ''}" onclick="prepToggle(${i},'paste')">${v.transcript ? 'paste transcript' : 'Paste transcript instead'}</button>
+      <div class="source-record-actions"><h3>1. Transcript</h3><div class="idea-actions">
+        <button class="btn btn-sm ${v.transcript ? '' : 'btn-primary'}" onclick="prepFetchTranscript(${i})" id="prep-tx-btn-${i}">${v.transcript ? 'Fetch captions again' : 'Get transcript'}</button>
+        <button class="btn btn-sm ${v.transcript ? 'btn-ghost' : ''}" onclick="prepToggle(${i},'paste')">${v.transcript ? 'Replace transcript' : 'Paste transcript instead'}</button>
         ${v._transcriptDraft ? `<button class="btn btn-sm" onclick="recoverTranscriptDraft(${i})">Recover unsaved transcript</button>` : ''}
-        <button class="btn btn-sm btn-primary" onclick="prepRunBreakdown(${i})" id="prep-ol-btn-${i}" ${v.transcript && !v._analysing ? '' : 'disabled'}>${v._analysing ? 'Analysing…' : v._breakdownUnsaved ? 'Retry saving result (no AI)' : cached ? 'Review saved result' : 'Analyse / resume with API'}</button>
-        ${v.breakdown ? `<button class="btn btn-sm btn-ghost" onclick="prepRunBreakdown(${i},true)" title="Runs the AI again — uses credits">↻ Re-analyse (fresh, uses credits)</button>` : ''}
-        ${v.transcript ? `<button class="btn btn-sm" onclick="openExtractionChat(${i})">Use another chat</button><button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'tx')">view transcript</button>` : ''}
+        ${v.transcript ? `<button class="btn btn-sm" onclick="prepToggle(${i},'tx')">Read transcript</button>` : ''}
+        </div><h3>2. Extract reusable material</h3><div class="idea-actions"><button class="btn btn-sm btn-primary" onclick="prepRunBreakdown(${i})" id="prep-ol-btn-${i}" ${v.transcript && !v._analysing ? '' : 'disabled'}>${v._analysing ? 'Analysing…' : v._breakdownUnsaved ? 'Retry saving result (no AI)' : cached ? 'Review saved result' : 'Analyse / resume with API'}</button>
+        ${v.transcript ? `<button class="btn btn-sm" onclick="openExtractionChat(${i})">Use another chat</button>` : ''}
         ${v.breakdown ? `<button class="btn btn-sm btn-ghost" onclick="prepToggle(${i},'ol')">view result</button>` : ''}
-        <a class="btn btn-sm btn-ghost" href="${_esc(safeURL(v.url || '#'))}" target="_blank" rel="noopener">▶ open video</a>
-      </div>
+        <button class="btn btn-sm" onclick="switchTab('res','places')">Extract places</button></div><details><summary>Source &amp; advanced actions</summary><div class="idea-actions">${v.breakdown ? `<button class="btn btn-sm" onclick="prepRunBreakdown(${i},true)">Start fresh analysis · API</button>` : ''}
+        <a class="btn btn-sm btn-ghost" href="${_esc(safeURL(v.url || '#'))}" target="_blank" rel="noopener">Open original video ↗</a>
+      </div></details></div>
       <div id="prep-paste-${i}" style="display:none;margin-top:8px">
-        <textarea id="prep-paste-box-${i}" rows="5" placeholder="Paste a transcript, SRT, or Markdown from Obsidian Web Clipper. Review the language and timestamps before saving…" style="font-size:11px;width:100%"></textarea>
+        <textarea id="prep-paste-box-${i}" aria-label="Transcript for ${_esc(v.title)}" rows="5" placeholder="Paste a transcript, SRT, or Markdown from Obsidian Web Clipper. Review the language and timestamps before saving…" style="font-size:11px;width:100%"></textarea>
         <label>Import transcript file (.md, .txt, .srt, .vtt)<input type="file" accept=".md,.txt,.srt,.vtt" onchange="importTranscriptFile(${i},this)"></label><p class="library-message">Obsidian Web Clipper: open the video in Reader, clip its transcript, then import the Markdown file here. Select the transcript portion if the note includes your own summary. <a href="https://obsidian.md/clipper" target="_blank" rel="noopener">Web Clipper ↗</a></p><button class="btn btn-sm btn-primary" onclick="prepUsePasted(${i})" style="margin-top:6px">Save pasted transcript</button>
       </div>
       <div id="prep-status-${i}" role="status" style="font-size:13px;color:var(--text2);margin-top:10px">${_esc(v._prepStatus || '')}</div>
@@ -3644,7 +3737,7 @@ function prepStatus(i, msg) {
 async function prepFetchTranscript(i) {
   const v = S.epQueue[i];
   if (v._analysing) { prepStatus(i,'Wait for the current analysis before replacing its transcript.'); return; }
-  if (!v.url) { prepStatus(i, 'No YouTube URL on this row — paste the transcript in Stage 3A instead.'); return; }
+  if (!v.url) { prepStatus(i, 'This source has no video URL. Paste or import its transcript below.'); return; }
   const btn = document.getElementById(`prep-tx-btn-${i}`);
   btn.disabled = true; btn.textContent = 'Fetching…';
   let msg = '';
@@ -3694,7 +3787,7 @@ const EXTRACT_SHAPE_1 = `{
   "transport": [ { "route": "From → To", "mode": "Drive | Ferry | Train | Ropeway | Walk", "from": "", "to": "", "distance_km": 0, "duration": "if mentioned", "fare": "if mentioned", "scenic": false } ],
   "beats": [ { "moment": "a scene/turn", "why_it_matters": "one line", "type": "discovery | problem | scenic | human | food" } ],
   "tips": ["practical advice the vlogger gives"],
-  "quotes": [ { "text": "memorable line, translated to English", "speaker": "who said it, or \\"\\"" } ]
+  "quotes": [ { "text": "memorable line translated to English", "original_text": "exact original-language wording", "source_excerpt": "supporting transcript passage", "timestamp": "only if explicitly available, otherwise empty", "speaker": "who said it, or \\"\\"" } ]
 }`;
 const PLACES_SHAPE = `{
   "places": [
@@ -3822,6 +3915,7 @@ and render in natural English. Romanise place names. ${guard}
 ${transcript}
 </transcript>
 
+For every object in an array, also include source_excerpt (exact original transcript wording) and timestamp (only if supplied by the transcript, otherwise empty). Keep interpretation separate from quotations.
 Return ONLY this JSON shape, no markdown:
 ${shape}`;
   const route=S.routing?.[task] || DEFAULT_ROUTING_UI[task];
@@ -3893,7 +3987,8 @@ async function saveBreakdownResult(v) {
 }
 function composeBreakdown(v,p1,p2) {
   const stamp=arr=>(arr || []).map(x=>({...x,source_url:v.url || '',source_name:v.channel || '',source_title:v.title || '',source_page_id:v.id || '',needs_verification:true}));
-  return {...(v.breakdown?._placesHash===txHash(v)?{places:v.breakdown.places,_placesHash:v.breakdown._placesHash}:{}),_hash:`full-v3:${txHash(v)}`,summary:p1.summary || '',route:p1.route || [],beats:p1.beats || [],tips:p1.tips || [],quotes:p1.quotes || [],activities:stamp(p1.activities),food:stamp(p1.food),transport:stamp(p1.transport),research:stamp(p2.research),prices:stamp(p2.prices),data:stamp(p2.data),glossary:stamp(p2.glossary)};
+  const story=[...(p1.beats || []).map(x=>({...x,statement:x.moment,material_kind:'story beat',topic:'Story · Beat',kind:'connection'})),...(p1.tips || []).map(x=>({...(typeof x==='object'?x:{original_text:x}),statement:typeof x==='string'?x:x.text || x.tip,material_kind:'source advice',topic:'Story · Advice',kind:'connection'})),...(p1.quotes || []).map(x=>({...x,statement:x.text,material_kind:'quote',topic:'Story · Quote',kind:'connection'}))].filter(x=>x.statement);
+  return {...(v.breakdown?._placesHash===txHash(v)?{places:v.breakdown.places,_placesHash:v.breakdown._placesHash}:{}),_hash:`full-v3:${txHash(v)}`,summary:p1.summary || '',route:p1.route || [],beats:p1.beats || [],tips:p1.tips || [],quotes:p1.quotes || [],activities:stamp(p1.activities),food:stamp(p1.food),transport:stamp(p1.transport),research:stamp([...(p2.research || []),...story]),prices:stamp(p2.prices),data:stamp(p2.data),glossary:stamp(p2.glossary)};
 }
 async function prepRunBreakdown(i,force) {
   const v=S.epQueue[i];if(v._analysing)return;
@@ -3911,7 +4006,7 @@ async function prepRunBreakdown(i,force) {
       v.breakdown=composeBreakdown(v,p1,p2);v.outline=renderBreakdownText(v.breakdown);v._breakdownUnsaved=true;
     }
     await saveBreakdownResult(v);rebuildCombinedOutline();renderExtractReview();
-    prepStatus(i,'Analysis saved to this source. Open Review & save rows to choose what enters your material tables.');
+    prepStatus(i,'Analysis saved to this source. Open Review material to choose what enters your material tables.');
   } catch(e) {prepStatus(i,`${e.message} Completed parts stay on this device. Analyse / resume retries remaining work; saving an already completed result uses no AI.`);}
   finally{v._analysing=false;renderPrepList();}
 }
@@ -3942,7 +4037,7 @@ async function useExtractionChat() {
   const ctx=S.extractionChat,v=S.epQueue[ctx?.i];
   if(!v || v._analysing || v.id!==ctx.id || v.transcript!==ctx.transcript || ctx.review?.text!==document.getElementById('extract-chat-result').value){document.getElementById('extract-chat-review').textContent='Source or result changed. Prepare and review the task again.';return;}
   v.breakdown=composeBreakdown(v,ctx.review.parsed,ctx.review.parsed);v.outline=renderBreakdownText(v.breakdown);v._breakdownUnsaved=true;v._analysing=true;
-  try{await saveBreakdownResult(v);prepStatus(ctx.i,'Imported analysis saved to source. Review rows before adding them to material tables.');closeModal('extract-chat-modal');}
+  try{await saveBreakdownResult(v);prepStatus(ctx.i,'Imported analysis saved to source. Review rows before adding them to material tables.');closeModal('extract-chat-modal');prepStep(3);}
   catch(e){document.getElementById('extract-chat-review').textContent=`Save failed: ${e.message}. Result retained; retry saving without generating again.`;}
   finally{v._analysing=false;rebuildCombinedOutline();renderPrepList();}
 }
@@ -4070,7 +4165,7 @@ const RESEARCH_STORES = {
     props: (it) => ({
       'Term': { title: [{ text: { content: it.term || '' } }] },
       'Reading': _txt(it.reading), 'Romaji': _txt(it.romaji),
-      'English': _txt(it.english), 'Usage Note': _txt(it.usage_note),
+      'English': _txt(it.english || it.meaning), 'Usage Note': _txt(it.usage_note),
     }),
   },
   // Web-sourced places (no Maps enrichment on this path — the Places tab is the
@@ -4082,10 +4177,9 @@ const RESEARCH_STORES = {
       'Name': { title: [{ text: { content: it.name || '' } }] },
       'Type': { select: { name: normPlaceType(it.type) } },
       'Prefecture': { select: { name: PREFECTURES.includes(it.prefecture_guess) ? it.prefecture_guess : 'Unknown' } },
-      'Country': { select: { name: 'Japan' } },
       'B-Roll Description': _txt(it.what_happens_here),
-      'Google Maps URL': { url: 'https://www.google.com/maps/search/' + encodeURIComponent([it.name, it.area_guess, 'Japan'].filter(Boolean).join(' ')) },
-      'Date Added': { date: { start: _today() } }, 'Last Verified': { date: { start: _today() } },
+      'Google Maps URL': { url: 'https://www.google.com/maps/search/' + encodeURIComponent([it.name, it.area_guess, it.country].filter(Boolean).join(' ')) },
+      'Date Added': { date: { start: _today() } },
     }),
   },
 };
@@ -4094,26 +4188,37 @@ const RESEARCH_STORES = {
 S._pushed = S._pushed || new Set();
 S.verify = S.verify || {};   // "<store>:<name>" -> { confidence, source_url, as_of_date, verify_note, _verified }
 S._existing = S._existing || {};   // store key -> Set of lowercased titles already in that Notion DB
+// Identity describes an observation, not its display title. Full canonical content
+// is retained so hashing is never treated as proof of equality.
+function materialIdentity(it) {
+  const clean=value=>Array.isArray(value)?value.map(clean):value && typeof value==='object'?Object.fromEntries(Object.keys(value).sort().filter(k=>!k.startsWith('_') && !['needs_verification','verify_note','confidence'].includes(k)).map(k=>[k,clean(value[k])])):value;
+  return JSON.stringify(clean(it));
+}
+function materialEvidenceBlock(it) {
+  const json=JSON.stringify({nomadMaterial:1,identity:materialIdentity(it),observation:Object.fromEntries(Object.entries(it).filter(([k])=>!k.startsWith('_'))),original:it._original || Object.fromEntries(Object.entries(it).filter(([k])=>!k.startsWith('_')))});
+  if(new TextEncoder().encode(json).length>65536)throw new Error('This material exceeds the evidence limit. Shorten the candidate without removing its source reference.');
+  return {object:'block',type:'code',code:{language:'json',rich_text:libRT(json)}};
+}
+function materialEvidence(blocks) {
+  for(const b of blocks || [])if(b.type==='code')try{const d=JSON.parse(richText(b.code));if(d.nomadMaterial===1)return d;}catch{/* unrelated blocks */}
+  return null;
+}
+const REVIEW = {decisions:{},edits:{},drafts:{},receipts:{},loaded:false,busy:false};
+async function restoreReviews() {
+  if(REVIEW.loaded)return;
+  const saved=await localArtifact('material-review-v1');
+  REVIEW.decisions=saved?.decisions || {};REVIEW.edits=saved?.edits || {};REVIEW.drafts=saved?.drafts || {};REVIEW.receipts=saved?.receipts || {};REVIEW.loaded=true;
+}
+async function persistReviews() {await localArtifact('material-review-v1',{decisions:REVIEW.decisions,edits:REVIEW.edits,drafts:REVIEW.drafts,receipts:REVIEW.receipts});}
 function poolFor(key, src) {
-  const rows = src === 'web'
-    ? ((S.webExtract && S.webExtract[key]) || [])
-    : (S.episodeBreakdowns || []).flatMap(b => b[key] || []);
-  const seen = new Set(); const out = [];
-  for (const it of rows) {
-    const nm = String(RESEARCH_STORES[key].name(it) || '').trim();
-    if (!nm) continue;
-    const lk = nm.toLowerCase();
-    // key by name + source video so a genuinely different "Onsen visit" from
-    // another video (e.g. a later episode) isn't collapsed / blocked
-    const sid = it.source_page_id || '';
-    const dedup = `${lk}::${sid}`;
-    if (seen.has(dedup)) continue;
-    seen.add(dedup);
-    const _key = `${src}:${key}:${dedup}`;
-    if (S._pushed.has(_key)) continue;           // already written this session — gone from review
-    // Web verify-pass decorations merge onto the same prep row (see runWebVerify).
-    const vfy = src === 'prep' ? S.verify[`${key}:${lk}`] : null;
-    out.push({ ...it, ...(vfy || {}), _key });
+  const rows=src==='web'?((S.webExtract && S.webExtract[key]) || []):(S.episodeBreakdowns || []).flatMap(b=>b[key] || []);
+  const seen=new Set(),out=[];
+  for(const it of rows) {
+    if(!String(RESEARCH_STORES[key].name(it) || '').trim())continue;
+    const identity=materialIdentity(it);if(seen.has(identity))continue;seen.add(identity);
+    const _key=`${src}:${key}:${identity}`;
+    if(S._pushed.has(_key))continue;
+    out.push({...it,...(REVIEW.edits[_key] || {}),_key,_original:it});
   }
   return out;
 }
@@ -4139,72 +4244,44 @@ const _skipSet = (src) => (S[src === 'web' ? '_webSkip' : '_extractSkip'] ||= ne
 
 const _reviewTab = { prep: '', web: '' };
 function renderReviewInto(elId, src) {
-  const el = document.getElementById(elId);
-  if (!el) return;
-  // Compute each store's pool once (poolFor is a flatMap+dedup — was called ~19×
-  // per render). Places always go via the Places tab, never the Prep review.
-  const pools = {};
-  for (const k of Object.keys(RESEARCH_STORES)) {
-    if (src === 'prep' && k === 'places') continue;
-    pools[k] = poolFor(k, src);
-  }
-  const keys = Object.keys(pools).filter(k => pools[k].length);
-  if (!keys.length) {
-    el.innerHTML = `<div class="empty-state"><div class="icon">📤</div><p>${src === 'web' ? 'Run a search above.' : 'Run a breakdown above.'}</p></div>`;
-    return;
-  }
-  if (!keys.includes(_reviewTab[src])) _reviewTab[src] = keys[0];
-  const active = _reviewTab[src];
-  const skip = _skipSet(src);
-  const pool = pools[active];
-  const tabs = keys.map(k =>
-    `<div class="tab ${k === active ? 'active' : ''}" onclick="switchReviewTab('${src}','${k}')">${RESEARCH_STORES[k].label} · ${pools[k].length}</div>`
-  ).join('');
-  const cfg = RESEARCH_STORES[active];
-  ensureExisting(active, src);   // fetch what's already in this Notion DB, then re-render
-  const existing = S._existing[active] || new Set();
-  const existingVid = (S._existingVid || {})[active] || new Map();
-  const lcName = (it) => String(cfg.name(it) || '').trim().toLowerCase();
-  const isDup = (it) => existing.has(lcName(it));
-  const sameVid = (it) => it.source_page_id && (existingVid.get(lcName(it)) || new Set()).has(it.source_page_id);
-  // Build the row payloads once, derive the columns from them (agnostic — no
-  // per-store column config). Hide the always-identical / title columns.
-  const built = pool.map(it => ({ it, p: cfg.props(it), dup: isDup(it), same: sameVid(it) }));
-  const dupN = built.filter(b => b.dup).length;
-  const HIDE = new Set(['Date Added', 'Retrieved Date', 'Country', 'Last Verified', cfg.titleProp]);
-  const cols = [];
-  for (const { p } of built) for (const k of Object.keys(p)) if (!HIDE.has(k) && !cols.includes(k)) cols.push(k);
-  const lp = (S._lastPush || {})[`${src}:${active}`];
-  const savedBanner = lp
-    ? `<div style="background:rgba(122,168,116,.12);border:1px solid var(--accent3);border-radius:var(--radius);padding:6px 10px;margin-bottom:8px;font-size:12px;color:var(--text2)">✓ Saved ${lp.added} to ${cfg.label}${lp.skipped ? ` · ${lp.skipped} were already there` : ''}. <a href="${lp.url}" target="_blank" rel="noopener" style="color:var(--blue)">Open ${cfg.label} in Notion ↗</a></div>`
-    : '';
-  el.innerHTML = `
-    <div class="tabs" style="margin-bottom:10px">${tabs}</div>
-    ${savedBanner}
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="pushStore('${active}',this,'${src}')">Save selected to ${cfg.label} →</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',true)">Select shown</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="reviewAll('${src}','${active}',false)">Clear shown</button>
-      <span style="font-size:11px;color:var(--text3)">${built.length} row${built.length === 1 ? '' : 's'}${dupN ? ` · <span style="color:var(--amber)">${dupN} already saved</span>` : ''}</span>
-    </div>
-    <div style="overflow:auto;max-height:60vh;border:1px solid var(--border);border-radius:var(--radius)">
-    <table id="review-${src}-${active}" class="data-table" style="font-size:12px">
-      <thead><tr><th style="width:24px"></th><th>${_esc(cfg.titleProp)}</th>${cols.map(c => `<th data-filter-kind="${Object.values(built).map(b=>b.p[c]).find(Boolean)?.number!==undefined?'number':Object.values(built).some(b=>b.p[c]?.select)?'select':Object.values(built).some(b=>b.p[c]?.multi_select)?'multi_select':Object.values(built).some(b=>b.p[c]?.date)?'date':'text'}">${_esc(c)}</th>`).join('')}</tr></thead>
-      <tbody>
-      ${built.map(({ it, p, dup, same }) => {
-        const off = skip.has(it._key);
-        const tag = same
-          ? ' <span style="font-size:10px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:0 4px;white-space:nowrap">already saved from this video</span>'
-          : dup ? ' <span style="font-size:10px;color:var(--text3);border:1px solid var(--border);border-radius:4px;padding:0 4px;white-space:nowrap">already saved</span>' : '';
-        return `<tr data-row-key="${_esc(it._key)}">
-          <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleReview(${_esc(JSON.stringify(it._key))},'${src}',this)" style="width:14px;flex:none"></td>
-          <td data-filter-value="${_esc(cfg.name(it))}" style="font-weight:500;max-width:220px;white-space:normal;${same ? 'text-decoration:line-through' : ''}" title="${_esc(it.verify_note || '')}">${it._verified ? '✅ ' : ''}${_esc(cfg.name(it) || '(unnamed)')}${tag}</td>
-          ${cols.map(c => `<td data-filter-value="${_esc(p[c]?.number ?? p[c]?.date?.start ?? _propText(p[c]))}" ${p[c]?.multi_select?`data-filter-values="${_esc(JSON.stringify(p[c].multi_select.map(x=>x.name)))}"`: ''} style="max-width:240px;white-space:normal">${_esc(_propText(p[c]))}</td>`).join('')}
-        </tr>`;
-      }).join('')}
-      </tbody>
-    </table></div>`;
+  const el=document.getElementById(elId);if(!el)return;
+  const pools=Object.fromEntries(Object.keys(RESEARCH_STORES).filter(k=>src!=='prep'||k!=='places').map(k=>[k,poolFor(k,src)]));
+  const keys=Object.keys(pools).filter(k=>pools[k].length);
+  if(!keys.length){el.innerHTML=`<div class="empty-state"><h3>No candidates waiting</h3>${REVIEW.receipts[src]?`<p role="status">Last save: ${REVIEW.receipts[src].saved} material records saved or reconciled.</p>`:''}<p>Saved material stays in your Library. Open a source to extract more, or return to browsing.</p><button class="btn" onclick="switchTab('res','material')">Browse material</button></div>`;return;}
+  if(!keys.includes(_reviewTab[src]))_reviewTab[src]=keys[0];
+  const active=_reviewTab[src],cfg=RESEARCH_STORES[active],pool=pools[active];
+  const total=Object.values(pools).flat(),accepted=total.filter(it=>REVIEW.decisions[it._key]==='accepted').length;
+  const selected=(REVIEW.selected ||= new Set());
+  el.innerHTML=`${REVIEW.receipts[src]?`<p role="status" class="library-message">Last save: ${REVIEW.receipts[src].saved} saved or reconciled · ${REVIEW.receipts[src].remaining} accepted records still to save.</p>`:''}<div class="review-summary"><div><h3>Review extracted material</h3><p>${total.length} candidates · ${accepted} accepted. Accepting keeps a candidate for saving; it does not verify its claims.</p></div><button class="btn btn-primary" onclick="saveAcceptedMaterial('${src}',this)" ${!accepted || REVIEW.busy?'disabled':''}>Save accepted (${accepted})</button></div>
+    <div class="review-categories" role="group" aria-label="Candidate categories">${keys.map(k=>`<button class="btn btn-sm" aria-pressed="${k===active}" onclick="switchReviewTab('${src}','${k}')">${RESEARCH_STORES[k].label} <span>${pools[k].length}</span></button>`).join('')}</div>
+    <div class="review-bulk"><span>${pool.filter(it=>selected.has(it._key)).length} selected in this category</span><button class="btn btn-sm" onclick="reviewAll('${src}','${active}',true)">Select shown</button><button class="btn btn-sm" onclick="reviewAll('${src}','${active}',false)">Clear shown</button><button class="btn btn-sm" onclick="decideReview('${src}','${active}','accepted')">Accept selected shown</button><button class="btn btn-sm" onclick="decideReview('${src}','${active}','skipped')">Skip selected shown</button></div>
+    ${(S._lastPush || {})[`${src}:${active}`]?`<p role="status">${S._lastPush[`${src}:${active}`].added} saved · ${S._lastPush[`${src}:${active}`].skipped} existing receipts reconciled.</p>`:''}
+    ${S._pushErrors?.[active]?`<p class="library-error" role="alert">${_esc(S._pushErrors[active])} Accepted candidates remain available.</p>`:''}
+    <div class="review-table-wrap"><table id="review-${src}-${active}" class="data-table"><thead><tr><th></th><th>Material</th><th>Source context</th><th data-filter-kind="select">Decision</th><th data-filter-kind="none">Action</th></tr></thead><tbody>${pool.map(it=>`<tr data-row-key="${_esc(it._key)}"><td><input type="checkbox" aria-label="Select ${_esc(cfg.name(it))}" ${selected.has(it._key)?'checked':''} onchange="toggleReview(${_esc(JSON.stringify(it._key))},'${src}',this)"></td><td><strong>${_esc(cfg.name(it))}</strong><p>${_esc(Object.entries(cfg.props(it)).filter(([k])=>![cfg.titleProp,'Source Video','Source URL','Date Added','Retrieved Date'].includes(k)).slice(0,3).map(([k,v])=>`${k}: ${_propText(v)}`).join(' · '))}</p></td><td>${_esc(it.source_excerpt || it.source_title || it.source_name || it.source_url || 'Source context not recorded')}<small>${_esc(it.timestamp || '')}</small></td><td>${_esc(REVIEW.decisions[it._key] || 'pending')}</td><td><button class="btn btn-sm" data-key="${_esc(it._key)}" onclick="openCandidateReview('${src}','${active}',this.dataset.key)">Review</button></td></tr>`).join('')}</tbody></table></div>`;
   enhanceTable(`review-${src}-${active}`);
+}
+function openCandidateReview(src,category,key) {
+  const item=poolFor(category,src).find(it=>it._key===key);if(!item)return;
+  REVIEW.current={src,category,key};
+  const fields=Object.entries(item).filter(([k,v])=>!k.startsWith('_') && !['source_page_id','source_url','source_name','source_title','needs_verification'].includes(k) && ['string','number','boolean'].includes(typeof v));
+  document.getElementById('candidate-fields').innerHTML=fields.map(([k,v])=>`<label>${_esc(k.replaceAll('_',' '))}${typeof v==='boolean'?`<input aria-label="${_esc(k.replaceAll('_',' '))}" type="checkbox" data-field="${_esc(k)}" data-type="boolean" ${v?'checked':''}>`:`<textarea aria-label="${_esc(k.replaceAll('_',' '))}" rows="${String(v).length>150?4:2}" data-field="${_esc(k)}" data-type="${typeof v}">${_esc(v)}</textarea>`}</label>`).join('');
+  for(const field of document.querySelectorAll('#candidate-fields [data-field]')){const draft=REVIEW.drafts[key]?.[field.dataset.field];if(draft!==undefined){if(field.dataset.type==='boolean')field.checked=draft;else field.value=draft;}field.oninput=()=>{(REVIEW.drafts[key] ||= {})[field.dataset.field]=field.dataset.type==='boolean'?field.checked:field.value;persistReviews().catch(()=>{document.getElementById('candidate-error').textContent='Draft is in memory only. Keep this page open.';});};}
+  document.getElementById('candidate-source').textContent=item.source_title || item.source_url || 'Source reference not recorded';
+  document.getElementById('candidate-error').textContent='';openModal('candidate-review-modal');
+}
+async function saveCandidateReview(decision,next=false) {
+  const {src,category,key}=REVIEW.current,edits={};
+  try{
+    for(const field of document.querySelectorAll('#candidate-fields [data-field]')){
+      const value=field.dataset.type==='boolean'?field.checked:field.dataset.type==='number'?Number(field.value):field.value;
+      if(field.dataset.type==='number' && (field.value.trim()==='' || !Number.isFinite(value)))throw new Error('Enter a valid number. Keep missing values as text rather than inventing zero.');
+      edits[field.dataset.field]=value;
+    }
+    if(!String(RESEARCH_STORES[category].name(edits) || '').trim())throw new Error('A material title is required.');
+    REVIEW.edits[key]=edits;REVIEW.decisions[key]=decision;delete REVIEW.drafts[key];await persistReviews();
+    closeModal('candidate-review-modal');renderReviewInto(src==='web'?'web-review':'extract-review',src);
+    if(next){const pending=poolFor(category,src).find(it=>!REVIEW.decisions[it._key]);if(pending)openCandidateReview(src,category,pending._key);}
+  }catch(e){document.getElementById('candidate-error').textContent=e.message;}
 }
 
 // Fetch every title already in a store's Notion DB (paginated), cache it, then
@@ -4226,10 +4303,6 @@ async function ensureExisting(key, src) {
     }
     S._existing[key] = titles;
     S._existingVid[key] = byVid;
-    const skip = _skipSet(src);
-    for (const it of poolFor(key, src)) {
-      if (titles.has(String(cfg.name(it) || '').trim().toLowerCase())) skip.add(it._key);
-    }
     renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
   } catch (e) {
     console.warn('existing-rows check failed for', key, e.message);
@@ -4245,59 +4318,67 @@ function switchReviewTab(src, key) {
   renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
 }
 function reviewAll(src, key, on) {
-  const s = _skipSet(src);
-  const existing = S._existing[key] || new Set();
-  const nm = (it) => String(RESEARCH_STORES[key].name(it) || '').trim().toLowerCase();
-  const visible=visibleTableKeys(`review-${src}-${key}`);
-  for (const it of poolFor(key, src)) {
-    if(visible && !visible.has(it._key))continue;
-    if (on && !existing.has(nm(it))) s.delete(it._key);   // "all" = all that aren't already in Notion
-    else s.add(it._key);
-  }
-  renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
+  const selected=(REVIEW.selected ||= new Set()),visible=visibleTableKeys(`review-${src}-${key}`);
+  for(const it of poolFor(key,src))if(!visible || visible.has(it._key)){if(on)selected.add(it._key);else selected.delete(it._key);}
+  renderReviewInto(src==='web'?'web-review':'extract-review',src);
 }
 function renderExtractReview() { rebuildCombinedOutline(); renderReviewInto('extract-review', 'prep'); }
 function renderWebReview() { renderReviewInto('web-review', 'web'); }
 function toggleReview(key, src, cb) {
-  const s = _skipSet(src);
-  const off = !s.has(key);
-  if (off) s.add(key); else s.delete(key);
-  const tr = cb && cb.closest('tr');
-  if (tr) { applyTableFilters(`review-${src}-${_reviewTab[src]}`); }         // targeted update — skip the full table rebuild
-  else renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
+  const selected=(REVIEW.selected ||= new Set());if(cb.checked)selected.add(key);else selected.delete(key);
+  renderReviewInto(src==='web'?'web-review':'extract-review',src);
+}
+async function decideReview(src,key,decision,oneKey=null) {
+  const visible=visibleTableKeys(`review-${src}-${key}`);
+  const items=poolFor(key,src).filter(it=>oneKey?it._key===oneKey:REVIEW.selected?.has(it._key) && (!visible || visible.has(it._key)));
+  if(!items.length){toast('Select candidates to review.');return;}
+  for(const it of items)REVIEW.decisions[it._key]=decision;
+  try{await persistReviews();renderReviewInto(src==='web'?'web-review':'extract-review',src);}
+  catch(e){toast(`Review is not stored on this device: ${e.message}`,'error');}
+}
+async function saveAcceptedMaterial(src,btn) {
+  if(REVIEW.busy)return;REVIEW.busy=true;btn.disabled=true;
+  const count=()=>Object.keys(RESEARCH_STORES).flatMap(key=>poolFor(key,src)).filter(it=>REVIEW.decisions[it._key]==='accepted').length,before=count();
+  try{for(const key of Object.keys(RESEARCH_STORES))if(poolFor(key,src).some(it=>REVIEW.decisions[it._key]==='accepted'))await pushStore(key,null,src);}
+  finally{REVIEW.receipts[src]={saved:before-count(),remaining:count(),at:new Date().toISOString()};await persistReviews().catch(()=>{});REVIEW.busy=false;btn.disabled=false;renderReviewInto(src==='web'?'web-review':'extract-review',src);}
 }
 
 let _pushingStore = false;
 async function pushStore(key, btn, src) {
   if (_pushingStore) return;                         // re-entry guard (double-click / tab-switch)
   const cfg = RESEARCH_STORES[key];
-  const items = poolFor(key, src).filter(it => !_skipSet(src).has(it._key));
-  if (!items.length) { toast('Nothing ticked', 'error'); return; }
+  const items = poolFor(key, src).filter(it => REVIEW.decisions[it._key] === 'accepted');
+  if (!items.length) { toast('Accept material before saving.', 'error'); return; }
   _pushingStore = true;
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   let added = 0, skipped = 0, failed = 0;
   try {
-    // Reuse the fully-paginated set ensureExisting already built for this tab;
-    // only hit Notion if it isn't populated (or was an empty error sentinel).
-    let existing = null;
-    if (!existing) {
-      try {
-        const rows = await notionQueryAll(cfg.db());
-        existing = new Set(rows.map(r =>
-          (r.properties?.[cfg.titleProp]?.title?.[0]?.plain_text || '').trim().toLowerCase()));
-      } catch { throw new Error('Could not check existing rows. No new rows were created; reconnect and retry.'); }
-    }
+    delete (S._pushErrors ||= {})[key];
+    const existing=await notionQueryAll(cfg.db());
     for (const it of items) {
-      const nm = String(cfg.name(it) || '').trim().toLowerCase();
-      if (!nm || existing.has(nm)) { S._pushed.add(it._key); skipped++; continue; }
-      const intentKey=`material-create:${key}:${nm}`;
+      const name=String(cfg.name(it) || '').trim(),identity=materialIdentity(it);
+      if(!name)continue;
+      const intentKey=`material-create-v2:${key}:${identity}`;
+      let createStarted=false,created=false;
       try {
-        if(await localArtifact(intentKey))throw new Error('Earlier creation outcome is uncertain. Check Notion before creating this row again.');
-        await localArtifact(intentKey,{name:nm,at:new Date().toISOString()});
-        await notionAPI('pages', 'POST', { parent: { database_id: cfg.db() }, properties: cfg.props(it) });
-        await localArtifact(intentKey,null);
-        existing.add(nm); S._pushed.add(it._key); added++;   // mark done — it drops out of review
-      } catch (e) { if(e.status>=400 && e.status<500)await localArtifact(intentKey,null);failed++;(S._pushErrors ||= {})[key]=e.message; }
+        // Only a matching stored receipt proves a replay. Legacy/similar names
+        // remain distinct; their original rows are never overwritten.
+        const matches=existing.filter(r=>richText(r.properties?.[cfg.titleProp]).trim().toLowerCase()===name.toLowerCase());
+        let receipt=null;
+        for(const row of matches){const evidence=materialEvidence(await getPageBlocks(row.id));if(evidence?.identity===identity){receipt=row;break;}}
+        if(receipt){await localArtifact(intentKey,null);S._pushed.add(it._key);skipped++;continue;}
+        if(await localArtifact(intentKey))throw new Error('Earlier save may have reached Notion. No matching receipt was found; inspect the original before retrying.');
+        const evidence=materialEvidenceBlock(it);
+        await localArtifact(intentKey,{name,at:new Date().toISOString()});
+        createStarted=true;
+        const page=await notionAPI('pages','POST',{parent:{database_id:cfg.db()},properties:cfg.props(it),children:[evidence]});
+        // Creation response is a receipt; keep the uncertain intent until the
+        // stored evidence is read back, so a timeout cannot cause a blind replay.
+        created=true;
+        const saved=materialEvidence(await getPageBlocks(page.id));
+        if(saved?.identity!==identity)throw new Error('Created record needs verification. Your accepted candidate is retained; retry checks its receipt first.');
+        await localArtifact(intentKey,null);existing.push(page);S._pushed.add(it._key);added++;
+      }catch(e){if(createStarted && !created && e.status>=400 && e.status<500)await localArtifact(intentKey,null);failed++;(S._pushErrors ||= {})[key]=e.message;}
     }
     toast([added && `${added} added`, skipped && `${skipped} skipped`, failed && `${failed} failed`]
       .filter(Boolean).join(' · ') + (failed ? ` · ${S._pushErrors?.[key] || 'Review failed rows'}` : '') || 'nothing to push', failed ? 'error' : 'success');
@@ -4308,9 +4389,9 @@ async function pushStore(key, btn, src) {
         url: `https://www.notion.so/${cfg.db().replace(/-/g, '')}`,
       };
     }
-  } catch(e) { toast(e.message,'error'); } finally {
+  } catch(e) { (S._pushErrors ||= {})[key]=e.message;toast(e.message,'error'); } finally {
     _pushingStore = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Save ticked →'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Save accepted material'; }
     renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
   }
 }
@@ -4559,7 +4640,7 @@ function renderVlibResults() {
         const k = rk(r);
         const off = skip.has(k);
         return `<tr id="vlrow-${_esc(k)}" data-row-key="${_esc(k)}">
-          <td><input type="checkbox" ${off ? '' : 'checked'} onchange="toggleVlib(${_esc(JSON.stringify(k))})" style="width:14px;flex:none"></td>
+          <td><input type="checkbox" aria-label="Select claim ${_esc(r.name)}" ${off ? '' : 'checked'} onchange="toggleVlib(${_esc(JSON.stringify(k))})" style="width:14px;flex:none"></td>
           <td style="white-space:nowrap;color:var(--text3)">${RESEARCH_STORES[r.store].label}</td>
           <td data-filter-value="${_esc(r.name)}" style="max-width:200px;white-space:normal;font-weight:500">${_esc(r.name)}<button class="btn btn-sm" data-key="${_esc(k)}" onclick="startManualVerdict(this.dataset.key)">Review manually</button></td>
           <td style="max-width:320px;white-space:normal;color:var(--text2)">${_esc(r.fields)}</td>
@@ -4584,8 +4665,8 @@ function openFactReview(key) {
   document.getElementById('fact-review-content').innerHTML=`<p class="studio-eyebrow">${_esc(RESEARCH_STORES[r.store].label)} · ${r.id?'Saved material':'Unsaved extraction'}</p><h3>${_esc(r.name)}</h3><details><summary>Original fields &amp; context</summary><p class="source-context">${_esc(r.fields)}</p>${r.id?`<a href="https://www.notion.so/${_esc(r.id.replace(/-/g,''))}" target="_blank" rel="noopener">Edit original in Notion ↗</a>`:''}</details><p>Your judgement changes the verification record. It does not rewrite the original claim.</p>${renderVerdictProposal(r)}`;
   document.getElementById('fact-review-error').textContent='';openModal('fact-review-modal');
 }
-async function verifyLibrarySelection() {
-  const selected=Object.values(LIB.selected);if(!selected.length){document.getElementById('verify-save-status').textContent='Select material in Saved material first.';return;}
+async function verifyLibrarySelection(explicitRows=null) {
+  const selected=explicitRows || Object.values(LIB.selected);if(!selected.length){document.getElementById('verify-save-status').textContent='Select material in Saved material first.';return;}
   S._vlibSource='saved';S._vlibTidy=false;S._vlibSkip=new Set();
   S.vlib=selected.map(m=>({id:m.id,store:m.category,name:m.name,lastEdited:m.lastEdited,fields:Object.entries(m.properties).map(([k,v])=>`${k}: ${libProperty(v)}`).join(' · '),status:libVerification(m)}));
   for(const r of S.vlib)r._proposal=await localArtifact(`verify-proposal:${r.id}`);
@@ -4594,7 +4675,7 @@ async function verifyLibrarySelection() {
 function renderVerdictProposal(r) {
   if(!r._proposal)return '';
   const v=r._proposal,k=r.id || r._key;
-  return `<details open class="verdict-proposal"><summary>Your review · not saved</summary><label>Verdict<select data-key="${_esc(k)}" onchange="editVerdictProposal(this.dataset.key,'verdict',this.value)"><option value="">Choose a judgement</option>${['confirmed','corrected','unsupported'].map(x=>`<option ${v.verdict===x?'selected':''}>${x}</option>`).join('')}</select></label><label>Source URL<input data-key="${_esc(k)}" value="${_esc(v.source_url || '')}" oninput="editVerdictProposal(this.dataset.key,'source_url',this.value)"></label><a data-review-source href="${_esc(safeURL(v.source_url))}" ${safeURL(v.source_url)==='#'?'hidden':''} target="_blank" rel="noopener">Inspect source ↗</a><label>Correction, if needed<input data-key="${_esc(k)}" value="${_esc(v.corrected_value || '')}" oninput="editVerdictProposal(this.dataset.key,'corrected_value',this.value)"></label><label>Review note<textarea rows="4" data-key="${_esc(k)}" oninput="editVerdictProposal(this.dataset.key,'note',this.value)">${_esc(v.note || '')}</textarea></label><button class="btn btn-sm" data-key="${_esc(k)}" onclick="saveVerdictProposal(this.dataset.key,this)">Save reviewed check</button><button class="btn btn-sm btn-ghost" data-key="${_esc(k)}" onclick="discardVerdictProposal(this.dataset.key)">Discard suggestion</button></details>`;
+  return `<details open class="verdict-proposal"><summary>Your review · not saved</summary><label>Verdict<select aria-label="Verdict" data-key="${_esc(k)}" onchange="editVerdictProposal(this.dataset.key,'verdict',this.value)"><option value="">Choose a judgement</option>${['confirmed','corrected','unsupported'].map(x=>`<option ${v.verdict===x?'selected':''}>${x}</option>`).join('')}</select></label><label>Source URL<input data-key="${_esc(k)}" value="${_esc(v.source_url || '')}" oninput="editVerdictProposal(this.dataset.key,'source_url',this.value)"></label><a data-review-source href="${_esc(safeURL(v.source_url))}" ${safeURL(v.source_url)==='#'?'hidden':''} target="_blank" rel="noopener">Inspect source ↗</a><label>Correction, if needed<input data-key="${_esc(k)}" value="${_esc(v.corrected_value || '')}" oninput="editVerdictProposal(this.dataset.key,'corrected_value',this.value)"></label><label>Review note<textarea aria-label="Review note" rows="4" data-key="${_esc(k)}" oninput="editVerdictProposal(this.dataset.key,'note',this.value)">${_esc(v.note || '')}</textarea></label><button class="btn btn-sm" data-key="${_esc(k)}" onclick="saveVerdictProposal(this.dataset.key,this)">Save reviewed check</button><button class="btn btn-sm btn-ghost" data-key="${_esc(k)}" onclick="discardVerdictProposal(this.dataset.key)">Discard suggestion</button></details>`;
 }
 function editVerdictProposal(key,field,value) {
   const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r?._proposal)return;r._proposal[field]=value;
@@ -4609,7 +4690,7 @@ async function saveVerdictProposal(key,btn) {
     if(!['confirmed','corrected','unsupported'].includes(r._proposal.verdict))throw new Error('Choose a judgement before saving.');
     if(['confirmed','corrected'].includes(r._proposal.verdict) && safeURL(r._proposal.source_url)==='#')throw new Error('Add a usable source URL before confirming or correcting this claim.');
     if((r._proposal.note || '').length+(r._proposal.source_url || '').length+(r._proposal.corrected_value || '').length>1750)throw new Error('Keep the review note and source under 1,750 characters; no text has been truncated.');
-    await _writeVerdict(r,r._proposal);r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);document.getElementById('verify-save-status').textContent=`Saved reviewed check for ${r.name}. The original claim was not rewritten.`;closeModal('fact-review-modal');
+    await _writeVerdict(r,r._proposal);if(r.id){delete LIB.rows[r.store];LIB.loaded=false;}r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);document.getElementById('verify-save-status').textContent=`Saved reviewed check for ${r.name}. The original claim was not rewritten.`;closeModal('fact-review-modal');
   }catch(e){document.getElementById('verify-save-status').textContent=e.message;document.getElementById('fact-review-error').textContent=e.message;}finally{r._saving=false;btn.disabled=false;renderVlibResults();}
 }
 
@@ -4764,9 +4845,10 @@ let _libVerifying = false;
 async function runLibVerify(btn) {
   if (_libVerifying) { toast('Still checking — hang on', 'error'); return; }
   const rows = (S.vlib || []).filter(r => !S._vlibSkip.has(r.id || r._key));
-  if (!rows.length) { toast('Nothing ticked', 'error'); return; }
-  if (rows.length > 40 && !confirm(`Fact-check ${rows.length} rows? Grounded web search is slow — this can take several minutes and some rows may not finish. You can also untick some and do it in passes.`)) return;
-  _libVerifying = true;
+  if (!rows.length) { toast('Select claims for AI suggestions first.'); return; }
+  _libVerifying=true;
+  const shown=visibleTableKeys('fact-review-table'),hidden=shown?rows.filter(r=>!shown.has(r.id || r._key)).length:0;
+  if(!await confirmIdeaChange('Request evidence suggestions?',`${rows.length} selected claims${hidden?`, including ${hidden} outside the current filters`:''}. This uses the Fact-check API service shown above. Suggestions remain unsaved until you review them. No automatic paid retry.`, `Check ${rows.length} claims · API`)){_libVerifying=false;return;}
   if (btn) btn.disabled = true;
 
   const byStore = {};
@@ -5773,7 +5855,7 @@ async function extractPlaces(force) {
     S.confirmedPlaces = [];
     S._placesSaved = null;
     // default: ones already in the DB start unticked
-    S.placeSkip = new Set(S.extractedPlaces.filter(p => p.is_existing).map(p => p.name.toLowerCase()));
+    S.placeSkip = new Set(S.extractedPlaces.map(p => p.name.toLowerCase()));
     if (!S.extractedPlaces.length) throw new Error('no places found in the transcript(s)');
 
     const enriched = 0; // Map lookup is a separate, explicit action after review.
@@ -5795,7 +5877,7 @@ async function extractPlaces(force) {
 }
 
 function setPlaceField(i, field, value) {
-  if (S.extractedPlaces[i] && !S.extractedPlaces[i]._saved) {const p=S.extractedPlaces[i];p[field]=value;(p._editedFields ||= new Set()).add(field);if(field==='prefecture')p.prefFromGuess=false;}
+  if (S.extractedPlaces[i] && !S.extractedPlaces[i]._saved) {const p=S.extractedPlaces[i];p[field]=value;(p._editedFields ||= new Set()).add(field);if(field==='prefecture')p.prefFromGuess=false;retainPlacesReview().catch(()=>{});}
 }
 
 // Google Places API (New) via functions/maps-proxy.js. Best-effort: no key set
@@ -5807,7 +5889,7 @@ async function enrichPlacesFromMaps(selectedOnly = false) {
   if (!targets.length) return 0;
   let matched = 0;
   await mapPool(targets, 5, async (p) => {
-    const q = [p.name, p.area, p.prefecture !== 'Unknown' ? p.prefecture : '', 'Japan']
+    const q = [p.name, p.area, p.prefecture !== 'Unknown' ? p.prefecture : '', p.country || '']
       .filter(Boolean).join(' ');
     try {
       const res = await _afetch('/.netlify/functions/maps-proxy', {
@@ -5850,7 +5932,10 @@ const shortFrom = (arr) => (arr || [])
 
 // names (lowercased) that are UNticked in the Places review. Seeded with the
 // ones already in the DB so a blind "Queue" won't re-push them.
+async function retainPlacesReview() {await localArtifact('places-review-v1',{rows:S.extractedPlaces.map(p=>({...p,_editedFields:[...(p._editedFields || [])]})),skip:[...(S.placeSkip || [])]});}
+async function restorePlacesReview() {const saved=await localArtifact('places-review-v1');if(!saved?.rows?.length)return;S.extractedPlaces=saved.rows.map(p=>({...p,_editedFields:new Set(p._editedFields || [])}));S.placeSkip=new Set(saved.skip || []);document.getElementById('places-review-area').style.display='';renderPlacesReview();}
 function renderPlacesReview() {
+  retainPlacesReview().catch(()=>{document.getElementById('places-review-status').textContent='Review is in memory only. Keep this page open until saved.';});
   const rows=S.extractedPlaces,skip=(S.placeSkip ||= new Set()),selected=rows.filter(p=>!skip.has(p.name.toLowerCase()) && !p._saved);
   document.getElementById('places-list').innerHTML=`<div class="idea-actions"><button class="btn btn-sm" onclick="placesPick('new')">Select new shown</button><button class="btn btn-sm" onclick="placesPick('all')">Select shown</button><button class="btn btn-sm" onclick="placesPick('none')">Clear shown</button><span>${selected.length} selected · ${rows.length} suggestions</span></div><div class="review-table-wrap"><table class="data-table" id="places-review-table"><thead><tr><th></th><th>Name</th><th data-filter-kind="select">Type</th><th data-filter-kind="select">Prefecture</th><th data-filter-kind="select">State</th><th>Sources</th><th data-filter-kind="none">Review</th></tr></thead><tbody>${rows.map((p,i)=>`<tr data-row-key="${i}"><td><input type="checkbox" aria-label="Select place ${_esc(p.name)}" ${!skip.has(p.name.toLowerCase()) && !p._saved?'checked':''} ${p._saved?'disabled':''} onchange="togglePlace(${i},this)"></td><td>${_esc(p.name)}</td><td>${_esc(p.type)}</td><td>${_esc(p.prefecture || 'Unknown')}</td><td>${p._saved?'Saved':p._saveError?'Save failed':p.is_existing?'Existing place':'New place'}</td><td>${_esc(shortFrom(p.from))}</td><td><button class="btn btn-sm" onclick="openPlaceReview(${i})">Review details</button></td></tr>`).join('')}</tbody></table></div>`;
   enhanceTable('places-review-table');
@@ -5887,7 +5972,7 @@ function placesPick(mode) {
 
 function queuePlaces() {
   S.confirmedPlaces = S.extractedPlaces.filter(p => !S.placeSkip.has(p.name.toLowerCase()));
-  if (!S.confirmedPlaces.length) { toast('Nothing ticked', 'error'); return; }
+  if (!S.confirmedPlaces.length) { toast('Accept material before saving.', 'error'); return; }
   S._placesSaved = null;
   renderConfirmedList();
   toast(`${S.confirmedPlaces.length} place${S.confirmedPlaces.length === 1 ? '' : 's'} ready to save`, 'success');
@@ -5925,7 +6010,6 @@ async function saveConfirmedPlaces() {
   const machineProps = (p) => ({
     'Type': { select: { name: normPlaceType(p.type) } },
     'Prefecture': { select: { name: p.prefecture || 'Unknown' } },
-    'Country': { select: { name: 'Japan' } },
     'Google Maps URL': { url: p.google_maps_url || null },
     'B-Roll Description': { rich_text: [{ text: { content: p.what_happens_here || '' } }] },
     'Price Range': { select: { name:
@@ -5971,6 +6055,7 @@ async function saveConfirmedPlaces() {
               'Halal': { select: { name: p.halal || 'Unknown' } },
               ...machineProps(p),
             },
+            children:[materialEvidenceBlock(p)],
           });
           p.existing_id=created.id;added++;await localArtifact(p._createKey,null);
         }
@@ -6997,7 +7082,7 @@ async function restoreLibrary() {
     const saved = await localArtifact('material-workspace-v1').catch(() => null);
     LIB.selected = saved?.selected || {}; LIB.filters = saved?.filters || {}; LIB.idea = saved?.idea || blankLibraryIdea();
     const category = document.getElementById('library-category');
-    category.innerHTML = '<option value="all">All eight tables</option>' + Object.entries(MATERIAL_CATEGORIES).map(([key,cfg]) => `<option value="${key}">${cfg.label}</option>`).join('');
+    category.innerHTML = '<option value="all">All material</option>' + Object.entries(MATERIAL_CATEGORIES).map(([key,cfg]) => `<option value="${key}">${cfg.label}</option>`).join('');
     for (const name of LIB_FILTERS) {
       const input = document.getElementById(`library-${name}`);
       if (name === 'selected-only') input.checked = !!LIB.filters[name];
@@ -7131,7 +7216,7 @@ function renderMaterialLibrary() {
   const columns = cat === 'all' ? ['Material','Category','Source','Verification'] : [...MATERIAL_CATEGORIES[cat].columns,'Source','Verification'];
   const rows = filteredLibraryRows(); LIB.visible = rows.slice(0, LIB.limit);
   const focus = document.activeElement?.id, cursor = document.activeElement?.selectionStart;
-  document.getElementById('library-head').innerHTML = '<tr><th scope="col">Select</th>' + columns.map(c => `<th scope="col" aria-sort="${LIB.columnSort?.field === c ? (LIB.columnSort.desc ? 'descending' : 'ascending') : 'none'}"><button class="column-sort" data-column="${_esc(c)}" onclick="sortLibraryColumn(this.dataset.column)" aria-label="Sort by ${_esc(c)}">${_esc(c)} <span aria-hidden="true">${LIB.columnSort?.field === c ? (LIB.columnSort.desc ? '↓' : '↑') : '↕'}</span></button>${libraryColumnFilter(c)}</th>`).join('') + (LIB.filters.search ? '<th scope="col">Why this matched</th>' : '') + '</tr>';
+  document.getElementById('library-head').innerHTML = '<tr><th scope="col">Select</th>' + columns.map(c => `<th scope="col" aria-sort="${LIB.columnSort?.field === c ? (LIB.columnSort.desc ? 'descending' : 'ascending') : 'none'}"><button class="column-sort" data-column="${_esc(c)}" onclick="sortLibraryColumn(this.dataset.column)" aria-label="Sort by ${_esc(c)}">${_esc(c)} <span aria-hidden="true">${LIB.columnSort?.field === c ? (LIB.columnSort.desc ? '↓' : '↑') : '↕'}</span></button><div class="material-column-filter">${libraryColumnFilter(c)}</div></th>`).join('') + (LIB.filters.search ? '<th scope="col">Why this matched</th>' : '') + '</tr>';
   if (focus?.startsWith('library-column-')) { const input=document.getElementById(focus); input?.focus(); if (input?.type==='search' && cursor!=null) input.setSelectionRange(cursor,cursor); }
   document.getElementById('library-rows').innerHTML = LIB.visible.map(r => `<tr class="${LIB.selected[r.key] ? 'selected' : ''}"><td><input type="checkbox" aria-label="Select ${_esc(r.name)}" data-material-key="${_esc(r.key)}" ${LIB.selected[r.key] ? 'checked' : ''} onchange="libraryToggle(this.dataset.materialKey,this.checked)"></td>${columns.map((c,i) => `<td data-label="${_esc(c)}">${i === 0 ? `<button class="btn btn-sm btn-ghost" data-material-key="${_esc(r.key)}" onclick="openLibraryDetail(this.dataset.materialKey,this)">${_esc(r.name)}</button>` : `<span class="${c === 'Category' && cat === 'all' ? 'material-category' : c === 'Verification' ? 'material-verification' : ''}">${_esc(c === 'Category' && cat === 'all' ? MATERIAL_CATEGORIES[r.category].label : c === 'Source' ? libSourceText(r) : c === 'Verification' ? (libVerification(r) === 'unknown' ? 'Not checked' : libVerification(r)) : libProperty(r.properties[c]) || 'Unknown')}</span>`}</td>`).join('')}${LIB.filters.search ? `<td data-label="Why this matched">${libMatchExcerpt(r)}</td>` : ''}</tr>`).join('') || `<tr><td colspan="${columns.length + 2}">${LIB.loading ? 'Loading material…' : 'No matching material. Change a filter, refresh, or import and extract a source video.'}</td></tr>`;
   document.getElementById('library-more').hidden = rows.length <= LIB.limit;
@@ -7253,7 +7338,7 @@ function setupLibraryMap() {
 }
 
 function renderLibrarySelection() {
-  const keys = Object.keys(LIB.selected), shown = new Set((LIB.visible || []).map(r => r.key));
+  const keys = Object.keys(LIB.selected);const tray=document.querySelector('.library-tray');if(tray)tray.hidden=!keys.length;const shown = new Set((LIB.visible || []).map(r => r.key));
   document.getElementById('library-selection-count').textContent = keys.length ? `${keys.length} selected · ${keys.filter(k => !shown.has(k)).length} outside shown rows. ${LIB.idea?.name ? `Add to “${LIB.idea.name}”.` : 'Start a new idea.'}` : 'No material selected. Select a row to start an idea.';
 }
 function libraryToggle(key, checked) {
@@ -7270,18 +7355,90 @@ function libraryShowMore() { LIB.limit += 60; renderMaterialLibrary(); }
 function librarySelectVisible() { for (const row of LIB.visible || []) LIB.selected[row.key] ||= libClone(row); renderMaterialLibrary(); persistLibrarySoon(); }
 function libraryReviewSelection() { document.getElementById('library-selected-only').checked = true; libraryFilterChanged(); }
 function libraryClearSelection() { LIB.selected = {}; renderMaterialLibrary(); persistLibrarySoon(); }
-function openLibraryDetail(key, opener) {
-  const row = Object.values(LIB.rows).flat().find(r => r.key === key) || LIB.selected[key]; if (!row) return;
-  LIB.detailOpener = opener; LIB.detailKey = key;
-  const detail = document.getElementById('library-detail'); detail.hidden = false;
+async function openLibraryDetail(key, opener) {
+  const row=Object.values(LIB.rows).flat().find(r=>r.key===key)||LIB.selected[key];if(!row)return;
+  LIB.detailOpener=opener || LIB.detailOpener;LIB.detailKey=key;const readerRows=filteredLibraryRows(),readerIndex=readerRows.findIndex(r=>r.key===key);
+  const detail=document.getElementById('library-detail');detail.hidden=false;
+  detail.innerHTML=`<div class="reader-heading"><span class="studio-eyebrow">${MATERIAL_CATEGORIES[row.category].label}</span>${studioIconButton('Close details','close','closeLibraryDetail()')}</div><h2 id="library-detail-title">${_esc(row.name)}</h2><p>${_esc(libSourceText(row))}</p>
+    <div class="reader-actions"><button class="btn btn-primary" onclick="openIdeaDestination(LIB.detailKey)">Add to idea…</button><button class="btn" onclick="reviewCurrentEvidence()">Review evidence</button><button class="btn" onclick="openMaterialEdit()">Edit fields</button>${row.category==='places'?'<button class="btn" onclick="matchCurrentPlace()">Match location</button>':''}</div>
+    <div class="reader-pagination"><button class="btn btn-sm" onclick="stepMaterialReader(-1)" ${readerIndex<=0?'disabled':''}>← Previous</button><span>${readerIndex>=0?`${readerIndex+1} of ${readerRows.length}`:'Selected material'}</span><button class="btn btn-sm" onclick="stepMaterialReader(1)" ${readerIndex<0 || readerIndex>=readerRows.length-1?'disabled':''}>Next →</button></div>
+    ${LIB.filters.search?`<p class="match-context">${libMatchExcerpt(row)}</p>`:''}
+    <div id="material-evidence" role="status">Loading saved source context…</div>
+    <details open><summary>Record fields</summary><dl>${Object.entries(row.properties).map(([k,v])=>`<dt>${_esc(k)}</dt><dd>${v.type==='url' && libSafeURL(v.url)?`<a href="${_esc(libSafeURL(v.url))}" target="_blank" rel="noopener noreferrer">${libHighlight(v.url,LIB.filters.search)} ↗</a>`:libHighlight(libProperty(v)||'Not recorded',LIB.filters.search)}</dd>`).join('')}</dl></details>
+    <details class="record-maintenance"><summary>Original record</summary><p><a href="${_esc(row.url)}" target="_blank" rel="noopener noreferrer">Open in Notion ↗</a></p><button class="btn btn-sm" onclick="archiveCurrentMaterial()">Archive shared material…</button><p>Archiving affects the shared Library. Saved idea snapshots remain intact.</p></details>`;
   openModal('library-detail-modal');
-  const source = libSafeURL(row.properties['Source URL']?.url);
-  const sourceRefs = libSourceKeys(row).filter(id => /^[a-f0-9-]{32,36}$/i.test(id));
-  detail.innerHTML = `${studioIconButton('Close details','close','closeLibraryDetail()')}<label><input type="checkbox" data-material-key="${_esc(row.key)}" ${LIB.selected[row.key] ? 'checked' : ''} onchange="libraryToggle(this.dataset.materialKey,this.checked)"> Keep this material</label><p>${MATERIAL_CATEGORIES[row.category].label}</p><h2 id="library-detail-title">${_esc(row.name)}</h2>${LIB.filters.search ? `<p class="match-context">${libMatchExcerpt(row)}</p>` : ''}<p>${_esc(libSourceText(row))}</p><p><a href="${_esc(row.url)}" target="_blank" rel="noopener noreferrer">Edit original in Notion ↗</a></p>${source ? `<p><a href="${_esc(source)}" target="_blank" rel="noopener noreferrer">Open source video ↗</a></p>` : ''}${sourceRefs.map(id => `<p><a href="${libNotionURL(id)}" target="_blank" rel="noopener noreferrer">${_esc(LIB.sources[id] || 'Open linked source')} ↗</a></p>`).join('')}<p class="library-message">A source link is not passage verification. Inspect its context before using a claim.</p><p class="library-message">All saved fields are shown here. Edits and archiving of original material happen in Notion; removing it from an idea does not delete the source.</p><dl>${Object.entries(row.properties).map(([k,p]) => `<dt>${_esc(k)}</dt><dd>${libHighlight(libProperty(p) || 'Not recorded',LIB.filters.search)}${p.relation?.length ? p.relation.map(r => ` <a href="${libNotionURL(r.id)}" target="_blank" rel="noopener noreferrer">Open record ↗</a>`).join('') : ''}</dd>`).join('')}</dl>`;
-  detail.querySelector('button').focus();
-  if (globalThis.innerWidth < 1000) detail.scrollIntoView({ block:'start' });
+  try{const evidence=materialEvidence(await getPageBlocks(row.id));if(LIB.detailKey!==key)return;const e=evidence?.observation;document.getElementById('material-evidence').innerHTML=e?`<h3>Source context</h3><blockquote>${_esc(e.source_excerpt||e.original_text||'Supporting passage not recorded')}</blockquote><p>${_esc(e.timestamp||'Timestamp not recorded')}</p>${libSafeURL(e.source_url)?`<a href="${_esc(libSafeURL(e.source_url))}" target="_blank" rel="noopener">Open source ↗</a>`:''}<details><summary>Full extracted observation</summary><pre>${_esc(JSON.stringify(e,null,2))}</pre></details>${evidence.original?`<details><summary>Original extraction before review</summary><pre>${_esc(JSON.stringify(evidence.original,null,2))}</pre></details>`:''}`:'<p>No saved source passage. Check the source links below before relying on this material.</p>';}catch{if(LIB.detailKey===key)document.getElementById('material-evidence').textContent='Source context unavailable. Saved fields remain readable; reopen to retry.';}
 }
-function closeLibraryDetail() { closeModal('library-detail-modal'); }
+function currentMaterial() {return Object.values(LIB.rows).flat().find(r=>r.key===LIB.detailKey)||LIB.selected[LIB.detailKey];}
+function stepMaterialReader(delta) {const rows=filteredLibraryRows(),i=rows.findIndex(r=>r.key===LIB.detailKey);if(rows[i+delta])openLibraryDetail(rows[i+delta].key);}
+function closeLibraryDetail() {closeModal('library-detail-modal');}
+async function reviewCurrentEvidence() {
+  const row=currentMaterial();if(!row)return;closeLibraryDetail();await verifyLibrarySelection([row]);await startManualVerdict(row.id);
+}
+function matchCurrentPlace() {
+  const r=currentMaterial();if(!r || r.category!=='places')return;closeLibraryDetail();
+  S.extractedPlaces=[{name:r.name,is_existing:true,existing_id:r.id,existingLastEdited:r.lastEdited,type:libProperty(r.properties.Type),prefecture:libProperty(r.properties.Prefecture)||'Unknown',halal:libProperty(r.properties.Halal)||'Unknown',fromIds:libSourceKeys(r).filter(id=>/^[0-9a-f-]{32,36}$/i.test(id)),what_happens_here:libProperty(r.properties['B-Roll Description']),from:[]}];
+  placesFromMaterial=true;S.placeSkip=new Set();switchTab('res','places');document.getElementById('places-review-area').style.display='';renderPlacesReview();
+}
+async function openIdeaDestination(key=null) {
+  const rows=key?[currentMaterial()]:Object.values(LIB.selected);if(!rows.length||!rows[0]){toast('Select material or open a record first.');return;}
+  LIB.destinationRows=rows.map(libClone);LIB.destinationReady=false;for(const id of ['destination-choice','destination-name','destination-save'])document.getElementById(id).disabled=true;if(key)closeLibraryDetail();
+  document.getElementById('destination-status').textContent='Loading saved ideas…';openModal('idea-destination-modal');
+  if(!await loadLibraryIdeas()){document.getElementById('destination-status').textContent='Could not load destinations. Close this dialog and try Add to idea again. Your selection is retained.';return;}
+  const locked=LIB.idea?.dirty||LIB.idea?.pending;
+  document.getElementById('destination-choice').innerHTML=`<option value="current">${_esc(LIB.idea?.name || 'Current idea draft')}${locked?' — saves its current edits':''}</option><option value="new" ${locked?'disabled':''}>New idea</option>${LIB.ideas.filter(i=>i.id!==LIB.idea?.id).map(i=>`<option value="${i.id}" ${locked?'disabled':''}>${_esc(i.name)}</option>`).join('')}`;
+  document.getElementById('destination-name').value=LIB.idea?.name||'';LIB.destinationReady=true;for(const id of ['destination-choice','destination-name','destination-save'])document.getElementById(id).disabled=false;
+  document.getElementById('destination-status').textContent=`${rows.length} material record${rows.length===1?'':'s'} will be added. ${locked?'Finish the current draft before switching to another idea.':'Original material stays in the Library.'}`;
+}
+async function saveIdeaDestination(btn) {
+  btn.disabled=true;const status=document.getElementById('destination-status');
+  try{
+    if(!LIB.destinationReady)throw new Error('Wait for destinations to load.');
+    if(LIB.busy||LIB.idea?.pending||LIB.idea?.incomplete)throw new Error('Resolve the pending idea save in Ideas before adding more material.');
+    const choice=document.getElementById('destination-choice').value;
+    if(choice!=='current' && LIB.idea.dirty)throw new Error('Save the current idea before switching destinations.');
+    if(choice==='new')LIB.idea=blankLibraryIdea();else if(choice!=='current')LIB.idea=await readLibraryIdea(choice);
+    if(!LIB.idea.name)LIB.idea.name=document.getElementById('destination-name').value.trim();
+    if(!LIB.idea.name)throw new Error('Give the idea a working title.');
+    for(const row of LIB.destinationRows)if(!LIB.idea.items.some(it=>it.material.key===row.key))LIB.idea.items.push({placementId:libID(),snapshotRevision:libID(),material:libClone(row),purpose:'',pageId:null,lastEdited:null});
+    LIB.idea.dirty=true;await persistLibrary();status.textContent='Saving idea and material…';await saveLibraryIdea();
+    if(LIB.idea.dirty||LIB.idea.pending)throw new Error('Save did not finish. The draft is retained in Ideas; use Check / resume save there.');
+    closeModal('idea-destination-modal');renderLibrarySelection();toast(`Added to ${LIB.idea.name}`,'success');
+  }catch(e){status.textContent=e.message;}finally{btn.disabled=false;}
+}
+let materialEdit=null;
+async function openMaterialEdit() {
+  const row=currentMaterial();if(!row)return;closeLibraryDetail();materialEdit={row,fields:{}};
+  const recovered=await localArtifact(`material-edit:${row.id}`);
+  const editable=Object.entries(row.properties).filter(([,p])=>['title','rich_text','url','number','date'].includes(p.type));
+  document.getElementById('material-edit-fields').innerHTML=editable.map(([name,p])=>{const value=recovered?.fields&&name in recovered.fields?recovered.fields[name]:p.type==='number'?p.number??'':p.type==='date'?p.date?.start||'':libProperty(p);materialEdit.fields[name]=value;return `<label>${_esc(name)}${recovered && recovered.baseEdited!==row.lastEdited?`<small>Current saved value: ${_esc(libProperty(p)||'Empty')}</small>`:''}${['title','rich_text'].includes(p.type)?`<textarea aria-label="${_esc(name)}" rows="${p.type==='title'?2:4}" data-property="${_esc(name)}" oninput="retainMaterialEdit(this)">${_esc(value)}</textarea>`:`<input aria-label="${_esc(name)}" type="${p.type==='number'?'number':p.type==='date'?'text':'url'}" data-property="${_esc(name)}" value="${_esc(value)}" oninput="retainMaterialEdit(this)">`}</label>`;}).join('');
+  document.getElementById('material-edit-status').textContent=(recovered && recovered.baseEdited!==row.lastEdited?'Recovered edits are based on an older record. Compare the latest fields before saving. ':'')+'Text, links, numbers and dates are editable here. Categories, relations and computed fields remain in Notion. Empty values explicitly clear a field.';openModal('material-edit-modal');
+}
+function materialFieldValue(p) {return String(p.type==='number'?p.number??'':p.type==='date'?p.date?.start||'':libProperty(p));}
+function retainMaterialEdit(el) {materialEdit.fields[el.dataset.property]=el.value;const changed=Object.fromEntries(Object.entries(materialEdit.fields).filter(([name,value])=>String(value)!==materialFieldValue(materialEdit.row.properties[name])));localArtifact(`material-edit:${materialEdit.row.id}`,{baseEdited:materialEdit.row.lastEdited,fields:changed}).catch(()=>{document.getElementById('material-edit-status').textContent='Edits are in memory only; keep this dialog open until saved.';});}
+async function saveMaterialEdit(btn) {
+  const {row,fields}=materialEdit;btn.disabled=true;const status=document.getElementById('material-edit-status');
+  try{
+    const properties={};for(const [name,value] of Object.entries(fields)){
+      const p=row.properties[name],v=String(value).trim();if(String(value)===materialFieldValue(p))continue;if(p.type==='title'&&!v)throw new Error('The title cannot be empty.');
+      if(p.type==='number'){if(v && !Number.isFinite(Number(v)))throw new Error(`${name}: enter a number.`);properties[name]={number:v?Number(v):null};}
+      else if(p.type==='url'){if(v&&!libSafeURL(v))throw new Error(`${name}: enter an http or https URL.`);properties[name]={url:v||null};}
+      else if(p.type==='date'){if(v&&!/^\d{4}-\d{2}-\d{2}(T.*)?$/.test(v))throw new Error(`${name}: use YYYY-MM-DD or an ISO date/time.`);properties[name]={date:v?{...p.date,start:v}:null};}
+      else{if(String(value).length>16000)throw new Error(`${name} exceeds 16,000 characters.`);properties[name]={[p.type]:libRT(value)};}
+    }
+    if(!Object.keys(properties).length){status.textContent='No field changes to save.';return;}
+    status.textContent='Checking original…';const current=await notionAPI(`pages/${row.id}`);
+    if(current.archived||current.in_trash||current.last_edited_time!==row.lastEdited)throw new Error('Original changed. Your draft is retained; reopen the latest record before applying edits.');
+    const saved=await notionAPI(`pages/${row.id}`,'PATCH',{properties});
+    const fresh=libMaterial(saved,row.category);LIB.rows[row.category]=LIB.rows[row.category].map(r=>r.id===row.id?fresh:r);if(LIB.selected[row.key])LIB.selected[row.key]=libClone(fresh);persistLibrarySoon();
+    await localArtifact(`material-edit:${row.id}`,null);closeModal('material-edit-modal');renderMaterialLibrary();openLibraryDetail(fresh.key);toast('Material saved','success');
+  }catch(e){status.textContent=`Not saved: ${e.message}`;}finally{btn.disabled=false;}
+}
+async function archiveCurrentMaterial() {
+  const row=currentMaterial();if(!row)return;closeLibraryDetail();
+  if(!await confirmIdeaChange('Archive shared material?',`“${row.name}” will leave the Library. Existing idea snapshots remain. You can restore the original from Notion trash.`,'Archive material'))return;
+  try{const current=await notionAPI(`pages/${row.id}`);if(current.last_edited_time!==row.lastEdited)throw new Error('Original changed; refresh before archiving.');await notionAPI(`pages/${row.id}`,'PATCH',{archived:true});LIB.rows[row.category]=LIB.rows[row.category].filter(r=>r.id!==row.id);delete LIB.selected[row.key];persistLibrarySoon();renderMaterialLibrary();toast('Archived. Restore from Notion trash if needed.');}catch(e){toast(`Not archived: ${e.message}`,'error');}
+}
 
 async function libraryConfig() {
   if (LIB.config) return LIB.config;
@@ -7305,8 +7462,8 @@ async function loadLibraryIdeas() {
     const cfg = await libraryConfig(); LIB.ideas = (await notionQueryAll(cfg.collections)).map(libReadIdea);
     LIB.ideas.sort((a,b) => (b.lastEdited || '').localeCompare(a.lastEdited || ''));
     LIB.ideasLoaded = true; renderLibraryIdeaList();
-    document.getElementById('idea-list-status').textContent = `${LIB.ideas.length} saved ideas. Local changes stay in the editor.`;
-  } catch (e) { document.getElementById('idea-list-status').textContent = `Could not load ideas: ${e.message}`; }
+    document.getElementById('idea-list-status').textContent = `${LIB.ideas.length} saved ideas. Local changes stay in the editor.`;return true;
+  } catch (e) { document.getElementById('idea-list-status').textContent = `Could not load ideas: ${e.message}`;return false; }
 }
 function renderLibraryIdeaList() {
   document.getElementById('idea-list').innerHTML = LIB.ideas.map(idea => `<button class="idea-link" aria-current="${idea.id === LIB.idea?.id}" data-idea-id="${_esc(idea.id)}" onclick="openLibraryIdea(this.dataset.ideaId)">${_esc(idea.name || 'Untitled idea')}<small>${idea.incomplete ? 'Save incomplete' : _esc(idea.state)} · revision ${idea.revision}</small></button>`).join('') || '<p class="library-message">Your ideas will appear here after saving. Start with a question or collect material from the Library.</p>';
@@ -7559,7 +7716,7 @@ async function signIn() {
       restoringDraft = false;
     showStage(S.notionToken ? 1 : 0);
     if (S.notionToken) await loadCalendar();
-    document.getElementById('signin-overlay').classList.remove('open');
+    document.getElementById('signin-overlay').classList.remove('open');restoreLibraryRoute();
   } catch(e) { document.getElementById('signin-status').textContent = e.message; }
   finally { btn.disabled = false; }
 }
@@ -7568,6 +7725,8 @@ async function signOut() {
   location.reload();
 }
 async function init() {
+  await restoreReviews().catch(()=>{REVIEW.loaded=true;});
+  await restorePlacesReview().catch(()=>{});
   syncWorkspaceTabs();
   renderChannelChips(); showStage(0);
   try {
@@ -7581,7 +7740,7 @@ async function init() {
       restoringDraft = false;
       showStage(S.notionToken ? 1 : 0);
       if (S.notionToken) await loadCalendar();
-      document.getElementById('signin-overlay').classList.remove('open');
+      document.getElementById('signin-overlay').classList.remove('open');restoreLibraryRoute();
     } else document.getElementById('signin-password').focus();
   } catch(e) { document.getElementById('signin-status').textContent = e.message; }
 }
