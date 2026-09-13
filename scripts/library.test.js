@@ -1012,3 +1012,137 @@ test('opening location work from a URL-only material does not treat its URL as a
   assert.equal(t.run('S.extractedPlaces[0].fromIds.length'), 0);
   assert.equal(t.calls.length, 0);
 });
+
+function videoReviewSetup() {
+  const t = setup();
+  t.run(
+    "buildDNASystem=()=>'';renderYTVideos=()=>{};S.ytVideos=[{id:'abcdefghijk',url:'https://youtube.com/watch?v=abcdefghijk',title:'A quiet morning',channelName:'Test channel',description:'Morning tea',contentType:[],angle:''},{id:'lmnopqrstuv',url:'https://youtu.be/lmnopqrstuv',title:'A mountain road',channelName:'Test channel',description:'Fog on a mountain road',contentType:[],angle:''}];S.ytSelected=new Set([0,1]);S.existingVideoIds=new Set()"
+  );
+  return t;
+}
+
+test('angle failure stays an error, stops the batch and cannot be saved as content', async () => {
+  const t = videoReviewSetup();
+  let calls = 0;
+  t.c.aiRun = async () => {
+    calls++;
+    throw new Error('Set APP_PASSWORD in the server environment');
+  };
+  await t.run('openReviewModal()');
+  assert.equal(calls, 1);
+  assert.equal(t.run('S._reviewVideos[0].angle'), '');
+  assert.match(t.run('S._reviewVideos[0]._angleError'), /APP_PASSWORD/);
+  assert.match(t.run('S._reviewVideos[1]._angleError'), /Not requested/);
+  assert.equal(t.element('source-video-save').disabled, true);
+  await t.run('pushToNotion()');
+  assert.equal(
+    t.calls.some((c) => c.endpoint === 'pages'),
+    false
+  );
+});
+
+test('angle generation validates output and uses a bounded single attempt', async () => {
+  const t = videoReviewSetup();
+  t.run('S.ytSelected=new Set([0])');
+  let request;
+  t.c.aiRun = async (task, body) => {
+    request = { task, body };
+    return { text: '{"summary":"No angle"}' };
+  };
+  await t.run('openReviewModal()');
+  assert.equal(request.task, 'angle');
+  assert.equal(request.body.singleAttempt, true);
+  assert.equal(request.body.maxTokens, 600);
+  assert.match(t.run('S._reviewVideos[0]._angleError'), /did not contain an angle/);
+  assert.equal(t.run('S._reviewVideos[0].angle'), '');
+});
+
+test('successful video save immediately marks thumbnails known and retries only failed saves without AI', async () => {
+  const t = videoReviewSetup();
+  let aiCalls = 0;
+  t.c.aiRun = async () => {
+    aiCalls++;
+    return { text: '{"angle":"A useful inspiration","content_type":"Road Trip","country":""}' };
+  };
+  await t.run('openReviewModal()');
+  let reject = true;
+  t.c.before = async (call) => {
+    if (
+      call.endpoint === 'pages' &&
+      t.text(call.body.properties['Video Title']) === 'A mountain road' &&
+      reject
+    ) {
+      reject = false;
+      const e = new Error('Save rejected');
+      e.status = 400;
+      throw e;
+    }
+  };
+  await t.run('pushToNotion()');
+  assert.equal(t.run("S.existingVideoIds.has('abcdefghijk')"), true);
+  assert.equal(t.run("S.existingVideoIds.has('lmnopqrstuv')"), false);
+  assert.equal(t.run('S.ytSelected.has(0)'), false);
+  assert.equal(t.run('S.ytSelected.has(1)'), true);
+  assert.match(t.run('S._reviewVideos[1]._sourceSaveError'), /Save rejected/);
+  await t.run('pushToNotion()');
+  assert.equal(t.pages.size, 2);
+  assert.equal(aiCalls, 2);
+  assert.equal(t.run('S.ytSelected.size'), 0);
+  assert.equal(t.run('S.existingVideoIds.size'), 2);
+  assert.ok([...t.pages.values()].every((p) => !p.properties.Country));
+});
+
+test('a lost video-save response reconciles its YouTube ID before retrying creation', async () => {
+  const t = videoReviewSetup();
+  t.run("S._reviewVideos=S.ytVideos;S._reviewVideos.forEach(v=>v.angle='Reviewed angle')");
+  let lost = true;
+  t.c.after = async (call) => {
+    if (call.endpoint === 'pages' && lost) {
+      lost = false;
+      throw new Error('Response lost');
+    }
+  };
+  await t.run('pushToNotion()');
+  assert.equal(t.pages.size, 2);
+  assert.equal(t.run('S._reviewVideos[0]._sourceSaved'), undefined);
+  await t.run('pushToNotion()');
+  assert.equal(t.pages.size, 2);
+  assert.equal(t.calls.filter((c) => c.endpoint === 'pages').length, 2);
+  assert.equal(t.run('S._reviewVideos[0]._sourceSaved'), true);
+});
+
+test('known source reload errors retain previous saved markers and no save proceeds unchecked', async () => {
+  const t = videoReviewSetup();
+  t.run(
+    "S.existingVideoIds.add('abcdefghijk');S._reviewVideos=[S.ytVideos[1]];S._reviewVideos[0].angle='Reviewed angle'"
+  );
+  t.c.before = async () => {
+    throw new Error('Source lookup unavailable');
+  };
+  await t.run('loadExistingSourceVideoIds()');
+  assert.equal(t.run("S.existingVideoIds.has('abcdefghijk')"), true);
+  await t.run('pushToNotion()');
+  assert.equal(
+    t.calls.some((c) => c.endpoint === 'pages'),
+    false
+  );
+  assert.match(t.element('source-video-review-status').textContent, /No new records/);
+});
+
+test('source ID matching handles watch, short, live and embed links without matching lookalike hosts', () => {
+  const t = setup();
+  for (const url of [
+    'https://youtube.com/watch?v=abcdefghijk&t=5',
+    'https://youtu.be/abcdefghijk',
+    'https://www.youtube.com/shorts/abcdefghijk',
+    'https://youtube.com/live/abcdefghijk',
+    'https://youtube-nocookie.com/embed/abcdefghijk',
+  ]) {
+    t.c.url = url;
+    assert.equal(t.run('sourceYouTubeID(url)'), 'abcdefghijk');
+  }
+  assert.equal(
+    t.run("sourceYouTubeID('https://youtube.com.evil.example/watch?v=abcdefghijk')"),
+    ''
+  );
+});
