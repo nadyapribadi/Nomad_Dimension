@@ -69,16 +69,40 @@ exports.handler = async (event) => {
     singleAttempt,
   } = payload;
 
-  // Resolve provider+model: explicit override > Notion "Active Routing" > DEFAULT_ROUTING.
+  // Validate before looking up settings or making any paid request.
+  if (
+    !Array.isArray(messages) ||
+    !messages.length ||
+    (!provider && !model && !DEFAULT_ROUTING[task])
+  ) {
+    return respond(400, {
+      error: 'A supported task and nonempty messages are required',
+      code: 'invalid_request',
+    });
+  }
+  if (!!provider !== !!model) {
+    return respond(400, {
+      error: 'Choose both provider and model for an explicit override',
+      code: 'invalid_request',
+    });
+  }
   let p = provider;
   let m = model;
   let fallback = null;
-  if ((!p || !m) && task) {
-    const routing = await getRouting().catch(() => null);
-    const r = (routing && routing[task]) || DEFAULT_ROUTING[task] || {};
-    p = p || r.provider;
-    m = m || r.model;
-    fallback = r.fallback || null;
+  if (!p) {
+    try {
+      const routing = await getRouting();
+      const route = routing?.[task];
+      if (!route?.provider || !route?.model) throw new Error(`No saved model choice for ${task}`);
+      p = route.provider;
+      m = route.model;
+      fallback = route.fallback || null;
+    } catch (error) {
+      return respond(503, {
+        error: `AI choices could not be loaded: ${error.message}. No model was called. Check Settings and retry.`,
+        code: 'routing_unavailable',
+      });
+    }
   }
 
   let result;
@@ -118,12 +142,12 @@ exports.handler = async (event) => {
 
 // Reads task -> { provider, model } from the JSON code block under the
 // "🔀 Active Routing" heading on the Notion App Settings page. Cached ~60s so
-// the operator can change a model with no deploy. Any failure -> null (caller
-// falls back to DEFAULT_ROUTING in _shared/models.js).
+// the operator can change a model with no deploy. Read failures stop the request;
+// built-in defaults must never silently replace saved provider choices.
 let _routingCache = { at: 0, value: null };
 async function getRouting() {
   const token = process.env.NOTION_TOKEN;
-  if (!token) return null;
+  if (!token) throw new Error('Notion connection is not configured');
   if (Date.now() - _routingCache.at < 60_000) return _routingCache.value;
 
   // Page through all children — the App Settings page is long enough that one
@@ -156,6 +180,7 @@ async function getRouting() {
     cursor = !value && data.has_more ? data.next_cursor : null;
   } while (cursor);
 
+  if (!value) throw new Error('Saved Active Routing block is missing or invalid');
   _routingCache = { at: Date.now(), value };
   return value;
 }

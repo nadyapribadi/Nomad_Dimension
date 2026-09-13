@@ -50,8 +50,9 @@ request. A configured key does not establish valid access or available funds.
 
 `POST { task, system, messages, maxTokens?, provider?, model?, episode? }`
 returns normalized text, provider/model, usage, estimated cost, and
-`costLogged`. Routing is read from Notion with a short cache, falling back to
-server defaults. Provider attempts share a 48-second deadline. Token output is
+`costLogged`. Routing is read from Notion with a short cache. Missing or unreadable saved
+routing returns `503 routing_unavailable` before any model call; it never silently
+uses server defaults. A complete explicit provider/model override remains supported. Provider attempts share a 48-second deadline. Token output is
 capped at 12,000; empty/truncated output fails visibly. A cost write is awaited
 for up to 2.5 seconds; failure does not discard completed model output.
 This is not a complete billing ledger: TTS, web grounding, and other provider

@@ -1795,6 +1795,8 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
         <label>SRT / plain transcript</label>
         <textarea id="transcript-input" rows="10" placeholder="Paste SRT or transcript here… If none available, leave blank and a content outline is generated from video metadata."></textarea>
       </div>
+      <button class="btn btn-sm" id="transcript-save-btn" onclick="saveTranscriptToNotion()">Save transcript to Notion</button>
+      <p id="transcript-save-status" role="status"></p>
       <div class="row" style="margin-bottom:10px">
         <div id="lang-detect-badge" class="badge">Language: auto-detect</div>
         <div id="translate-toggle" style="display:none">
@@ -2208,7 +2210,7 @@ async function notionAPI(endpoint, method = 'GET', body = null) {
     if (res.status === 401) document.getElementById('signin-overlay').classList.add('open');
     if (res.ok) return res.json();
     // Respect the server's backoff; never replay an uncertain create on a 5xx.
-    if ([429, 529].includes(res.status) && attempt < 2) {
+    if (res.status === 429 && attempt < 2) {
       const retryAfter = Number(res.headers.get('retry-after'));
       await new Promise(r => setTimeout(r, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000 * (attempt + 1)));
       continue;
@@ -2253,7 +2255,9 @@ async function ytAPI(path, params = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, params }),
   }, 25000);
-  return res.json();
+  const data = await res.json().catch(() => { throw new Error(`YouTube returned an unreadable response (HTTP ${res.status})`); });
+  if (!res.ok || data.error) throw Object.assign(new Error(data.error?.message || data.error || `YouTube request failed (HTTP ${res.status})`), { status: res.status });
+  return data;
 }
 
 // Provider-agnostic model call. Routes via functions/_shared/models.js by `task`
@@ -2431,12 +2435,12 @@ async function captureSource(btn) {
   const title=document.getElementById('capture-title').value.trim(),url=document.getElementById('capture-url').value.trim(),status=document.getElementById('capture-status');
   if(!title || !libSafeURL(url)){status.textContent='Enter a title and a valid https or http video URL.';return;}
   btn.disabled=true;status.textContent='Saving source…';
-  const intent=`capture-source:${url}`;
+  const intent=`capture-source:${url}`;let createStarted=false;
   try{
     const rows=await notionQueryAll(DB_IDS.sourceVideos);let page=rows.find(r=>r.properties?.['userDefined:YouTube URL']?.url===url);
-    if(!page){if(await localArtifact(intent))throw new Error('An earlier save may have reached Notion. Inspect your sources before trying again.');await localArtifact(intent,{url,title});page=await notionAPI('pages','POST',{parent:{database_id:DB_IDS.sourceVideos},properties:{'Video Title':{title:libRT(title)},'userDefined:YouTube URL':{url}}});}
+    if(!page){if(await localArtifact(intent))throw new Error('An earlier save may have reached Notion. Inspect your sources before trying again.');await localArtifact(intent,{url,title});createStarted=true;page=await notionAPI('pages','POST',{parent:{database_id:DB_IDS.sourceVideos},properties:{'Video Title':{title:libRT(title)},'userDefined:YouTube URL':{url}}});}
     await localArtifact(intent,null);await loadSourceQueue();await openSources();const i=S.epQueue.findIndex(v=>v.id===page.id);if(i>=0)openSourceRecord(i);status.textContent='Source saved.';
-  }catch(e){if(e.status>=400&&e.status<500)await localArtifact(intent,null);status.textContent=`Not completed: ${e.message}`;}
+  }catch(e){if(createStarted&&e.status>=400&&e.status<500&&e.status!==408)await localArtifact(intent,null);status.textContent=`Not completed: ${e.message}`;}
   finally{btn.disabled=false;}
 }
 function restoreLibraryRoute() {
@@ -2843,8 +2847,8 @@ async function loadServiceStatus(force = false) {
   finally{serviceStatusBusy=false;}
 }
 function routeCaption(task) {
-  const route=S.routing?.[task] || DEFAULT_ROUTING_UI[task];
-  return route ? `${PROVIDER_LABEL[route.provider] || route.provider} · ${route.model}` : 'No model selected';
+  const route=S.routing?.[task];
+  return route ? `${PROVIDER_LABEL[route.provider] || route.provider} · ${route.model}` : 'Saved model choices unavailable — check Settings';
 }
 function renderActionServices() {
   document.querySelectorAll('[data-action-route]').forEach(el=>{
@@ -3011,7 +3015,7 @@ async function runHealthCheck() {
 
   // Check the model router (ai-run)
   try {
-    await aiRun('gap', { messages: [{ role: 'user', content: 'ping' }] });
+    await aiRun('gap', { messages: [{ role: 'user', content: 'Reply with OK.' }], maxTokens: 64, singleAttempt: true });
     results.push({ label: 'AI model router', ok: true });
   } catch (e) {
     results.push({ label: 'AI model router', ok: false, note: e.message });
@@ -3884,8 +3888,7 @@ ${transcript}
 For every object in an array, also include source_excerpt (exact original transcript wording) and timestamp (only if supplied by the transcript, otherwise empty). Keep interpretation separate from quotations.
 Return ONLY this JSON shape, no markdown:
 ${shape}`;
-  const route=S.routing?.[task] || DEFAULT_ROUTING_UI[task];
-  const req={system:sys,maxTokens:2400,singleAttempt:true,messages:[{role:'user',content:prompt}],provider:route.provider,model:route.model};
+  const req={system:sys,maxTokens:2400,singleAttempt:true,messages:[{role:'user',content:prompt}]};
   const raw=(await aiRun(task,req)).text;
   try { return parseJsonLoose(raw); }
   catch { throw new Error('The result was not valid JSON. Completed parts are retained; try another model or chat.'); }
@@ -4344,7 +4347,7 @@ async function pushStore(key, btn, src) {
         const saved=materialEvidence(await getPageBlocks(page.id));
         if(saved?.identity!==identity)throw new Error('Created record needs verification. Your accepted candidate is retained; retry checks its receipt first.');
         await localArtifact(intentKey,null);existing.push(page);S._pushed.add(it._key);added++;
-      }catch(e){if(createStarted && !created && e.status>=400 && e.status<500)await localArtifact(intentKey,null);failed++;(S._pushErrors ||= {})[key]=e.message;}
+      }catch(e){if(createStarted && !created && e.status>=400 && e.status<500 && e.status!==408)await localArtifact(intentKey,null);failed++;(S._pushErrors ||= {})[key]=e.message;}
     }
     toast([added && `${added} added`, skipped && `${skipped} skipped`, failed && `${failed} failed`]
       .filter(Boolean).join(' · ') + (failed ? ` · ${S._pushErrors?.[key] || 'Review failed rows'}` : '') || 'nothing to push', failed ? 'error' : 'success');
@@ -4427,7 +4430,8 @@ async function _postJSON(url, body, ms = 30000) {
     });
     const raw = await res.text();
     let d; try { d = JSON.parse(raw); } catch { throw new Error([502,504].includes(res.status)?'The service timed out. Your selection is retained; retry fewer rows or use your own research.':`The service returned an unreadable response (HTTP ${res.status}).`); }
-    if (!res.ok) throw new Error(d.error || `${url.split('/').pop()} ${res.status}`);
+    if (res.status === 401) document.getElementById('signin-overlay')?.classList.add('open');
+    if (!res.ok) throw Object.assign(new Error(d.error?.message || d.error || `${url.split('/').pop()} ${res.status}`), { status: res.status, code: d.code });
     return d;
   } catch (e) {
     if (e.name === 'AbortError') throw new Error(`timed out after ${ms / 1000}s — try fewer rows / a narrower query`);
@@ -4834,7 +4838,7 @@ async function runLibVerify(btn) {
     } catch (e) {
       if (/prepay|billing|credits?.{0,35}(depleted|exhausted|insufficient)|insufficient.{0,20}(credits?|balance)/i.test(e.message)) {
         stopReason='Google rejected the API request for billing or prepaid credits. Check AI Studio → Billing for the project used by the deployed API key; the monthly spend cap is a separate limit.';
-      } else toast(`${RESEARCH_STORES[store].label}: ${e.message}. No automatic paid retry was made.`,'error');
+      } else stopReason=`${RESEARCH_STORES[store].label}: ${e.message}`;
       grp.forEach(mark);
       return;
     }
@@ -4866,7 +4870,7 @@ async function runLibVerify(btn) {
     renderVlibResults();
     if(stopReason) {
       document.getElementById('verify-save-status').textContent=`Checks stopped. ${stopReason} ${done} suggestions retained; ${total-done} rows remain selected. No automatic retry or provider switch was made. You can review manually.`;
-      toast('Checks stopped: Gemini billing needs attention. See the message below the table.','error');
+      toast('Checks stopped. See the error below the table; completed suggestions are retained.','error');
       return;
     }
     toast([
@@ -5583,6 +5587,7 @@ async function loadTranscriptVideos() {
 
 function onTranscriptVideoSelect() {
   const val = document.getElementById('transcript-video-select').value;
+  document.getElementById('transcript-save-status').textContent = '';
   document.getElementById('transcript-work-area').style.display = val ? '' : 'none';
   document.getElementById('pass1-result-card').style.display = 'none';
   const v = (S.transcriptVideos || {})[val];
@@ -5597,42 +5602,42 @@ function onTranscriptVideoSelect() {
   }
 }
 
+let transcriptBusy = false;
+function setTranscriptBusy(busy) {
+  transcriptBusy=busy;
+  for(const id of ['yt-transcript-btn','transcript-save-btn','transcript-video-select','yt-transcript-url','transcript-input'])document.getElementById(id).disabled=busy;
+}
+async function persistTranscript(videoId,text) {
+  if(!videoId || !text.trim())throw new Error('Select a source and enter a transcript first.');
+  await notionAPI(`pages/${videoId}`, 'PATCH', {properties:{Transcript:{rich_text:codeBlockRichText(text)}}});
+  if(S.transcriptVideos?.[videoId])S.transcriptVideos[videoId].transcript=text;
+}
+async function saveTranscriptToNotion() {
+  if(transcriptBusy)return;
+  const videoId=document.getElementById('transcript-video-select').value,text=document.getElementById('transcript-input').value;
+  const status=document.getElementById('transcript-save-status');setTranscriptBusy(true);
+  try{await persistTranscript(videoId,text);status.textContent='Transcript saved to Notion.';}
+  catch(e){status.textContent=`Transcript not saved: ${e.message}. Text remains here; retry Save transcript to Notion.`;}
+  finally{setTranscriptBusy(false);}
+}
 async function fetchTranscript() {
-  const url = document.getElementById('yt-transcript-url').value.trim();
-  if (!url) { toast('Paste a YouTube URL or video ID first', 'error'); return; }
-  const btn = document.getElementById('yt-transcript-btn');
-  btn.disabled = true;
-  btn.textContent = 'Fetching…';
+  if(transcriptBusy)return;
+  const url=document.getElementById('yt-transcript-url').value.trim();
+  if(!url){toast('Paste a YouTube URL or video ID first','error');return;}
+  const videoId=document.getElementById('transcript-video-select').value;
+  const status=document.getElementById('transcript-save-status'),btn=document.getElementById('yt-transcript-btn');
+  setTranscriptBusy(true);btn.textContent='Fetching…';status.textContent='Fetching transcript…';
   try {
-    const res = await _afetch('/.netlify/functions/yt-transcript', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
-    }, 40000);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    document.getElementById('transcript-input').value = data.text;
-    toast(`Transcript loaded (${data.text.length.toLocaleString()} chars, via ${data.source})`, 'success');
-
-    // Write-through cache: save onto the selected Source Video row so it's
-    // fetched once, ever. Fire-and-forget.
-    const vid = document.getElementById('transcript-video-select').value;
-    if (vid) {
-      notionAPI(`pages/${vid}`, 'PATCH', {
-        properties: {
-          'Transcript': { rich_text: codeBlockRichText(data.text) },
-          'Has Subtitles': { select: { name: 'Yes - Auto' } },
-        },
-      }).then(() => {
-        if (S.transcriptVideos?.[vid]) S.transcriptVideos[vid].transcript = data.text;
-      }).catch(() => {});
-    }
-  } catch (e) {
-    toast(`Transcript fetch failed: ${_esc(e.message)}`, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Fetch transcript';
-  }
+    const res=await _afetch('/.netlify/functions/yt-transcript',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})},40000);
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error || `HTTP ${res.status}`);
+    if(typeof data.text!=='string' || !data.text.trim())throw new Error('The transcript service returned no text.');
+    document.getElementById('transcript-input').value=data.text;
+    status.textContent='Transcript loaded. Saving to Notion…';
+    try{await persistTranscript(videoId,data.text);status.textContent='Transcript loaded and saved to Notion.';}
+    catch(e){status.textContent=`Transcript loaded, but not saved: ${e.message}. Text remains here; retry Save transcript to Notion without fetching again.`;}
+  }catch(e){status.textContent=`Transcript fetch failed: ${e.message}. Existing text is retained.`;}
+  finally{setTranscriptBusy(false);btn.textContent='Fetch transcript';}
 }
 
 async function runPass1() {
@@ -5862,12 +5867,18 @@ async function enrichPlacesFromMaps(selectedOnly = false) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: q }),
       }, 20000);
-      const d = await res.json().catch(() => ({}));
-      if (!d || !d.found) return;
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error?.message || d.error || `Maps lookup failed (HTTP ${res.status})`);
+      if (d.reason === 'no_key') throw new Error('Maps lookup is not configured. Check Connections in Settings.');
+      if (typeof d.found !== 'boolean') throw new Error('Maps returned an invalid result.');
+      delete p._mapsError;
+      if (!d.found) { delete p.mapsCandidate; return; }
       matched++;
       p.mapsCandidate = d; // Review identity before precise location data can be saved.
-    } catch { /* keep the AI guess */ }
+    } catch (e) { p._mapsError=e.message; }
   });
+  const failed=targets.filter(p=>p._mapsError);
+  if(failed.length)throw new Error(`${matched} map candidates retained; ${failed.length} lookups failed. ${failed.map(p=>`${p.name}: ${p._mapsError}`).join(' ')}`);
   return matched;
 }
 
@@ -5911,7 +5922,7 @@ function renderPlacesReview() {
 function openPlaceReview(i) {
   const p=S.extractedPlaces[i];if(!p)return;
   const readonly=p._saved || p.is_existing;
-  document.getElementById('place-review-content').innerHTML=`<p class="studio-eyebrow">${p._saved?'Saved':p.is_existing?'Existing place':'New suggestion'}</p><label>Name<input value="${_esc(p.name)}" ${readonly?'readonly':''} oninput="editPlaceName(${i},this.value)"></label><label>Type<select ${readonly?'disabled':''} onchange="setPlaceField(${i},'type',this.value)">${[...new Set([...PLACE_TYPES,p.type])].map(x=>`<option ${p.type===x?'selected':''}>${_esc(x)}</option>`).join('')}</select></label><label>Description<textarea rows="4" ${readonly?'readonly':''} oninput="setPlaceField(${i},'what_happens_here',this.value)">${_esc(p.what_happens_here || '')}</textarea></label><label>Prefecture<select ${p._saved?'disabled':''} onchange="setPlaceField(${i},'prefecture',this.value)">${PREFECTURES.map(x=>`<option ${p.prefecture===x?'selected':''}>${_esc(x)}</option>`).join('')}</select></label><label>Halal<select ${p._saved?'disabled':''} onchange="setPlaceField(${i},'halal',this.value)">${['Unknown','Yes','Partial','No'].map(x=>`<option ${p.halal===x?'selected':''}>${x}</option>`).join('')}</select></label><p>Source: ${_esc(shortFrom(p.from))}</p><details><summary>Other extracted details (read-only)</summary><dl>${[['Local name',p.name_local],['Romaji',p.romaji],['Area',p.area],['Price mentioned',p.price_if_spoken],['Food mentioned',p.food_here],['Coordinates',typeof p.lat==='number'?`${p.lat}, ${p.lng}`:''],['Website',p.website],['Rating',p.rating],['Map summary',p.maps_summary]].map(([label,value])=>`<dt>${_esc(label)}</dt><dd>${_esc(value ?? 'Not recorded')}</dd>`).join('')}</dl></details><p>${p._saved?'This place has been saved.':p.is_existing?'Only reviewed location fields, prefecture, halal and source links can be updated here. Edit other original fields in Notion.':'Edits stay in this review until you select the place and save it.'}</p>${p.existing_id?`<a href="https://www.notion.so/${_esc(p.existing_id.replace(/-/g,''))}" target="_blank" rel="noopener">Open original in Notion ↗</a>`:''}<p role="status">${_esc(p._saveError || '')}</p><section class="map-evidence"><h3>Location evidence</h3><p>${_esc(p.address || p.area || 'No address recorded.')} · ${p._acceptedMaps?'Map identity accepted':'Location not independently verified'}</p>${safeURL(p.google_maps_url)!=='#'?`<a href="${_esc(safeURL(p.google_maps_url))}" target="_blank" rel="noopener">Inspect Google Maps ↗</a>`:''}${p.mapsCandidate?`<h4>${_esc(p.mapsCandidate.name)}</h4><p>${_esc(p.mapsCandidate.address || '')}</p><a href="${_esc(safeURL(p.mapsCandidate.mapsUri))}" target="_blank" rel="noopener">Inspect candidate ↗</a><button class="btn" ${p._saved?'disabled':''} onclick="acceptMapsMatch(${i});openPlaceReview(${i})">Accept this location</button>`:''}</section>`;
+  document.getElementById('place-review-content').innerHTML=`<p class="studio-eyebrow">${p._saved?'Saved':p.is_existing?'Existing place':'New suggestion'}</p><label>Name<input value="${_esc(p.name)}" ${readonly?'readonly':''} oninput="editPlaceName(${i},this.value)"></label><label>Type<select ${readonly?'disabled':''} onchange="setPlaceField(${i},'type',this.value)">${[...new Set([...PLACE_TYPES,p.type])].map(x=>`<option ${p.type===x?'selected':''}>${_esc(x)}</option>`).join('')}</select></label><label>Description<textarea rows="4" ${readonly?'readonly':''} oninput="setPlaceField(${i},'what_happens_here',this.value)">${_esc(p.what_happens_here || '')}</textarea></label><label>Prefecture<select ${p._saved?'disabled':''} onchange="setPlaceField(${i},'prefecture',this.value)">${PREFECTURES.map(x=>`<option ${p.prefecture===x?'selected':''}>${_esc(x)}</option>`).join('')}</select></label><label>Halal<select ${p._saved?'disabled':''} onchange="setPlaceField(${i},'halal',this.value)">${['Unknown','Yes','Partial','No'].map(x=>`<option ${p.halal===x?'selected':''}>${x}</option>`).join('')}</select></label><p>Source: ${_esc(shortFrom(p.from))}</p><details><summary>Other extracted details (read-only)</summary><dl>${[['Local name',p.name_local],['Romaji',p.romaji],['Area',p.area],['Price mentioned',p.price_if_spoken],['Food mentioned',p.food_here],['Coordinates',typeof p.lat==='number'?`${p.lat}, ${p.lng}`:''],['Website',p.website],['Rating',p.rating],['Map summary',p.maps_summary]].map(([label,value])=>`<dt>${_esc(label)}</dt><dd>${_esc(value ?? 'Not recorded')}</dd>`).join('')}</dl></details><p>${p._saved?'This place has been saved.':p.is_existing?'Only reviewed location fields, prefecture, halal and source links can be updated here. Edit other original fields in Notion.':'Edits stay in this review until you select the place and save it.'}</p>${p.existing_id?`<a href="https://www.notion.so/${_esc(p.existing_id.replace(/-/g,''))}" target="_blank" rel="noopener">Open original in Notion ↗</a>`:''}<p role="status">${_esc(p._saveError || p._mapsError || '')}</p><section class="map-evidence"><h3>Location evidence</h3><p>${_esc(p.address || p.area || 'No address recorded.')} · ${p._acceptedMaps?'Map identity accepted':'Location not independently verified'}</p>${safeURL(p.google_maps_url)!=='#'?`<a href="${_esc(safeURL(p.google_maps_url))}" target="_blank" rel="noopener">Inspect Google Maps ↗</a>`:''}${p.mapsCandidate?`<h4>${_esc(p.mapsCandidate.name)}</h4><p>${_esc(p.mapsCandidate.address || '')}</p><a href="${_esc(safeURL(p.mapsCandidate.mapsUri))}" target="_blank" rel="noopener">Inspect candidate ↗</a><button class="btn" ${p._saved?'disabled':''} onclick="acceptMapsMatch(${i});openPlaceReview(${i})">Accept this location</button>`:''}</section>`;
   openModal('place-review-modal');
 }
 function editPlaceName(i,value) {
@@ -5922,7 +5933,7 @@ function openSavedPlaces() { document.getElementById('library-category').value='
 async function reviewPlaceMatches(btn) {
   if(_extractingPlaces || _savingPlaces)return;btn.disabled=true;const status=document.getElementById('places-review-status');status.textContent='Looking up selected places. Candidates need your review before saving.';
   try{const n=await enrichPlacesFromMaps(true);renderPlacesReview();status.textContent=`${n} map candidates found. Open Original details and map evidence to inspect each match.`;}
-  catch(e){status.textContent=e.message;}finally{btn.disabled=false;}
+  catch(e){renderPlacesReview();status.textContent=e.message;}finally{btn.disabled=false;}
 }
 
 function togglePlace(i,cb) {
@@ -5996,6 +6007,7 @@ async function saveConfirmedPlaces() {
   try {
     for (const p of S.confirmedPlaces) {
       if (p._saved) continue;
+      let createStarted=false;
       try {
         if(!p.name.trim() || p.name.length>240 || (p.what_happens_here || '').length>1900)throw new Error('Review the name (1–240 characters) and description (up to 1,900 characters) before saving.');
         if (p.is_existing && p.existing_id) {
@@ -6014,6 +6026,7 @@ async function saveConfirmedPlaces() {
           p._createKey=`place-create:${p.name.trim().toLowerCase()}`;
           if(p._createUncertain || await localArtifact(p._createKey))throw new Error('An earlier creation may still be completing. Inspect Notion before attempting another create.');
           p._createUncertain=true;await localArtifact(p._createKey,{at:new Date().toISOString()});
+          createStarted=true;
           const created=await notionAPI('pages', 'POST', {
             parent: { database_id: DB_IDS.places },
             properties: {
@@ -6026,7 +6039,7 @@ async function saveConfirmedPlaces() {
           p.existing_id=created.id;added++;await localArtifact(p._createKey,null);
         }
         p._saved = true;
-      } catch (err) { if(err.status>=400 && err.status<500){p._createUncertain=false;if(p._createKey)await localArtifact(p._createKey,null);}failed++;p._saveError=err.message; }
+      } catch (err) { if(createStarted && err.status>=400 && err.status<500 && err.status!==408){p._createUncertain=false;if(p._createKey)await localArtifact(p._createKey,null);}failed++;p._saveError=err.message; }
     }
     toast(
       [added && `${added} added`, updated && `${updated} refreshed`, failed && `${failed} failed`]
@@ -6880,6 +6893,9 @@ Respond ONLY in valid JSON.`
     if (required.some(k => typeof parsed?.[k] !== 'string' || !parsed[k].trim()) || !Array.isArray(parsed.youtube_tags) || parsed.youtube_tags.some(t => typeof t !== 'string')) throw new Error('Handoff response is incomplete. Regenerate it.');
     S.handoffDoc = parsed;
     S.handoffPage = null;
+    document.getElementById('handoff-saved-notice').style.display = 'none';
+    renderHandoffDoc(parsed);
+    document.getElementById('handoff-doc').style.display = '';
     await localArtifact(`handoff-pending:${S.activeEpisodeId || S.activeEpisode}`, null);
     await localArtifact(`handoff-page:${S.activeEpisodeId || S.activeEpisode}`, null);
     await localArtifact(`handoff:${S.activeEpisodeId || S.activeEpisode}`, { identity: handoffIdentity(), doc: parsed });
@@ -6887,7 +6903,8 @@ Respond ONLY in valid JSON.`
     document.getElementById('handoff-doc').style.display = '';
     toast('Handoff document generated', 'success');
   } catch (err) {
-    toast(`Handoff generation failed: ${_esc(err.message)}`, 'error');
+    if(S.handoffDoc){renderHandoffDoc(S.handoffDoc);document.getElementById('handoff-doc').style.display='';}
+    toast(`Handoff not completed: ${_esc(err.message)}. Any available draft is retained; check its save status.`, 'error');
     console.error(err);
   } finally {
     S.generatingHandoff = false;
@@ -6959,10 +6976,7 @@ async function saveHandoffToNotion() {
   finally { S.savingHandoff = false; }
 }
 
-function regenerateHandoff() {
-  document.getElementById('handoff-doc').style.display = 'none';
-  generateHandoff();
-}
+function regenerateHandoff() { generateHandoff(); }
 
 // ─── CHANNEL DNA SYSTEM PROMPT ────────────────────────────────────────────────
 function buildDNASystem() {

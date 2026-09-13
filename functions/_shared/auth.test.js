@@ -128,3 +128,33 @@ test('login creates an HttpOnly cookie; logout expires it', async () => {
   event.body = JSON.stringify({ action: 'logout' });
   assert.match((await handler(event)).headers['Set-Cookie'], /Max-Age=0/);
 });
+
+test('every protected endpoint reports missing deployment authentication without upstream calls', async () => {
+  const oldPassword = process.env.APP_PASSWORD,
+    oldFetch = global.fetch;
+  try {
+    delete process.env.APP_PASSWORD;
+    global.fetch = () => {
+      throw new Error('No upstream call permitted');
+    };
+    for (const name of [
+      'ai-run',
+      'notion-proxy',
+      'library-config',
+      'service-status',
+      'tts-proxy',
+      'youtube-proxy',
+      'maps-proxy',
+      'web-research',
+      'yt-transcript',
+    ]) {
+      const response = await require(`../${name}`).handler({ httpMethod: 'POST', body: '{}' });
+      assert.equal(response.statusCode, 503, name);
+      assert.match(JSON.parse(response.body).error, /APP_PASSWORD/, name);
+    }
+  } finally {
+    global.fetch = oldFetch;
+    if (oldPassword === undefined) delete process.env.APP_PASSWORD;
+    else process.env.APP_PASSWORD = oldPassword;
+  }
+});

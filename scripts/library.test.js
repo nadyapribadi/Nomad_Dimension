@@ -690,8 +690,8 @@ test('Places extraction uses the Places route with one model attempt', async () 
     "runExtractCall('A transcript about a place','shape','guard',{key:'places-test',task:'places'})"
   );
   assert.equal(captured.task, 'places');
-  assert.equal(captured.request.model, 'configured-places-model');
-  assert.equal(captured.request.provider, 'deepseek');
+  assert.equal(captured.request.model, undefined);
+  assert.equal(captured.request.provider, undefined);
   assert.equal(captured.request.singleAttempt, true);
 });
 
@@ -1145,4 +1145,193 @@ test('source ID matching handles watch, short, live and embed links without matc
     t.run("sourceYouTubeID('https://youtube.com.evil.example/watch?v=abcdefghijk')"),
     ''
   );
+});
+
+test('Maps distinguishes service failure from no match and retains successful candidates', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.extractedPlaces = [
+    { name: 'Market', prefecture: 'Unknown' },
+    { name: 'Park', prefecture: 'Unknown' },
+  ];
+  let calls = 0;
+  t.c._afetch = async () =>
+    ++calls === 1
+      ? { ok: false, status: 503, json: async () => ({ error: 'Configuration missing' }) }
+      : { ok: true, json: async () => ({ found: true, name: 'Park' }) };
+  await assert.rejects(
+    t.run('enrichPlacesFromMaps()'),
+    /1 map candidates retained; 1 lookups failed/
+  );
+  assert.match(S.extractedPlaces[0]._mapsError, /Configuration/);
+  assert.equal(S.extractedPlaces[1].mapsCandidate.name, 'Park');
+  t.c._afetch = async () => ({ ok: true, json: async () => ({ found: false }) });
+  assert.equal(await t.run('enrichPlacesFromMaps()'), 0);
+  assert.equal(S.extractedPlaces[0]._mapsError, undefined);
+  t.c._afetch = async () => ({ ok: true, json: async () => ({ found: false, reason: 'no_key' }) });
+  await assert.rejects(t.run('enrichPlacesFromMaps()'), /not configured/);
+});
+
+test('YouTube errors cannot be reported as successful empty discovery results', async () => {
+  const t = setup(),
+    S = t.run('S'),
+    messages = [];
+  S.keys.youtube = true;
+  S.channels = ['Example'];
+  S.ytSelected = new Set();
+  t.c.document.querySelectorAll = () => [{ dataset: { ch: '0' } }];
+  t.c._afetch = async () => ({
+    ok: false,
+    status: 403,
+    json: async () => ({ error: { message: 'Quota exhausted' } }),
+  });
+  t.c.toast = (message, type) => messages.push({ message, type });
+  await t.run('fetchYouTube()');
+  assert.ok(messages.some((m) => m.type === 'error' && /Quota exhausted/.test(m.message)));
+  assert.equal(
+    messages.some((m) => m.type === 'success'),
+    false
+  );
+  assert.equal(t.element('yt-fetch-btn').disabled, false);
+});
+
+test('configuration failures stop fact-check groups and retain unfinished selections', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 9 }, (_, i) => ({
+    id: `row-${i}`,
+    store: 'research',
+    name: `Claim ${i}`,
+    fields: 'Context',
+  }));
+  S._vlibSkip = new Set();
+  t.c.confirmIdeaChange = async () => true;
+  let calls = 0;
+  t.c._verifyBatch = async () => {
+    calls++;
+    throw Object.assign(new Error('Configuration missing'), { status: 503 });
+  };
+  await t.run('runLibVerify()');
+  assert.equal(calls, 1);
+  assert.equal(S._vlibSkip.size, 0);
+  assert.match(t.element('verify-save-status').textContent, /Configuration missing/);
+  assert.match(t.element('verify-save-status').textContent, /9 rows remain selected/);
+});
+
+test('transcript save failure retains text and retries saving without fetching again', async () => {
+  const t = setup();
+  t.element('yt-transcript-url').value = 'https://youtube.com/watch?v=abcdefghijk';
+  t.element('transcript-video-select').value = 'source';
+  let fetches = 0,
+    writes = 0;
+  t.c._afetch = async () => {
+    fetches++;
+    return { ok: true, json: async () => ({ text: 'Transcript text', source: 'fixture' }) };
+  };
+  t.c.notionAPI = async () => {
+    if (++writes === 1) throw new Error('Notion unavailable');
+    return { id: 'source' };
+  };
+  await t.run('fetchTranscript()');
+  assert.equal(t.element('transcript-input').value, 'Transcript text');
+  assert.match(t.element('transcript-save-status').textContent, /loaded, but not saved/);
+  assert.equal(t.element('transcript-save-btn').disabled, false);
+  await t.run('saveTranscriptToNotion()');
+  assert.equal(fetches, 1);
+  assert.equal(writes, 2);
+  assert.match(t.element('transcript-save-status').textContent, /saved to Notion/);
+});
+
+test('a newly generated handoff clears the previous saved receipt even if local storage fails', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.activeEpisode = 'Episode';
+  S.sections = [{ id: 'section', locked: true, dialogue: 'Kai: Hello', title: 'Intro' }];
+  t.element('handoff-saved-notice').style.display = '';
+  t.element('handoff-saved-notice').textContent = 'Old handoff saved';
+  t.c.aiRun = async () => ({
+    text: JSON.stringify(
+      Object.fromEntries(
+        [
+          'overview',
+          'places',
+          'sections',
+          'canva',
+          'thumbnail',
+          'capcut',
+          'youtube_title_1',
+          'youtube_title_2',
+          'youtube_description',
+        ]
+          .map((k) => [k, `New ${k}`])
+          .concat([['youtube_tags', ['tag']]])
+      )
+    ),
+  });
+  t.c.localArtifact = async () => {
+    throw new Error('Device storage unavailable');
+  };
+  await t.run('generateHandoff()');
+  assert.equal(S.handoffPage, null);
+  assert.equal(t.element('handoff-saved-notice').style.display, 'none');
+  assert.equal(t.element('handoff-doc').style.display, '');
+  assert.equal(S.handoffDoc.overview, 'New overview');
+});
+
+test('source capture retains an uncertain HTTP 408 create and blocks blind replay', async () => {
+  const t = setup();
+  t.element('capture-title').value = 'Video';
+  t.element('capture-url').value = 'https://youtube.com/watch?v=abcdefghijk';
+  let creates = 0;
+  t.c.notionAPI = async (endpoint) => {
+    if (endpoint.startsWith('databases/')) return { results: [], has_more: false };
+    creates++;
+    throw Object.assign(new Error('Request timeout'), { status: 408 });
+  };
+  await t.run('captureSource(document.getElementById("capture-button"))');
+  assert.ok(t.local.get('capture-source:https://youtube.com/watch?v=abcdefghijk'));
+  await t.run('captureSource(document.getElementById("capture-button"))');
+  assert.equal(creates, 1);
+});
+
+test('shared Notion helper does not automatically replay a create after HTTP 529', async () => {
+  const t = setup();
+  let attempts = 0;
+  t.c.fetch = async () => {
+    attempts++;
+    return { ok: false, status: 529, json: async () => ({ error: 'Overloaded' }) };
+  };
+  t.run(
+    'notionAPI = ' +
+      source
+        .match(/async function notionAPI\([\s\S]+?(?=\n\/\/ Run `fn`)/)[0]
+        .replace('async function notionAPI', 'async function')
+  );
+  await assert.rejects(t.run('notionAPI("pages","POST",{})'), /Overloaded/);
+  assert.equal(attempts, 1);
+});
+
+test('material and Places HTTP 408 creates retain their replay protection', async () => {
+  const t = candidateSetup();
+  t.run("REVIEW.decisions[candidate._key]='accepted'");
+  t.c.before = async (call) => {
+    if (call.endpoint === 'pages')
+      throw Object.assign(new Error('Request timeout'), { status: 408 });
+  };
+  await t.run("pushStore('glossary',null,'web')");
+  assert.ok([...t.local.entries()].some(([k, v]) => k.startsWith('material-create-v2:') && v));
+  await t.run("pushStore('glossary',null,'web')");
+  assert.equal(t.calls.filter((c) => c.endpoint === 'pages').length, 1);
+  const h = setup(),
+    S = h.run('S');
+  S.extractedPlaces = [{ name: 'Market', prefecture: 'Unknown' }];
+  S.placeSkip = new Set();
+  h.c.before = async (call) => {
+    if (call.endpoint === 'pages')
+      throw Object.assign(new Error('Request timeout'), { status: 408 });
+  };
+  await h.run('saveConfirmedPlaces()');
+  assert.ok(h.local.get('place-create:market'));
+  await h.run('saveConfirmedPlaces()');
+  assert.equal(h.calls.filter((c) => c.endpoint === 'pages').length, 1);
 });

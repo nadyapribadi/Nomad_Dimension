@@ -421,6 +421,7 @@ test('Maps enrichment needs explicit identity acceptance before changing precise
     { name: 'Morning market', prefecture: 'Unknown', address: 'Original', google_maps_url: '' },
   ];
   h.context._afetch = async () => ({
+    ok: true,
     json: async () => ({
       found: true,
       name: 'Candidate market',
