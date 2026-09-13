@@ -4731,6 +4731,39 @@ function _preserveScroll(renderFn) {
   if (win && typeof win.scrollTo === 'function') win.scrollTo(winX, winY);
 }
 
+// One recommended action for the current state — the screen always answers
+// "what do I do next?". Free fixes first (interrupted saves), then failures
+// (one claim per request), then new paid checks, then selection, then review.
+function factNextStep() {
+  const rows=S.vlib || [];
+  if(!rows.length || S._vlibTidy)return null;
+  if(_libVerifying)return {label:'Checking…',hint:'Findings save as they complete. Use “Stop after current request” to pause safely; a reload resumes from the last saved finding.'};
+  const pending=rows.filter(r=>r._aiPending).length;
+  if(pending)return {label:`Retry ${pending} interrupted save${pending>1?'s':''} — no AI needed`,action:'retryAllFactSaves(this)'};
+  const failed=rows.filter(r=>r._retry && !r._aiPending).length;
+  if(failed)return {label:`Retry ${failed} failed check${failed>1?'s':''} · API`,action:`runLibVerify(this,'failed')`,hint:'One claim per request, so a bad reply cannot fail the rest.'};
+  const skip=S._vlibSkip || new Set();
+  const selected=rows.filter(r=>!r._saving && !skip.has(r.id || r._key)).length;
+  const tidyHint=!S._vlibTidied && rows.length>50?'“Find duplicates” first avoids paying to check the same claim twice.':'';
+  if(selected>FACT_RUN_LIMIT)return {label:`Check all ${selected} selected · API`,action:`runLibVerify(this,'all')`,hint:[`About ${Math.ceil(selected/4)} paid requests after one confirmation; stop any time. The button below checks only the next ${FACT_RUN_LIMIT}.`,tidyHint].filter(Boolean).join(' ')};
+  if(selected)return {label:`Check ${selected} selected claim${selected>1?'s':''} · API`,action:`runLibVerify(this,'all')`,hint:tidyHint};
+  const unchecked=rows.filter(r=>!hasCheck(r)).length;
+  if(unchecked)return {label:`Select ${unchecked} unchecked claim${unchecked>1?'s':''}`,action:'selectUncheckedFacts()',hint:tidyHint};
+  return {label:'Everything here is checked.',hint:'Filter the AI check column to “Contradicted” and review those first. Review is optional; unticking is never needed.'};
+}
+
+async function retryAllFactSaves(btn) {
+  if(btn)btn.disabled=true;
+  const status=document.getElementById('verify-save-status');
+  let stuck=0;
+  for(const r of (S.vlib || []).filter(r=>r._aiPending && !r._saving && !r._checking)){
+    try{await saveAutomaticCheck(r);}catch(e){stuck++;}
+    if(status)status.textContent=stuck?`${stuck} saves still need retry`:'Saves are up to date.';
+  }
+  if(stuck)toast(`${stuck} saves still failing`,'error');
+  renderVlibResults();
+}
+
 function renderVlibResults() {
   const el=document.getElementById('vlib-results'),rows=S.vlib || [];
   if(!rows.length){el.innerHTML='<div class="empty-state"><p>Load material or use your Library selection to check claims.</p></div>';return;}
@@ -4739,14 +4772,15 @@ function renderVlibResults() {
   if(S._vlibTidy)return renderVlibTidy(el,rows);
   const skip=S._vlibSkip ||= new Set(),n=rows.filter(r=>!r._aiPending && !r._saving && !skip.has(r.id || r._key)).length;
   const failed=rows.filter(r=>r._retry && !r._aiPending).length;
-  el.innerHTML=`<div class="btn-row" style="flex-wrap:wrap">
+  const step=factNextStep();
+  el.innerHTML=`${step?`<p class="library-message" id="fact-next-step" style="border-left:3px solid var(--accent);padding-left:10px"><strong>Next:</strong> ${step.action?`<button class="btn btn-sm btn-primary" ${_libVerifying?'disabled':''} onclick="${step.action}">${_esc(step.label)}</button>`:_esc(step.label)}${step.hint?`<br>${_esc(step.hint)}`:''}</p>`:''}<div class="btn-row" style="flex-wrap:wrap">
     <button class="btn btn-primary" ${_libVerifying || !n?'disabled':''} onclick="runLibVerify(this)">${_libVerifying?'Checking…':n>FACT_RUN_LIMIT?`Check next ${FACT_RUN_LIMIT} (${n} selected) · API`:`Check selected (${n}) · API`}</button>
     ${_libVerifying?`<button class="btn" ${_stopFactCheck?'disabled':''} onclick="_stopFactCheck=true;renderVlibResults()">${_stopFactCheck?'Stopping after current request…':'Stop after current request'}</button>`:''}
     <button class="btn" onclick="selectUncheckedFacts()">Select unchecked</button>
     <button class="btn btn-ghost" onclick="vlibAll(true)">Select shown</button><button class="btn btn-ghost" onclick="vlibAll(false)">Clear selection</button>
     ${failed?`<button class="btn" ${_libVerifying?'disabled':''} onclick="runLibVerify(this,'failed')">Retry failed (${failed}) · API</button>`:''}
     ${S._vlibSource==='session'?'':'<button class="btn btn-ghost" onclick="tidyVlib()">Find duplicates</button>'}</div>
-    <p class="library-message">AI findings save automatically. Human review is optional. “No evidence found” does not mean false. Checkboxes choose the next AI check; existing checks are skipped by default. Each confirmed run checks at most 20 claims.</p>
+    <p class="library-message">Suggested order: find duplicates, check claims, retry failures, then review only what matters. AI findings save automatically; human review and unticking are never required. “No evidence found” does not mean false. Checkboxes only choose what the next run checks.</p>
     <div style="overflow:auto;max-height:65vh;border:1px solid var(--border);border-radius:var(--radius)"><table id="fact-review-table" class="data-table" style="font-size:12px;min-width:850px"><thead><tr><th></th><th data-filter-kind="select">Table</th><th>Claim</th><th data-filter-kind="select">AI check</th><th>Evidence &amp; notes</th><th data-filter-kind="select">Your review</th></tr></thead><tbody>${rows.map(r=>{
       const k=r.id || r._key,data=checkRecord(r),ai=r._aiPending || data.ai,legacy=data.legacy;
       return `<tr id="vlrow-${_esc(k)}" data-row-key="${_esc(k)}"><td><input type="checkbox" aria-label="Select claim ${_esc(r.name)}" ${skip.has(k)?'':'checked'} onchange="toggleVlib(${_esc(JSON.stringify(k))})"></td><td>${RESEARCH_STORES[r.store].label}</td>
@@ -4828,7 +4862,7 @@ function vlibAll(on) {
 // ─── Tidy mode: cluster near-dupes per store, pre-check the redundant/thin ───
 function tidyVlib() {
   S._vlibTidy=!S._vlibTidy;
-  if(S._vlibTidy){S._vlibArch=new Set();S._vlibConfirm=false;}
+  if(S._vlibTidy){S._vlibTidied=true;S._vlibArch=new Set();S._vlibConfirm=false;}
   renderVlibResults();
 }
 function toggleArch(id) {
@@ -4969,7 +5003,7 @@ let _libVerifying = false, _stopFactCheck = false;
 async function runLibVerify(btn, mode='selected') {
   if(_libVerifying)return;
   const eligible=(S.vlib || []).filter(r=>!r._saving && !r._aiPending && (mode==='failed'?r._retry:!S._vlibSkip.has(r.id || r._key)));
-  const rows=eligible.slice(0,FACT_RUN_LIMIT),groupSize=mode==='failed'?1:4;
+  const rows=mode==='all'?eligible:eligible.slice(0,FACT_RUN_LIMIT),groupSize=mode==='failed'?1:4;
   if(!rows.length){toast('Select unchecked claims, or use Retry save for findings already generated.');return;}
   _libVerifying=true;
   let done=0,failed=0,saveFailed=0,attempted=0,stopReason='';_stopFactCheck=false;
@@ -4999,7 +5033,7 @@ async function runLibVerify(btn, mode='selected') {
       }
     }
     const nextSelected=(S.vlib || []).filter(r=>!r._aiPending && !S._vlibSkip.has(r.id || r._key)).length;
-    status.textContent=`Last run: ${rows.length} claims · ${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry · ${rows.length-attempted} not attempted.${stopReason?` Checks stopped: ${stopReason}. Previous findings retained; no automatic paid retry.`:' Human review is optional.'} Next run: ${nextSelected} claims currently selected (maximum ${FACT_RUN_LIMIT} per run).`;
+    status.textContent=`Last run: ${rows.length} claims · ${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry · ${rows.length-attempted} not attempted.${stopReason?` Checks stopped: ${stopReason}. Previous findings retained; no automatic paid retry.`:' Human review is optional.'} Next run: ${nextSelected} claims currently selected${nextSelected>FACT_RUN_LIMIT?` — check all at once, or ${FACT_RUN_LIMIT} at a time`:''}.`;
 
     if(S.vlib.some(r=>!r.id))renderExtractReview();
   }finally{for(const r of rows)r._checking=false;_libVerifying=false;if(btn)btn.disabled=false;renderVlibResults();}

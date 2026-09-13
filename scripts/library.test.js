@@ -2167,3 +2167,68 @@ test('claim toggles still flip selection when a page body exists', () => {
   t.run("toggleVlib('row-1')");
   assert.equal(S._vlibSkip.has('row-1'), false);
 });
+
+test('next-step guide prioritises saves, failures, checks, selection, then review', () => {
+  const t = setup(),
+    S = t.run('S');
+  const row = (id, extra = {}) => ({ id, name: `Claim ${id}`, store: 'research', ...extra });
+  S.vlib = [row('a')];
+  S._vlibSkip = new Set();
+  assert.match(t.run('factNextStep().label'), /Check 1 selected claim/);
+  S.vlib = Array.from({ length: 25 }, (_, i) => row(`r${i}`));
+  assert.match(t.run('factNextStep().label'), /Check all 25 selected/);
+  S.vlib[0]._retry = true;
+  assert.match(t.run('factNextStep().label'), /Retry 1 failed check/);
+  S.vlib[1]._aiPending = { verdict: 'unsupported', note: 'x' };
+  assert.match(t.run('factNextStep().label'), /Retry 1 interrupted save/);
+  S.vlib = [row('a')];
+  S._vlibSkip = new Set(['a']);
+  assert.match(t.run('factNextStep().label'), /Select 1 unchecked claim/);
+  S.vlib = [row('a', { status: 'confirmed' })];
+  assert.match(t.run('factNextStep().label'), /Everything here is checked/);
+  assert.match(t.run('factNextStep().hint'), /unticking is never needed/i);
+});
+
+test('check-all mode processes every selected claim in batches with one confirmation', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 9 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  const batches = [];
+  let confirmations = 0;
+  t.c.confirmIdeaChange = async () => {
+    confirmations++;
+    return true;
+  };
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => {
+    batches.push(items.length);
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence.',
+      })),
+    };
+  };
+  await t.run("runLibVerify(null,'all')");
+  assert.equal(confirmations, 1);
+  assert.deepEqual(batches, [4, 4, 1]);
+  assert.equal(S._vlibSkip.size, 9);
+  assert.equal(t.run('_libVerifying'), false);
+});
+
+test('the guide offers a free bulk retry for interrupted saves', async () => {
+  const t = factFixture();
+  t.run(
+    "fact._retry=true;fact._aiPending={verdict:'unsupported',note:'Checked.',source_url:'',as_of_date:'',corrected_value:'',model:'m',checkedAt:'2026-09-13'}"
+  );
+  assert.match(t.run('factNextStep().label'), /Retry 1 interrupted save/);
+  await t.run('retryAllFactSaves()');
+  assert.equal(t.run('fact._aiPending'), null);
+  assert.match(t.run('factNextStep().label'), /Everything here is checked/);
+});
