@@ -2142,3 +2142,28 @@ test('malformed findings lists stop the batch cleanly without overwriting saved 
   assert.equal(t.calls.length, 0);
   assert.equal(t.run('_libVerifying'), false);
 });
+
+test('toggling a checkbox re-renders without snapping the scrolled view to the top', () => {
+  const t = setup();
+  t.run(`
+    document.body = { children: [{ children: [{ scrollTop: 140, scrollLeft: 6, children: [] }] }] };
+    _preserveScroll(() => {
+      document.body.children[0].children[0] = { scrollTop: 0, scrollLeft: 0, children: [] };
+    });
+  `);
+  const restored = t.run('document.body.children[0].children[0]');
+  assert.equal(restored.scrollTop, 140);
+  assert.equal(restored.scrollLeft, 6);
+});
+
+test('claim toggles still flip selection when a page body exists', () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [{ id: 'row-1', name: 'Claim', store: 'research' }];
+  S._vlibSkip = new Set();
+  t.run('document.body = { children: [] }');
+  t.run("toggleVlib('row-1')");
+  assert.equal(S._vlibSkip.has('row-1'), true);
+  t.run("toggleVlib('row-1')");
+  assert.equal(S._vlibSkip.has('row-1'), false);
+});

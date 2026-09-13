@@ -4381,7 +4381,7 @@ function renderExtractReview() { rebuildCombinedOutline(); renderReviewInto('ext
 function renderWebReview() { renderReviewInto('web-review', 'web'); }
 function toggleReview(key, src, cb) {
   const selected=(REVIEW.selected ||= new Set());if(cb.checked)selected.add(key);else selected.delete(key);
-  renderReviewInto(src==='web'?'web-review':'extract-review',src);
+  _preserveScroll(() => renderReviewInto(src==='web'?'web-review':'extract-review',src));
 }
 async function decideReview(src,key,decision,oneKey=null) {
   const visible=visibleTableKeys(`review-${src}-${key}`);
@@ -4709,7 +4709,28 @@ function checkLabel(v) {return {confirmed:'Supported',corrected:'Contradicted',u
 function checkBadge(v) {return `<span class="badge ${v==='confirmed'?'badge-green':v==='corrected'?'badge-amber':''}">${checkLabel(v)}</span>`;}
 function checkEvidence(v) {if(!v)return '—';const url=safeURL(v.source_url);return `<p>${_esc(v.note || 'No explanation supplied.')}</p>${v.corrected_value?`<p>Correction: ${_esc(v.corrected_value)}</p>`:''}${url!=='#'?`<a href="${_esc(url)}" target="_blank" rel="noopener noreferrer">Open evidence ↗</a>`:''}<small style="display:block">${_esc([v.as_of_date && `As of ${v.as_of_date}`,v.checkedAt && `Checked ${v.checkedAt.slice(0,10)}`,v.model].filter(Boolean).join(' · '))}</small>`;}
 function hasCheck(r) {const data=checkRecord(r);return !!(r._aiPending || data.ai || data.review || ['confirmed','corrected','unsupported'].includes(r._newStatus || r.status));}
-function selectUncheckedFacts() {S._vlibSkip ||= new Set();const visible=visibleTableKeys('fact-review-table');for(const r of S.vlib || []){const key=r.id || r._key;if(visible && !visible.has(key))continue;if(hasCheck(r))S._vlibSkip.add(key);else S._vlibSkip.delete(key);}renderVlibResults();}
+function selectUncheckedFacts() {S._vlibSkip ||= new Set();const visible=visibleTableKeys('fact-review-table');for(const r of S.vlib || []){const key=r.id || r._key;if(visible && !visible.has(key))continue;if(hasCheck(r))S._vlibSkip.add(key);else S._vlibSkip.delete(key);}_preserveScroll(renderVlibResults);}
+// Checkbox toggles re-render their table, and innerHTML rebuilds recreate the
+// scroll containers, snapping the view back to the top. Snapshot every scrolled
+// element by its child-index path and re-apply the positions after the render.
+function _preserveScroll(renderFn) {
+  const body = typeof document !== 'undefined' && document.body;
+  if (!body || !body.children) return renderFn();
+  const scrolled = [];
+  (function walk(el, path) {
+    if (el.scrollTop > 0 || el.scrollLeft > 0) scrolled.push([path, el.scrollTop, el.scrollLeft]);
+    for (let i = 0; i < el.children.length; i++) walk(el.children[i], path.concat(i));
+  })(body, []);
+  const win = typeof window !== 'undefined' ? window : null;
+  const winX = win ? win.scrollX : 0, winY = win ? win.scrollY : 0;
+  renderFn();
+  for (const [path, top, left] of scrolled) {
+    const el = path.reduce((node, i) => (node && node.children[i]) || null, body);
+    if (el) { el.scrollTop = top; el.scrollLeft = left; }
+  }
+  if (win && typeof win.scrollTo === 'function') win.scrollTo(winX, winY);
+}
+
 function renderVlibResults() {
   const el=document.getElementById('vlib-results'),rows=S.vlib || [];
   if(!rows.length){el.innerHTML='<div class="empty-state"><p>Load material or use your Library selection to check claims.</p></div>';return;}
@@ -4796,12 +4817,12 @@ function _vlibPaintRow() { renderVlibResults(); }
 
 function toggleVlib(id) {
   if (S._vlibSkip.has(id)) S._vlibSkip.delete(id); else S._vlibSkip.add(id);
-  renderVlibResults();
+  _preserveScroll(renderVlibResults);
 }
 function vlibAll(on) {
   const visible=visibleTableKeys('fact-review-table');S._vlibSkip ||= new Set();
   for(const r of S.vlib || []){const key=r.id || r._key;if(visible && !visible.has(key))continue;if(on)S._vlibSkip.delete(key);else S._vlibSkip.add(key);}
-  renderVlibResults();
+  _preserveScroll(renderVlibResults);
 }
 
 // ─── Tidy mode: cluster near-dupes per store, pre-check the redundant/thin ───
@@ -4814,7 +4835,7 @@ function toggleArch(id) {
   (S._vlibArch ||= new Set());
   if (S._vlibArch.has(id)) S._vlibArch.delete(id); else S._vlibArch.add(id);
   S._vlibConfirm = false;
-  renderVlibResults();
+  _preserveScroll(renderVlibResults);
 }
 
 function renderVlibTidy(el, rows) {
@@ -6045,14 +6066,14 @@ async function reviewPlaceMatches(btn) {
 }
 
 function togglePlace(i,cb) {
-  const name=S.extractedPlaces[i].name.toLowerCase();if(cb.checked)S.placeSkip.delete(name);else S.placeSkip.add(name);renderPlacesReview();
+  const name=S.extractedPlaces[i].name.toLowerCase();if(cb.checked)S.placeSkip.delete(name);else S.placeSkip.add(name);_preserveScroll(renderPlacesReview);
 }
 
 // 'new' = only ones not in the DB · 'all' = everything · 'none'
 function placesPick(mode) {
   const visible=visibleTableKeys('places-review-table');S.placeSkip ||= new Set();
   S.extractedPlaces.forEach((p,i)=>{if(p._saved || (visible && !visible.has(String(i))))return;const key=p.name.toLowerCase();if(mode==='none' || (mode==='new' && p.is_existing))S.placeSkip.add(key);else S.placeSkip.delete(key);});
-  renderPlacesReview();
+  _preserveScroll(renderPlacesReview);
 }
 
 function queuePlaces() {
