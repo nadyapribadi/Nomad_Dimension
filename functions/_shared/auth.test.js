@@ -151,6 +151,7 @@ test('every protected endpoint reports missing deployment authentication without
       const response = await require(`../${name}`).handler({ httpMethod: 'POST', body: '{}' });
       assert.equal(response.statusCode, 503, name);
       assert.match(JSON.parse(response.body).error, /APP_PASSWORD/, name);
+      assert.equal(JSON.parse(response.body).code, 'auth_not_configured', name);
     }
   } finally {
     global.fetch = oldFetch;

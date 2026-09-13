@@ -4,11 +4,11 @@ const { createHmac, timingSafeEqual, randomBytes } = require('node:crypto');
 const COOKIE = 'nomad_session';
 const TTL = 8 * 60 * 60;
 
-function reply(statusCode, error) {
+function reply(statusCode, error, code) {
   return {
     statusCode,
     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-    body: JSON.stringify({ error }),
+    body: JSON.stringify({ error, ...(code ? { code } : {}) }),
   };
 }
 function sameOrigin(event) {
@@ -59,7 +59,8 @@ function withAuth(handler) {
     if (!process.env.APP_PASSWORD || process.env.APP_PASSWORD.length < 16)
       return reply(
         503,
-        'Set APP_PASSWORD (at least 16 characters) in the server environment to enable sign-in'
+        'Set APP_PASSWORD (at least 16 characters) in the server environment to enable sign-in',
+        'auth_not_configured'
       );
     if (!authenticated(event)) return reply(401, 'Sign in to continue');
     if ((event.body || '').length > 1_000_000) return reply(413, 'Request too large');
