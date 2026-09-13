@@ -175,14 +175,17 @@ async function runGemini(key, prompt) {
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           tools: [{ google_search: {} }],
-          // No responseJsonSchema / thinkingConfig here: on generateContent,
-          // combining structured-output settings or a minimal thinking level
-          // with the google_search tool makes the model skip retrieval and
-          // answer from memory. JSON is enforced by prompt + parseJsonLoose,
-          // and enforceGrounding rejects any verdict without retrieved chunks.
+          // No responseJsonSchema here: on generateContent, a structured-output
+          // schema sent with the google_search tool makes the model skip
+          // retrieval and answer from memory. Thinking stays at LOW: MINIMAL
+          // suppresses tool calls the same way, while the unrestricted default
+          // overruns the 24.5s search deadline. JSON is enforced by prompt +
+          // parseJsonLoose, and enforceGrounding rejects any verdict without
+          // retrieved chunks.
           generationConfig: {
             maxOutputTokens: 4096,
             temperature: 0.2,
+            thinkingConfig: { thinkingLevel: 'LOW', includeThoughts: false },
             responseMimeType: 'application/json',
           },
         }),

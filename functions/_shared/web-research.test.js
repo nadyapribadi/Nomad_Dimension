@@ -79,10 +79,11 @@ test('grounded verification avoids request settings that suppress search retriev
   assert.equal(calls, 1);
   assert.deepEqual(body.tools, [{ google_search: {} }]);
   assert.equal(body.generationConfig.responseMimeType, 'application/json');
-  // Structured-output schemas and minimal thinking make generateContent skip
-  // the search tool; they must not be sent alongside google_search.
+  // Structured-output schemas make generateContent skip the search tool, and
+  // minimal thinking suppresses tool calls as well; LOW keeps retrieval working
+  // within the search deadline.
   assert.equal(body.generationConfig.responseJsonSchema, undefined);
-  assert.equal(body.generationConfig.thinkingConfig, undefined);
+  assert.equal(body.generationConfig.thinkingConfig.thinkingLevel, 'LOW');
   assert.equal(result.text.trim(), '{"verified":[]}');
   assert.equal(result.sources.length, 1);
 });
