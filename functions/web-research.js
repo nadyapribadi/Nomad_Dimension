@@ -118,7 +118,7 @@ exports.handler = async (event) => {
         code: 'invalid_model_shape',
       });
     return respond(200, {
-      verified: Array.isArray(parsed.verified) ? parsed.verified : [],
+      verified: enforceGrounding(parsed.verified, call.sources),
       sources: call.sources,
       model: MODEL,
     });
@@ -320,6 +320,27 @@ function parseJsonLoose(raw) {
   return null;
 }
 
+// A "confirmed"/"corrected" verdict counts as evidence only when the model
+// actually retrieved pages. Grounding chunk URIs are often redirect URLs, so
+// an exact URL match is impossible; with zero retrieved chunks the URL came
+// from model memory, and the verdict is downgraded instead of trusted.
+function enforceGrounding(verified, sources) {
+  const grounded = Array.isArray(sources) && sources.length > 0;
+  return verified.map((v) => {
+    if (!v || !['confirmed', 'corrected'].includes(v.verdict)) return v;
+    if (grounded && /^https?:\/\//i.test(String(v.source_url || ''))) return v;
+    return {
+      ...v,
+      verdict: 'unsupported',
+      confidence: 'low',
+      source_url: '',
+      as_of_date: '',
+      corrected_value: '',
+      note: 'No grounded source was retrieved for this claim.',
+    };
+  });
+}
+
 function respond(statusCode, payload) {
   return {
     statusCode,
@@ -338,6 +359,7 @@ module.exports._internal = {
   buildVerifyPrompt,
   buildAskPrompt,
   runGemini,
+  enforceGrounding,
   VERIFY_SCHEMA,
   VERIFY_EXAMPLE,
   SHAPE,

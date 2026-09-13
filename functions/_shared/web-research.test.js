@@ -158,3 +158,72 @@ test('HTTP handler rejects malformed shapes and oversize batches without claimin
   assert.equal(JSON.parse(missing.body).code, 'invalid_model_shape');
   assert.equal(calls, 1);
 });
+
+const { enforceGrounding } = require('../web-research')._internal;
+
+test('enforceGrounding: ungrounded confirmation is downgraded, grounded evidence is kept', () => {
+  const confirmed = {
+    name: 'A claim',
+    verdict: 'confirmed',
+    confidence: 'high',
+    source_url: 'https://example.org/evidence',
+    as_of_date: '2026-09-01',
+    corrected_value: '',
+    note: 'Model says so.',
+  };
+  const chunks = [{ title: 'Evidence', url: 'https://example.org/evidence' }];
+  assert.deepEqual(enforceGrounding([confirmed], chunks), [confirmed]);
+
+  const downgraded = enforceGrounding([confirmed], [])[0];
+  assert.equal(downgraded.verdict, 'unsupported');
+  assert.equal(downgraded.source_url, '');
+  assert.equal(downgraded.confidence, 'low');
+  assert.match(downgraded.note, /No grounded source/);
+
+  const noUrl = enforceGrounding([{ ...confirmed, source_url: 'not a url' }], chunks)[0];
+  assert.equal(noUrl.verdict, 'unsupported');
+
+  const unsupported = { ...confirmed, verdict: 'unsupported', source_url: '' };
+  assert.deepEqual(enforceGrounding([unsupported], []), [unsupported]);
+});
+
+test('HTTP handler downgrades a confirmed verdict that has no search grounding', async (t) => {
+  const { handler } = require('../web-research'),
+    { makeSession, COOKIE } = require('./auth');
+  const oldPassword = process.env.APP_PASSWORD,
+    oldKey = process.env.GEMINI_API_KEY;
+  process.env.APP_PASSWORD = 'fixture-password-long-enough';
+  process.env.GEMINI_API_KEY = 'fixture-key';
+  t.after(() => {
+    if (oldPassword === undefined) delete process.env.APP_PASSWORD;
+    else process.env.APP_PASSWORD = oldPassword;
+    if (oldKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = oldKey;
+  });
+  t.mock.method(global, 'fetch', async () => ({
+    ok: true,
+    json: async () => ({
+      candidates: [
+        {
+          finishReason: 'STOP',
+          content: {
+            parts: [
+              {
+                text: '{"verified":[{"name":"A claim","verdict":"confirmed","confidence":"high","source_url":"https://invented.example/page","as_of_date":"","corrected_value":"","note":"From memory."}]}',
+              },
+            ],
+          },
+        },
+      ],
+    }),
+  }));
+  const res = await handler({
+    httpMethod: 'POST',
+    headers: { cookie: COOKIE + '=' + makeSession(process.env.APP_PASSWORD) },
+    body: JSON.stringify({ mode: 'verify', items: [{ name: 'A claim' }] }),
+  });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.equal(body.verified[0].verdict, 'unsupported');
+  assert.equal(body.verified[0].source_url, '');
+});
