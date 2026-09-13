@@ -1,7 +1,11 @@
 'use strict';
 
-// Web research for Step 1 (Research → Web tab). Gemini + Google Search
-// grounding. Two modes:
+// Web research for Step 1 (Research → Web tab). Gemini 3.6 Flash + Google
+// Search grounding through the Interactions API — on generateContent,
+// structured output with the search tool hangs and grounding metadata is no
+// longer returned, so the model answered from memory. Interactions supports
+// tools + response_format together and reports real search activity.
+// Two modes:
 //   POST { query, focus? }
 //     -> { extract: {...}, sources: [{title,url}], model }   (open question)
 //   POST { mode:'verify', store, items:[{name, detail}] }
@@ -53,6 +57,32 @@ const VERIFY_EXAMPLE = {
     },
   ],
 };
+const VERIFY_SCHEMA = {
+  type: 'object',
+  required: ['verified'],
+  additionalProperties: false,
+  properties: {
+    verified: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 4,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: Object.keys(VERIFY_EXAMPLE.verified[0]),
+        properties: {
+          name: { type: 'string' },
+          verdict: { type: 'string', enum: ['confirmed', 'corrected', 'unsupported'] },
+          confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+          source_url: { type: 'string' },
+          as_of_date: { type: 'string' },
+          corrected_value: { type: 'string' },
+          note: { type: 'string' },
+        },
+      },
+    },
+  },
+};
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return respond(200, '');
@@ -71,7 +101,7 @@ exports.handler = async (event) => {
   const prompt = body.mode === 'verify' ? buildVerifyPrompt(body) : buildAskPrompt(body);
   if (prompt.error) return respond(400, { error: prompt.error });
 
-  const call = await runGemini(key, prompt.text);
+  const call = await runGemini(key, prompt.text, body.mode === 'verify');
   if (call.error)
     return respond(call.status, { error: call.error, code: call.code || 'provider_error' });
 
@@ -91,13 +121,14 @@ exports.handler = async (event) => {
           'The model returned no claim findings. Retry failed checks; previous findings are unchanged.',
         code: 'invalid_model_shape',
       });
+    const enforced = enforceGrounding(parsed.verified, call.grounded);
     return respond(200, {
-      verified: enforceGrounding(parsed.verified, call.sources),
-      sources: call.sources,
+      verified: enforced,
+      sources: citedSources(enforced),
       model: MODEL,
     });
   }
-  return respond(200, { extract: parsed, sources: call.sources, model: MODEL });
+  return respond(200, { extract: parsed, sources: extractSources(parsed), model: MODEL });
 };
 
 function buildAskPrompt(body) {
@@ -162,32 +193,22 @@ ${JSON.stringify(VERIFY_EXAMPLE)}`,
   };
 }
 
-async function runGemini(key, prompt) {
+async function runGemini(key, prompt, verify = false) {
   // Bound search latency below the browser's 30s deadline.
   const ac = new AbortController();
   const killer = setTimeout(() => ac.abort(), 24500);
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key}`,
+      `https://generativelanguage.googleapis.com/v1beta/interactions?key=${key}&api_version=v1beta`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          tools: [{ google_search: {} }],
-          // No responseJsonSchema here: on generateContent, a structured-output
-          // schema sent with the google_search tool makes the model skip
-          // retrieval and answer from memory. Thinking stays at LOW: MINIMAL
-          // suppresses tool calls the same way, while the unrestricted default
-          // overruns the 24.5s search deadline. JSON is enforced by prompt +
-          // parseJsonLoose, and enforceGrounding rejects any verdict without
-          // retrieved chunks.
-          generationConfig: {
-            maxOutputTokens: 4096,
-            temperature: 0.2,
-            thinkingConfig: { thinkingLevel: 'LOW', includeThoughts: false },
-            responseMimeType: 'application/json',
-          },
+          model: MODEL,
+          input: prompt,
+          tools: [{ type: 'google_search' }],
+          ...(verify ? { response_format: VERIFY_SCHEMA } : {}),
+          generation_config: { max_output_tokens: 4096, temperature: 0.2 },
         }),
         signal: ac.signal,
       }
@@ -196,22 +217,16 @@ async function runGemini(key, prompt) {
     if (!res.ok) {
       return { status: 502, error: (data.error && data.error.message) || `HTTP ${res.status}` };
     }
-    const cand = (data.candidates || [])[0] || {};
-    if (cand.finishReason === 'MAX_TOKENS')
-      return {
-        status: 502,
-        code: 'output_truncated',
-        error:
-          'The model reached its output limit before completing the findings. Retry failed checks one at a time.',
-      };
-    if (cand.finishReason && cand.finishReason !== 'STOP')
+    if (data.status !== 'completed')
       return {
         status: 502,
         code: 'generation_stopped',
-        error: `The model stopped without a complete answer (${cand.finishReason}). Previous findings are unchanged.`,
+        error: `The model stopped without a complete answer (${data.status || 'unknown status'}). Previous findings are unchanged.`,
       };
-    const text = ((cand.content && cand.content.parts) || [])
-      .filter((p) => !p.thought)
+    const steps = Array.isArray(data.steps) ? data.steps : [];
+    const output = [...steps].reverse().find((s) => s && s.type === 'model_output');
+    const text = ((output && output.content) || [])
+      .filter((p) => p && p.type === 'text')
       .map((p) => p.text || '')
       .join('');
     if (!text.trim())
@@ -221,11 +236,19 @@ async function runGemini(key, prompt) {
         error:
           'The model returned no final answer. Retry failed checks; previous findings are unchanged.',
       };
-    const chunks = (cand.groundingMetadata && cand.groundingMetadata.groundingChunks) || [];
-    const sources = chunks
-      .map((c) => c.web && { title: c.web.title || c.web.uri, url: c.web.uri })
-      .filter(Boolean);
-    return { text, sources };
+    if ((data.usage && data.usage.total_output_tokens) >= 4096)
+      return {
+        status: 502,
+        code: 'output_truncated',
+        error:
+          'The model reached its output limit before completing the findings. Retry failed checks one at a time.',
+      };
+    // Evidence of retrieval: a successful search step, or the usage counter.
+    const grounding = (data.usage && data.usage.grounding_tool_count) || [];
+    const grounded =
+      steps.some((s) => s && s.type === 'google_search_result' && !s.is_error) ||
+      grounding.some((g) => g && g.type === 'google_search' && (g.count || 0) > 0);
+    return { text, grounded };
   } catch (e) {
     if (e.name === 'AbortError') {
       return {
@@ -302,11 +325,10 @@ function parseJsonLoose(raw) {
 }
 
 // A "confirmed"/"corrected" verdict counts as evidence only when the model
-// actually retrieved pages. Grounding chunk URIs are often redirect URLs, so
-// an exact URL match is impossible; with zero retrieved chunks the URL came
-// from model memory, and the verdict is downgraded instead of trusted.
-function enforceGrounding(verified, sources) {
-  const grounded = Array.isArray(sources) && sources.length > 0;
+// actually searched the web during this response. Without a search step the
+// URL came from model memory, and the verdict is downgraded instead of
+// trusted.
+function enforceGrounding(verified, grounded) {
   return verified.map((v) => {
     if (!v || !['confirmed', 'corrected'].includes(v.verdict)) return v;
     if (grounded && /^https?:\/\//i.test(String(v.source_url || ''))) return v;
@@ -320,6 +342,31 @@ function enforceGrounding(verified, sources) {
       note: 'No grounded source was retrieved for this claim.',
     };
   });
+}
+
+// The Interactions API reports that searches ran but no longer returns the
+// retrieved URL list, so the sources shown in the UI are the URLs the model
+// cited in its findings.
+function citedSources(verified) {
+  const seen = new Set();
+  return (Array.isArray(verified) ? verified : [])
+    .map((v) => String((v && v.source_url) || ''))
+    .filter((u) => /^https?:\/\//i.test(u) && !seen.has(u) && seen.add(u))
+    .map((u) => ({ title: u, url: u }));
+}
+
+function extractSources(extract) {
+  const seen = new Set();
+  const out = [];
+  for (const key of ['research', 'prices', 'data']) {
+    for (const item of (extract && extract[key]) || []) {
+      const u = String((item && item.source_url) || '');
+      if (!/^https?:\/\//i.test(u) || seen.has(u)) continue;
+      seen.add(u);
+      out.push({ title: String(item.source_name || u), url: u });
+    }
+  }
+  return out;
 }
 
 function respond(statusCode, payload) {
@@ -341,6 +388,9 @@ module.exports._internal = {
   buildAskPrompt,
   runGemini,
   enforceGrounding,
+  citedSources,
+  extractSources,
+  VERIFY_SCHEMA,
   VERIFY_EXAMPLE,
   SHAPE,
   MODEL,

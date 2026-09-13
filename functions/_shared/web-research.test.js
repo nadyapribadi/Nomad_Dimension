@@ -46,66 +46,63 @@ test('buildVerifyPrompt: validates the bounded request and provides valid JSON',
   assert.ok(JSON.parse(require('../web-research')._internal.SHAPE).research);
 });
 
-const { runGemini } = require('../web-research')._internal;
+const { runGemini, VERIFY_SCHEMA } = require('../web-research')._internal;
 
-test('grounded verification avoids request settings that suppress search retrieval', async (t) => {
-  let body,
+test('grounded verification uses the Interactions API with search and a response schema', async (t) => {
+  let url,
+    body,
     calls = 0;
-  t.mock.method(global, 'fetch', async (_url, options) => {
+  t.mock.method(global, 'fetch', async (u, options) => {
     calls++;
+    url = u;
     body = JSON.parse(options.body);
     return {
       ok: true,
       json: async () => ({
-        candidates: [
-          {
-            finishReason: 'STOP',
-            content: {
-              parts: [
-                { thought: true, text: 'Internal thoughts, not JSON' },
-                { text: '{"verified":[]}' },
-                { text: ' ' },
-              ],
-            },
-            groundingMetadata: {
-              groundingChunks: [{ web: { uri: 'https://example.org', title: 'Evidence' } }],
-            },
-          },
+        status: 'completed',
+        steps: [
+          { type: 'google_search_call', arguments: { queries: ['q1'] } },
+          { type: 'google_search_result', result: [], is_error: false },
+          { type: 'thought' },
+          { type: 'model_output', content: [{ type: 'text', text: '{"verified":[]}' }] },
         ],
+        usage: {
+          total_output_tokens: 120,
+          grounding_tool_count: [{ type: 'google_search', count: 1 }],
+        },
       }),
     };
   });
-  const result = await runGemini('fake-key', 'Prompt');
+  const result = await runGemini('fake-key', 'Prompt', true);
   assert.equal(calls, 1);
-  assert.deepEqual(body.tools, [{ google_search: {} }]);
-  assert.equal(body.generationConfig.responseMimeType, 'application/json');
-  // Structured-output schemas make generateContent skip the search tool, and
-  // minimal thinking suppresses tool calls as well; LOW keeps retrieval working
-  // within the search deadline.
-  assert.equal(body.generationConfig.responseJsonSchema, undefined);
-  assert.equal(body.generationConfig.thinkingConfig.thinkingLevel, 'LOW');
+  assert.match(url, /\/v1beta\/interactions/);
+  assert.equal(body.model, require('../web-research')._internal.MODEL);
+  assert.equal(body.input, 'Prompt');
+  assert.deepEqual(body.tools, [{ type: 'google_search' }]);
+  assert.deepEqual(body.response_format, VERIFY_SCHEMA);
   assert.equal(result.text.trim(), '{"verified":[]}');
-  assert.equal(result.sources.length, 1);
+  assert.equal(result.grounded, true);
 });
 
-test('truncated, blocked and thought-only replies fail specifically without attempting another paid call', async (t) => {
-  for (const [candidate, code] of [
+test('truncated, blocked and answer-less replies fail specifically without attempting another paid call', async (t) => {
+  for (const [payload, code] of [
     [
-      { finishReason: 'MAX_TOKENS', content: { parts: [{ text: '{"verified":[]}' }] } },
+      {
+        status: 'completed',
+        steps: [{ type: 'model_output', content: [{ type: 'text', text: '{"verified":[]}' }] }],
+        usage: { total_output_tokens: 4096 },
+      },
       'output_truncated',
     ],
-    [{ finishReason: 'SAFETY' }, 'generation_stopped'],
-    [
-      { finishReason: 'STOP', content: { parts: [{ thought: true, text: 'Working…' }] } },
-      'empty_model_reply',
-    ],
+    [{ status: 'failed' }, 'generation_stopped'],
+    [{ status: 'completed', steps: [{ type: 'thought' }] }, 'empty_model_reply'],
   ]) {
     let calls = 0;
     t.mock.method(global, 'fetch', async () => {
       calls++;
-      return { ok: true, json: async () => ({ candidates: [candidate] }) };
+      return { ok: true, json: async () => payload };
     });
-    const result = await runGemini('fake', 'Prompt');
+    const result = await runGemini('fake', 'Prompt', true);
     assert.equal(result.code, code);
     assert.equal(calls, 1);
     t.mock.restoreAll();
@@ -149,7 +146,8 @@ test('HTTP handler rejects malformed shapes and oversize batches without claimin
     return {
       ok: true,
       json: async () => ({
-        candidates: [{ finishReason: 'STOP', content: { parts: [{ text: '{"wrong":[]}' }] } }],
+        status: 'completed',
+        steps: [{ type: 'model_output', content: [{ type: 'text', text: '{"wrong":[]}' }] }],
       }),
     };
   });
@@ -174,20 +172,19 @@ test('enforceGrounding: ungrounded confirmation is downgraded, grounded evidence
     corrected_value: '',
     note: 'Model says so.',
   };
-  const chunks = [{ title: 'Evidence', url: 'https://example.org/evidence' }];
-  assert.deepEqual(enforceGrounding([confirmed], chunks), [confirmed]);
+  assert.deepEqual(enforceGrounding([confirmed], true), [confirmed]);
 
-  const downgraded = enforceGrounding([confirmed], [])[0];
+  const downgraded = enforceGrounding([confirmed], false)[0];
   assert.equal(downgraded.verdict, 'unsupported');
   assert.equal(downgraded.source_url, '');
   assert.equal(downgraded.confidence, 'low');
   assert.match(downgraded.note, /No grounded source/);
 
-  const noUrl = enforceGrounding([{ ...confirmed, source_url: 'not a url' }], chunks)[0];
+  const noUrl = enforceGrounding([{ ...confirmed, source_url: 'not a url' }], true)[0];
   assert.equal(noUrl.verdict, 'unsupported');
 
   const unsupported = { ...confirmed, verdict: 'unsupported', source_url: '' };
-  assert.deepEqual(enforceGrounding([unsupported], []), [unsupported]);
+  assert.deepEqual(enforceGrounding([unsupported], false), [unsupported]);
 });
 
 test('HTTP handler downgrades a confirmed verdict that has no search grounding', async (t) => {
@@ -206,16 +203,16 @@ test('HTTP handler downgrades a confirmed verdict that has no search grounding',
   t.mock.method(global, 'fetch', async () => ({
     ok: true,
     json: async () => ({
-      candidates: [
+      status: 'completed',
+      steps: [
         {
-          finishReason: 'STOP',
-          content: {
-            parts: [
-              {
-                text: '{"verified":[{"name":"A claim","verdict":"confirmed","confidence":"high","source_url":"https://invented.example/page","as_of_date":"","corrected_value":"","note":"From memory."}]}',
-              },
-            ],
-          },
+          type: 'model_output',
+          content: [
+            {
+              type: 'text',
+              text: '{"verified":[{"name":"A claim","verdict":"confirmed","confidence":"high","source_url":"https://invented.example/page","as_of_date":"","corrected_value":"","note":"From memory."}]}',
+            },
+          ],
         },
       ],
     }),

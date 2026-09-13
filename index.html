@@ -4557,7 +4557,7 @@ async function _postJSON(url, body, ms = 30000) {
   }
 }
 
-// Render a source list from model grounding metadata — titles/URLs are
+// Render a source list from the URLs the model cited — titles/URLs are
 // arbitrary web content, so escape everything and only allow http(s) hrefs.
 function _srcLinks(sources) {
   return (sources || []).slice(0, 6).map(s => {
