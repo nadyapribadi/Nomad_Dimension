@@ -22,3 +22,4 @@ Template/
 .agents/
 .claude/
 graphify-out/
+_deploy/

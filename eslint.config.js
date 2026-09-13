@@ -12,6 +12,7 @@ module.exports = [
       'Docs/**',
       '.gitnexus/**',
       'graphify-out/**',
+      '_deploy/**',
     ],
   },
   js.configs.recommended,

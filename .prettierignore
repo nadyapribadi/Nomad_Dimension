@@ -5,6 +5,7 @@ Template/
 Docs/
 .gitnexus/
 graphify-out/
+_deploy/
 index.html
 *.docx
 

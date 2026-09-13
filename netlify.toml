@@ -1,5 +1,7 @@
 [build]
-  publish = "."
+  # Publish only the curated static copy. `.` would upload the generated
+  # GitNexus index, Graphify output, Docs, and every agent/config file.
+  publish = "_deploy"
   functions = "functions"
   # Skip the production deploy (saves build credits) when a commit touches only
   # docs / tests / CI. exit 0 = skip build, non-zero = build. If we can't diff
@@ -8,6 +10,11 @@
     git rev-parse HEAD^ >/dev/null 2>&1 || exit 1
     git diff --name-only HEAD^ HEAD | grep -qvE '^(Docs/|\\.github/|[^/]*\\.md$|.*\\.test\\.js$)' && exit 1 || exit 0
   """
+
+# Netlify Dev serves the working tree so local edits stay live, even though
+# deploys publish the curated _deploy/ directory.
+[dev]
+  publish = "."
 
 # Synchronous functions use the platform default; application requests have bounded deadlines.
 
@@ -159,6 +166,26 @@
 
 [[redirects]]
   from = "/.agents/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# Defence in depth: these should never be in the publish directory at all, so a
+# redirect is a second line of defence rather than the fix.
+[[redirects]]
+  from = "/.gitnexus/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/graphify-out/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.claude/*"
   to = "/404.html"
   status = 404
   force = true
