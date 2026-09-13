@@ -20,3 +20,5 @@ node_modules/
 # Keep Template/ out — it's a separate project
 Template/
 .agents/
+.claude/
+graphify-out/

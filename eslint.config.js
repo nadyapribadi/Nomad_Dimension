@@ -5,7 +5,14 @@ const globals = require('globals');
 
 module.exports = [
   {
-    ignores: ['node_modules/**', 'Template/**', '.netlify/**', 'Docs/**'],
+    ignores: [
+      'node_modules/**',
+      'Template/**',
+      '.netlify/**',
+      'Docs/**',
+      '.gitnexus/**',
+      'graphify-out/**',
+    ],
   },
   js.configs.recommended,
   {
