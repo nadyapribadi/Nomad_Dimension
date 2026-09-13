@@ -1613,3 +1613,225 @@ test('queued records cannot be changed by bulk decisions and cancelling them mak
   await t.run("saveAcceptedMaterial('prep',null)");
   assert.equal(t.pages.size, 4);
 });
+
+function deferredCall(t, match) {
+  let release, entered;
+  const gate = new Promise((r) => (release = r)),
+    waiting = new Promise((r) => (entered = r));
+  t.c.before = async (call) => {
+    if (match(call)) {
+      entered();
+      await gate;
+    }
+  };
+  return { release, waiting };
+}
+
+test('a material save cannot close a newer editor or erase edits made while saving', async () => {
+  const t = setup(),
+    a = t.add('activities', 'First walk'),
+    b = t.add('activities', 'Second walk');
+  t.LIB.rows.activities = [a.material, b.material];
+  t.c.rowA = a.material;
+  t.c.rowB = b.material;
+  t.run(
+    "materialEdit={row:rowA,fields:{Activity:'Submitted walk'}};renderMaterialLibrary=()=>{};openLibraryDetail=()=>{};openModal('material-edit-modal')"
+  );
+  const d = deferredCall(t, (c) => c.method === 'PATCH');
+  const save = t.run("saveMaterialEdit(document.getElementById('save-a'))");
+  await d.waiting;
+  t.run(
+    "materialEdit={row:rowB,fields:{Activity:'New editor draft'}};openModal('material-edit-modal');document.getElementById('material-edit-status').textContent='Editing second record'"
+  );
+  const view = t.run("modalVersions['material-edit-modal']");
+  d.release();
+  await save;
+  assert.equal(t.run("modalVersions['material-edit-modal']"), view);
+  assert.equal(t.run('materialEdit.row.id'), b.material.id);
+  assert.equal(t.element('material-edit-status').textContent, 'Editing second record');
+  assert.equal(t.text(t.pages.get(a.material.id).properties.Activity), 'Submitted walk');
+});
+
+test('material edits typed during a save remain as a recoverable unsaved draft', async () => {
+  const t = setup(),
+    a = t.add('activities', 'Walk');
+  t.LIB.rows.activities = [a.material];
+  t.c.rowA = a.material;
+  t.run(
+    "materialEdit={row:rowA,fields:{Activity:'Submitted'}};renderMaterialLibrary=()=>{};openModal('material-edit-modal')"
+  );
+  const d = deferredCall(t, (c) => c.method === 'PATCH');
+  const save = t.run("saveMaterialEdit(document.getElementById('save'))");
+  await d.waiting;
+  t.run("materialEdit.fields.Activity='Newer edit'");
+  d.release();
+  await save;
+  assert.equal(t.text(t.pages.get(a.material.id).properties.Activity), 'Submitted');
+  assert.equal(t.local.get(`material-edit:${a.material.id}`).fields.Activity, 'Newer edit');
+  assert.equal(
+    t.local.get(`material-edit:${a.material.id}`).baseEdited,
+    t.pages.get(a.material.id).last_edited_time
+  );
+});
+
+test('AI choices edited during saving remain unsaved rather than disappearing', async () => {
+  const t = setup();
+  let release, entered;
+  const gate = new Promise((r) => (release = r)),
+    waiting = new Promise((r) => (entered = r));
+  t.c.notionAPI = async () => {
+    entered();
+    await gate;
+    return {};
+  };
+  t.run(
+    "S.routingBlockId='routing';S.routing={outline:{provider:'deepseek',model:'old'}};collectRouting=()=>choice;choice={outline:{provider:'openai',model:'submitted'}};renderRoutingTable=()=>{}"
+  );
+  const save = t.run('saveRouting()');
+  await waiting;
+  t.run("choice={outline:{provider:'another',model:'new-edit'}}");
+  release();
+  await save;
+  assert.equal(t.run('S.routing.outline.model'), 'submitted');
+  assert.equal(t.run('routingDirty'), true);
+  assert.equal(t.run('choice.outline.model'), 'new-edit');
+  assert.match(t.element('routing-save-status').textContent, /newer choices are still unsaved/);
+});
+
+test('adding material to an idea snapshots its destination before asynchronous reads', async () => {
+  const t = setup(),
+    a = t.add('activities', 'Original selection'),
+    b = t.add('activities', 'Later selection');
+  t.LIB.idea = t.run('blankLibraryIdea()');
+  t.LIB.destinationRows = [a.material];
+  t.LIB.destinationReady = true;
+  t.element('destination-choice').value = 'selected-idea';
+  t.element('destination-name').value = 'Original title';
+  let release, entered;
+  const gate = new Promise((r) => (release = r)),
+    waiting = new Promise((r) => (entered = r));
+  t.c.readLibraryIdea = async () => {
+    entered();
+    await gate;
+    return t.run('blankLibraryIdea()');
+  };
+  t.c.saveLibraryIdea = async () => {
+    t.LIB.idea.dirty = false;
+  };
+  const save = t.run("saveIdeaDestination(document.getElementById('destination-save'))");
+  await waiting;
+  assert.equal(await t.run('ideaMaySwitch()'), false);
+  t.LIB.destinationRows = [b.material];
+  t.element('destination-name').value = 'Later title';
+  release();
+  await save;
+  assert.equal(t.LIB.idea.name, 'Original title');
+  assert.equal(t.LIB.idea.items[0].material.id, a.material.id);
+  assert.equal(t.LIB.busy, false);
+  assert.equal(t.LIB.destinationSaving, false);
+});
+
+test('fact-check saves a reviewed snapshot and cannot close another claim review', async () => {
+  const t = setup(),
+    a = t.add('research', 'First claim');
+  const p = t.pages.get(a.material.id);
+  t.c.row = {
+    id: p.id,
+    store: 'research',
+    name: 'First claim',
+    lastEdited: p.last_edited_time,
+    _proposal: {
+      verdict: 'confirmed',
+      source_url: 'https://example.com/evidence',
+      note: 'Reviewed note',
+    },
+  };
+  t.run("S.vlib=[row];renderVlibResults=()=>{};openModal('fact-review-modal')");
+  const d = deferredCall(t, (c) => c.endpoint === `pages/${p.id}` && c.method === 'GET');
+  const save = t.run("saveVerdictProposal(row.id,document.getElementById('save-check'))");
+  await d.waiting;
+  t.run("editVerdictProposal(row.id,'note','New text');openModal('fact-review-modal')");
+  const view = t.run("modalVersions['fact-review-modal']");
+  d.release();
+  await save;
+  assert.equal(t.run("modalVersions['fact-review-modal']"), view);
+  assert.match(t.text(t.pages.get(p.id).properties['Verify Note']), /Reviewed note/);
+  assert.doesNotMatch(t.text(t.pages.get(p.id).properties['Verify Note']), /New text/);
+});
+
+test('rapid idea opens acquire ownership after the asynchronous switch check', async () => {
+  const t = setup();
+  t.LIB.idea = t.run('blankLibraryIdea()');
+  let release,
+    entered,
+    reads = 0;
+  const waiting = new Promise((r) => (entered = r));
+  t.c.readLibraryIdea = async (id) => {
+    reads++;
+    entered();
+    await new Promise((r) => (release = r));
+    return { ...t.run('blankLibraryIdea()'), id };
+  };
+  const first = t.run("openLibraryIdea('first')"),
+    second = t.run("openLibraryIdea('second')");
+  await waiting;
+  await second;
+  assert.equal(reads, 1);
+  release();
+  await first;
+  assert.equal(t.LIB.idea.id, 'first');
+  assert.equal(t.LIB.busy, false);
+});
+
+test('channel style rejects overlapping saves and releases its lock after failure', async () => {
+  const t = setup();
+  t.run("S.dnaBlockId='style';S.dna={};captureDNAVisible=()=>{}");
+  let release,
+    entered,
+    calls = 0;
+  const waiting = new Promise((r) => (entered = r));
+  t.c.notionAPI = async () => {
+    calls++;
+    entered();
+    await new Promise((r) => (release = r));
+    throw new Error('Simulated outage');
+  };
+  const first = t.run('saveDNA()');
+  await waiting;
+  await t.run('saveDNA()');
+  assert.equal(calls, 1);
+  release();
+  await first;
+  assert.equal(t.run('dnaSaving'), false);
+});
+
+test('settings loaded before a save cannot overwrite the subsequently saved choices', async () => {
+  const t = setup();
+  let release;
+  t.c.getPageBlocks = () => new Promise((r) => (release = r));
+  let applied = false;
+  t.c.parseAndApplySettings = () => {
+    applied = true;
+  };
+  const load = t.run('loadSettingsFromNotion()');
+  t.run('settingsReadVersion++');
+  release([]);
+  assert.equal(await load, false);
+  assert.equal(applied, false);
+});
+
+test('discarding a fact-check suggestion cannot close a newer review during local persistence', async () => {
+  const t = setup();
+  t.run(
+    "S.vlib=[{id:'claim',_proposal:{note:'Draft'}}];renderVlibResults=()=>{};openModal('fact-review-modal')"
+  );
+  let release;
+  t.c.localArtifact = () => new Promise((r) => (release = r));
+  const discard = t.run("discardVerdictProposal('claim')");
+  t.run("closeModal('fact-review-modal');openModal('fact-review-modal')");
+  const view = t.run("modalVersions['fact-review-modal']");
+  release();
+  await discard;
+  assert.equal(t.run("modalVersions['fact-review-modal']"), view);
+  assert.equal(t.run('S.vlib[0]._proposal'), null);
+});

@@ -2510,13 +2510,16 @@ function toast(msg, type = '') {
 
 // ─── MODAL ──────────────────────────────────────────────────────────────────
 let modalReturnFocus;
+const modalVersions = {};
 function openModal(id) {
+  modalVersions[id]=(modalVersions[id] || 0)+1;
   modalReturnFocus = document.activeElement;
   const modal = document.getElementById(id);
   modal.classList.add('open');
   modal.querySelector?.('button, input, textarea, select')?.focus();
 }
 function closeModal(id) {
+  modalVersions[id]=(modalVersions[id] || 0)+1;
   if (id === 'place-review-modal') renderPlacesReview();
   if (id === 'library-detail-modal') document.getElementById('library-detail').hidden = true;
   document.getElementById(id).classList.remove('open');
@@ -2526,6 +2529,7 @@ function closeModal(id) {
 
 // ─── STAGE 0 — SETTINGS ─────────────────────────────────────────────────────
 async function connectNotion() {
+  if(routingSaving || dnaSaving){toast('Wait for settings to finish saving before reloading them.');return;}
   if(routingDirty && !confirm('Reload saved settings and discard your unsaved AI choices?'))return;
   routingDirty=false;
   // The Notion token lives in the Netlify env var NOTION_TOKEN — nothing to paste.
@@ -2550,8 +2554,11 @@ async function connectNotion() {
 }
 
 async function loadSettingsFromNotion() {
+  if(routingSaving || dnaSaving)return false;
+  const request=++settingsReadVersion;
   try {
     const blocks = await getPageBlocks(APP_SETTINGS_PAGE_ID);
+    if(request!==settingsReadVersion || routingSaving || dnaSaving)return false;
     parseAndApplySettings(blocks);
     renderSettingsUI();
     document.getElementById('nav-0').className = 'nav-status ok';
@@ -2818,7 +2825,7 @@ function routingSelect(kind, task, current) {
     style="font-family:var(--font-mono);font-size:11px;width:100%">${none}${custom}${modelOptGroups(known ? cur : '')}</select>`;
 }
 
-let serviceStatus = null, serviceStatusBusy = false, routingDirty = false, routingSaving = false;
+let serviceStatus = null, serviceStatusBusy = false, routingDirty = false, routingSaving = false, dnaSaving = false, settingsReadVersion = 0;
 const ACTIVE_ROUTE_INFO = {
   angle: ['Video discovery', 'Suggest an angle while reviewing source videos.'],
   theme: ['Episode concept', 'Develop a theme, hook and editorial direction.'],
@@ -2865,7 +2872,7 @@ function renderActionServices() {
   });
 }
 function markRoutingDirty() {
-  routingDirty=true;
+  settingsReadVersion++;routingDirty=true;
   document.getElementById('routing-save-status').textContent='Unsaved AI choices. Current actions still use the saved settings.';
 }
 
@@ -2873,7 +2880,7 @@ function renderRoutingTable() {
   document.getElementById('models-card').style.display='';
   if(routingDirty)return;
   const r=S.routing || DEFAULT_ROUTING_UI;
-  const card=task=>{const e=r[task] || DEFAULT_ROUTING_UI[task] || {},info=ACTIVE_ROUTE_INFO[task];return `<article class="route-card"><div><h3>${_esc(info?.[0] || task)}</h3><p>${_esc(info?.[1] || 'Reserved setting; no connected action in this version.')}</p></div><label>Primary model${routingSelect('primary',task,e)}</label><label>${['outline','places'].includes(task)?'Fallback (not used for extraction)':'Fallback after failure'}${routingSelect('fallback',task,e.fallback)}</label></article>`;};
+  const card=task=>{const e=r[task] || DEFAULT_ROUTING_UI[task] || {},info=ACTIVE_ROUTE_INFO[task];return `<article class="route-card"><div><h3>${_esc(info?.[0] || task)}</h3><p>${_esc(info?.[1] || 'Reserved setting; no connected action in this version.')}</p></div><label>Primary model${routingSelect('primary',task,e)}</label><label>${task==='outline'?'Fallback (explicit extraction retry)':task==='places'?'Fallback (not used for extraction)':'Fallback after failure'}${routingSelect('fallback',task,e.fallback)}</label></article>`;};
   const active=Object.keys(ACTIVE_ROUTE_INFO),reserved=ROUTING_TASKS.filter(task=>!active.includes(task));
   document.getElementById('models-table').innerHTML=active.map(card).join('')+`<details class="reserved-routes"><summary>Reserved choices · ${reserved.length} actions not connected yet</summary><p class="library-message">These saved values are preserved for compatibility. Selecting a thumbnail model here does not generate an image.</p>${reserved.map(card).join('')}</details>`;
   document.getElementById('routing-origin').textContent=S.routingBlockId?'Saved in Notion':'Defaults · no saved block loaded';
@@ -2917,12 +2924,12 @@ async function saveRouting() {
   const status=document.getElementById('routing-save-status');
   if(!S.routingBlockId) {status.textContent='No saved routing block is loaded. Reload workspace settings in Connections, then retry. Your choices have not been saved.';return;}
   const routing=collectRouting();
-  routingSaving=true;document.getElementById('routing-save').disabled=true;
+  routingSaving=true;settingsReadVersion++;document.getElementById('routing-save').disabled=true;
   status.textContent='Saving AI choices…';
   try {
     await notionAPI(`blocks/${S.routingBlockId}`, 'PATCH', {code:{language:'json',rich_text:codeBlockRichText(JSON.stringify(routing,null,2))}});
-    S.routing=routing;routingDirty=false;renderRoutingTable();
-    status.textContent='Saved to Notion. Routed actions pick up these choices within about 60 seconds. Fact-check, Maps and voice keep their separate services.';
+    const changed=JSON.stringify(collectRouting())!==JSON.stringify(routing);S.routing=routing;routingDirty=changed;renderRoutingTable();
+    status.textContent=changed?'Submitted AI choices saved. Your newer choices are still unsaved.':'Saved to Notion. Routed actions pick up these choices within about 60 seconds. Fact-check, Maps and voice keep their separate services.';
   }catch(e){status.textContent=`Not saved: ${e.message}. Your choices remain here; retry saving.`;}
   finally{routingSaving=false;document.getElementById('routing-save').disabled=false;}
 }
@@ -2975,6 +2982,7 @@ function renderDNAForm() {
 }
 
 async function saveDNA() {
+  if(dnaSaving){toast('Channel style is already saving. Your newer edits can be saved when it finishes.');return;}
   captureDNAVisible();
   // Normalise to the schema — trims, drops stray keys, keeps every group.
   const dna = {};
@@ -2990,14 +2998,15 @@ async function saveDNA() {
     toast('No "📺 Channel DNA" JSON block on the Notion page yet. JSON copied to clipboard — paste it into a code block there.', 'warning');
     return;
   }
+  dnaSaving=true;settingsReadVersion++;
   try {
     await notionAPI(`blocks/${S.dnaBlockId}`, 'PATCH', {
       code: { language: 'json', rich_text: codeBlockRichText(json) },
     });
-    toast('Channel DNA saved to Notion.', 'success');
+    captureDNAVisible();toast(JSON.stringify(S.dna,null,2)===json?'Channel DNA saved to Notion.':'Submitted channel style saved. Your newer edits remain unsaved.', 'success');
   } catch (e) {
     toast(`Could not save Channel DNA: ${_esc(e.message)}`, 'error');
-  }
+  } finally {dnaSaving=false;}
 }
 
 async function runHealthCheck() {
@@ -4754,20 +4763,20 @@ function renderVerdictProposal(r) {
   return `<details open class="verdict-proposal"><summary>Your review · not saved</summary><label>Verdict<select aria-label="Verdict" data-key="${_esc(k)}" onchange="editVerdictProposal(this.dataset.key,'verdict',this.value)"><option value="">Choose a judgement</option>${['confirmed','corrected','unsupported'].map(x=>`<option ${v.verdict===x?'selected':''}>${x}</option>`).join('')}</select></label><label>Source URL<input data-key="${_esc(k)}" value="${_esc(v.source_url || '')}" oninput="editVerdictProposal(this.dataset.key,'source_url',this.value)"></label><a data-review-source href="${_esc(safeURL(v.source_url))}" ${safeURL(v.source_url)==='#'?'hidden':''} target="_blank" rel="noopener">Inspect source ↗</a><label>Correction, if needed<input data-key="${_esc(k)}" value="${_esc(v.corrected_value || '')}" oninput="editVerdictProposal(this.dataset.key,'corrected_value',this.value)"></label><label>Review note<textarea aria-label="Review note" rows="4" data-key="${_esc(k)}" oninput="editVerdictProposal(this.dataset.key,'note',this.value)">${_esc(v.note || '')}</textarea></label><button class="btn btn-sm" data-key="${_esc(k)}" onclick="saveVerdictProposal(this.dataset.key,this)">Save reviewed check</button><button class="btn btn-sm btn-ghost" data-key="${_esc(k)}" onclick="discardVerdictProposal(this.dataset.key)">Discard suggestion</button></details>`;
 }
 function editVerdictProposal(key,field,value) {
-  const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r?._proposal)return;r._proposal[field]=value;
+  const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r?._proposal || r._saving)return;r._proposal[field]=value;
   if(field==='source_url'){const link=document.querySelector('[data-review-source]');if(link){link.href=safeURL(value);link.hidden=safeURL(value)==='#';}}
   localArtifact(`verify-proposal:${key}`,r._proposal).catch(()=>{document.getElementById('fact-review-error').textContent='Could not retain this edit on this device. Keep the review open until you save it.';});
 }
-async function discardVerdictProposal(key) {const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r)return;r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);closeModal('fact-review-modal');renderVlibResults();}
+async function discardVerdictProposal(key) {const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r || r._saving)return;const view=modalVersions['fact-review-modal'];r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);if(modalVersions['fact-review-modal']===view)closeModal('fact-review-modal');renderVlibResults();}
 async function saveVerdictProposal(key,btn) {
   const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r?._proposal || r._saving)return;
-  r._saving=true;btn.disabled=true;
+  const proposal={...r._proposal},view=modalVersions['fact-review-modal'];r._saving=true;btn.disabled=true;document.querySelectorAll('#fact-review-content input, #fact-review-content select, #fact-review-content textarea').forEach(el=>el.disabled=true);
   try {
     if(!['confirmed','corrected','unsupported'].includes(r._proposal.verdict))throw new Error('Choose a judgement before saving.');
     if(['confirmed','corrected'].includes(r._proposal.verdict) && safeURL(r._proposal.source_url)==='#')throw new Error('Add a usable source URL before confirming or correcting this claim.');
     if((r._proposal.note || '').length+(r._proposal.source_url || '').length+(r._proposal.corrected_value || '').length>1750)throw new Error('Keep the review note and source under 1,750 characters; no text has been truncated.');
-    await _writeVerdict(r,r._proposal);if(r.id){delete LIB.rows[r.store];LIB.loaded=false;}r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);document.getElementById('verify-save-status').textContent=`Saved reviewed check for ${r.name}. The original claim was not rewritten.`;closeModal('fact-review-modal');
-  }catch(e){document.getElementById('verify-save-status').textContent=e.message;document.getElementById('fact-review-error').textContent=e.message;}finally{r._saving=false;btn.disabled=false;renderVlibResults();}
+    await _writeVerdict(r,proposal);if(r.id){delete LIB.rows[r.store];LIB.loaded=false;}r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);document.getElementById('verify-save-status').textContent=`Saved reviewed check for ${r.name}. The original claim was not rewritten.`;if(modalVersions['fact-review-modal']===view)closeModal('fact-review-modal');
+  }catch(e){document.getElementById('verify-save-status').textContent=e.message;if(modalVersions['fact-review-modal']===view)document.getElementById('fact-review-error').textContent=e.message;}finally{r._saving=false;btn.disabled=false;if(modalVersions['fact-review-modal']===view)document.querySelectorAll('#fact-review-content input, #fact-review-content select, #fact-review-content textarea').forEach(el=>el.disabled=false);renderVlibResults();}
 }
 
 function _vlibVerifyCell(r) {
@@ -5327,12 +5336,15 @@ function autoDistribute(btn) {
 }
 
 // E3 — episode-level gap check against the central question.
+function planRequestIdentity() {return JSON.stringify([S.ep,EP_FIELDS.map(id=>document.getElementById(id).value)]);}
+function assertPlanRequest(plan,identity) {if(S.ep!==plan || planRequestIdentity()!==identity)throw new Error('The episode plan changed while AI was working. The response was not applied; your current edits are retained.');}
 async function epGapCheck(btn) {
   const concept = document.getElementById('ep-concept').value.trim();
   if (!concept) { toast('Set the central question first', 'error'); return; }
   const el = document.getElementById('ep-gap');
   el.textContent = 'Checking…';
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  const requestPlan=S.ep,requestIdentity=planRequestIdentity();
   try {
     const outline = S.ep.sections.map((s, i) =>
       `${i + 1}. ${s.type}: ${sectionItems(s.id).map(x => x._name).join(', ') || '(empty)'}`).join('\n');
@@ -5346,6 +5358,7 @@ ${outline}
 What's missing or too thin to answer that question well? Name 3-5 specific gaps,
 and for each say exactly what to research (a place, a fact, a number, a source).`,
     }] })).text;
+    assertPlanRequest(requestPlan,requestIdentity);
     el.innerHTML = `<div class="code-block" style="white-space:pre-wrap;font-size:12px">${_esc(raw)}</div>`;
   } catch (e) {
     el.textContent = `Gap check failed: ${_esc(e.message)}`;
@@ -5359,6 +5372,7 @@ async function suggestSectionOrder(btn) {
   if (S.ep.sections.length < 3) { toast('Add a few sections first', 'error'); return; }
   const originalPlan = JSON.stringify(S.ep.sections);
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  const requestPlan=S.ep,requestIdentity=planRequestIdentity();
   try {
     const list = S.ep.sections.map((s, i) =>
       `${i}. ${s.type} [${sectionItems(s.id).map(x => x._name).join(', ') || 'empty'}]`).join('\n');
@@ -5370,6 +5384,7 @@ Sections (0-indexed):
 ${list}
 Respond ONLY in JSON: {"order":[<every index, reordered>]}`,
     }] })).text;
+    assertPlanRequest(requestPlan,requestIdentity);
     if (S.ep.pendingName || JSON.stringify(S.ep.sections) !== originalPlan) throw new Error('The plan changed while ordering. Keep the current plan and retry if needed.');
     const idx = (parseJsonLoose(raw).order || []).filter(n => Number.isInteger(n) && S.ep.sections[n]);
     if (idx.length !== S.ep.sections.length || new Set(idx).size !== idx.length) throw new Error('incomplete order');
@@ -5388,6 +5403,7 @@ async function suggestTitles(btn) {
   rebuildCombinedOutline();
   const concept = document.getElementById('ep-concept').value.trim();
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  const requestPlan=S.ep,requestIdentity=planRequestIdentity();
   try {
     const raw = (await aiRun('theme', { system: buildDNASystem(), messages: [{
       role: 'user',
@@ -5398,6 +5414,7 @@ ${episodeMaterialContext().slice(0, 18000)}
 
 Respond ONLY in JSON: {"titles":["...","...","...","...","..."]}`
     }] })).text;
+    assertPlanRequest(requestPlan,requestIdentity);
     const clean = (parseJsonLoose(raw).titles || [])
       .map(t => String(t).replace(/^.*·\s*EP\d+\s*·\s*/i, '').trim()).filter(Boolean);
     document.getElementById('ep-title-options').innerHTML = clean.map(t =>
@@ -5417,6 +5434,7 @@ async function draftAngle(btn) {
   const context = episodeMaterialContext();
   if (!Object.keys(S.ep.assign).length) { toast('Assign saved material to sections first', 'error'); return; }
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  const requestPlan=S.ep,requestIdentity=planRequestIdentity();
   try {
     const raw = (await aiRun('theme', { system: buildDNASystem(), messages: [{
       role: 'user',
@@ -5428,6 +5446,7 @@ ${context.slice(0, 18000)}
 
 Respond ONLY in JSON: {"concept":"...","hook":"..."}`
     }] })).text;
+    assertPlanRequest(requestPlan,requestIdentity);
     const p = parseJsonLoose(raw);
     if (p.concept) document.getElementById('ep-concept').value = p.concept;
     if (p.hook) document.getElementById('ep-hook').value = p.hook;
@@ -5832,7 +5851,7 @@ const priceRange = (s) => {
 
 let _extractingPlaces = false;
 async function extractPlaces(force) {
-  if (_extractingPlaces) { toast('Already collecting places — hang on', 'error'); return; }
+  if (_extractingPlaces || _savingPlaces) { toast('Wait for the current Places operation to finish', 'error'); return; }
   if (force && !confirm('Run the AI again on every selected transcript to find places? Uses AI credits.')) return;
   const errEl = document.getElementById('places-error');
   errEl.style.display = 'none';
@@ -5954,7 +5973,7 @@ async function extractPlaces(force) {
 }
 
 function setPlaceField(i, field, value) {
-  if (S.extractedPlaces[i] && !S.extractedPlaces[i]._saved) {const p=S.extractedPlaces[i];p[field]=value;(p._editedFields ||= new Set()).add(field);if(field==='prefecture')p.prefFromGuess=false;retainPlacesReview().catch(()=>{});}
+  if (!_savingPlaces && S.extractedPlaces[i] && !S.extractedPlaces[i]._saved) {const p=S.extractedPlaces[i];p[field]=value;(p._editedFields ||= new Set()).add(field);if(field==='prefecture')p.prefFromGuess=false;retainPlacesReview().catch(()=>{});}
 }
 
 // Google Places API (New) via functions/maps-proxy.js. Best-effort: no key set
@@ -5990,7 +6009,7 @@ async function enrichPlacesFromMaps(selectedOnly = false) {
 
 function acceptMapsMatch(i) {
   const p = S.extractedPlaces[i], d = p?.mapsCandidate;
-  if (!d) return;
+  if (!d || _savingPlaces) return;
   if (d.prefecture && PREFECTURES.includes(d.prefecture)) {
     p.prefecture = d.prefecture;
     p.prefFromGuess = false;
@@ -6020,19 +6039,19 @@ async function restorePlacesReview() {const saved=await localArtifact('places-re
 function renderPlacesReview() {
   retainPlacesReview().catch(()=>{document.getElementById('places-review-status').textContent='Review is in memory only. Keep this page open until saved.';});
   const rows=S.extractedPlaces,skip=(S.placeSkip ||= new Set()),selected=rows.filter(p=>!skip.has(p.name.toLowerCase()) && !p._saved);
-  document.getElementById('places-list').innerHTML=`<div class="idea-actions"><button class="btn btn-sm" onclick="placesPick('new')">Select new shown</button><button class="btn btn-sm" onclick="placesPick('all')">Select shown</button><button class="btn btn-sm" onclick="placesPick('none')">Clear shown</button><span>${selected.length} selected · ${rows.length} suggestions</span></div><div class="review-table-wrap"><table class="data-table" id="places-review-table"><thead><tr><th></th><th>Name</th><th data-filter-kind="select">Type</th><th data-filter-kind="select">Prefecture</th><th data-filter-kind="select">State</th><th>Sources</th><th data-filter-kind="none">Review</th></tr></thead><tbody>${rows.map((p,i)=>`<tr data-row-key="${i}"><td><input type="checkbox" aria-label="Select place ${_esc(p.name)}" ${!skip.has(p.name.toLowerCase()) && !p._saved?'checked':''} ${p._saved?'disabled':''} onchange="togglePlace(${i},this)"></td><td>${_esc(p.name)}</td><td>${_esc(p.type)}</td><td>${_esc(p.prefecture || 'Unknown')}</td><td>${p._saved?'Saved':p._saveError?'Save failed':p.is_existing?'Existing place':'New place'}</td><td>${_esc(shortFrom(p.from))}</td><td><button class="btn btn-sm" onclick="openPlaceReview(${i})">Review details</button></td></tr>`).join('')}</tbody></table></div>`;
+  document.getElementById('places-list').innerHTML=`<div class="idea-actions"><button class="btn btn-sm" onclick="placesPick('new')">Select new shown</button><button class="btn btn-sm" onclick="placesPick('all')">Select shown</button><button class="btn btn-sm" onclick="placesPick('none')">Clear shown</button><span>${selected.length} selected · ${rows.length} suggestions</span></div><div class="review-table-wrap"><table class="data-table" id="places-review-table"><thead><tr><th></th><th>Name</th><th data-filter-kind="select">Type</th><th data-filter-kind="select">Prefecture</th><th data-filter-kind="select">State</th><th>Sources</th><th data-filter-kind="none">Review</th></tr></thead><tbody>${rows.map((p,i)=>`<tr data-row-key="${i}"><td><input type="checkbox" aria-label="Select place ${_esc(p.name)}" ${!skip.has(p.name.toLowerCase()) && !p._saved?'checked':''} ${p._saved || _savingPlaces?'disabled':''} onchange="togglePlace(${i},this)"></td><td>${_esc(p.name)}</td><td>${_esc(p.type)}</td><td>${_esc(p.prefecture || 'Unknown')}</td><td>${p._saved?'Saved':p._saveError?'Save failed':p.is_existing?'Existing place':'New place'}</td><td>${_esc(shortFrom(p.from))}</td><td><button class="btn btn-sm" onclick="openPlaceReview(${i})">Review details</button></td></tr>`).join('')}</tbody></table></div>`;
   enhanceTable('places-review-table');
   document.getElementById('confirmed-list').textContent=selected.length?`${selected.filter(p=>!p.is_existing).length} new · ${selected.filter(p=>p.is_existing).length} existing selected. Saving includes selected rows outside filters.`:'Select reviewed places above to save.';
   document.getElementById('save-places-btn').disabled=!selected.length || _savingPlaces;
 }
 function openPlaceReview(i) {
   const p=S.extractedPlaces[i];if(!p)return;
-  const readonly=p._saved || p.is_existing;
-  document.getElementById('place-review-content').innerHTML=`<p class="studio-eyebrow">${p._saved?'Saved':p.is_existing?'Existing place':'New suggestion'}</p><label>Name<input value="${_esc(p.name)}" ${readonly?'readonly':''} oninput="editPlaceName(${i},this.value)"></label><label>Type<select ${readonly?'disabled':''} onchange="setPlaceField(${i},'type',this.value)">${[...new Set([...PLACE_TYPES,p.type])].map(x=>`<option ${p.type===x?'selected':''}>${_esc(x)}</option>`).join('')}</select></label><label>Description<textarea rows="4" ${readonly?'readonly':''} oninput="setPlaceField(${i},'what_happens_here',this.value)">${_esc(p.what_happens_here || '')}</textarea></label><label>Prefecture<select ${p._saved?'disabled':''} onchange="setPlaceField(${i},'prefecture',this.value)">${PREFECTURES.map(x=>`<option ${p.prefecture===x?'selected':''}>${_esc(x)}</option>`).join('')}</select></label><label>Halal<select ${p._saved?'disabled':''} onchange="setPlaceField(${i},'halal',this.value)">${['Unknown','Yes','Partial','No'].map(x=>`<option ${p.halal===x?'selected':''}>${x}</option>`).join('')}</select></label><p>Source: ${_esc(shortFrom(p.from))}</p><details><summary>Other extracted details (read-only)</summary><dl>${[['Local name',p.name_local],['Romaji',p.romaji],['Area',p.area],['Price mentioned',p.price_if_spoken],['Food mentioned',p.food_here],['Coordinates',typeof p.lat==='number'?`${p.lat}, ${p.lng}`:''],['Website',p.website],['Rating',p.rating],['Map summary',p.maps_summary]].map(([label,value])=>`<dt>${_esc(label)}</dt><dd>${_esc(value ?? 'Not recorded')}</dd>`).join('')}</dl></details><p>${p._saved?'This place has been saved.':p.is_existing?'Only reviewed location fields, prefecture, halal and source links can be updated here. Edit other original fields in Notion.':'Edits stay in this review until you select the place and save it.'}</p>${p.existing_id?`<a href="https://www.notion.so/${_esc(p.existing_id.replace(/-/g,''))}" target="_blank" rel="noopener">Open original in Notion ↗</a>`:''}<p role="status">${_esc(p._saveError || p._mapsError || '')}</p><section class="map-evidence"><h3>Location evidence</h3><p>${_esc(p.address || p.area || 'No address recorded.')} · ${p._acceptedMaps?'Map identity accepted':'Location not independently verified'}</p>${safeURL(p.google_maps_url)!=='#'?`<a href="${_esc(safeURL(p.google_maps_url))}" target="_blank" rel="noopener">Inspect Google Maps ↗</a>`:''}${p.mapsCandidate?`<h4>${_esc(p.mapsCandidate.name)}</h4><p>${_esc(p.mapsCandidate.address || '')}</p><a href="${_esc(safeURL(p.mapsCandidate.mapsUri))}" target="_blank" rel="noopener">Inspect candidate ↗</a><button class="btn" ${p._saved?'disabled':''} onclick="acceptMapsMatch(${i});openPlaceReview(${i})">Accept this location</button>`:''}</section>`;
+  const readonly=_savingPlaces || p._saved || p.is_existing;
+  document.getElementById('place-review-content').innerHTML=`<p class="studio-eyebrow">${p._saved?'Saved':p.is_existing?'Existing place':'New suggestion'}</p><label>Name<input value="${_esc(p.name)}" ${readonly?'readonly':''} oninput="editPlaceName(${i},this.value)"></label><label>Type<select ${readonly?'disabled':''} onchange="setPlaceField(${i},'type',this.value)">${[...new Set([...PLACE_TYPES,p.type])].map(x=>`<option ${p.type===x?'selected':''}>${_esc(x)}</option>`).join('')}</select></label><label>Description<textarea rows="4" ${readonly?'readonly':''} oninput="setPlaceField(${i},'what_happens_here',this.value)">${_esc(p.what_happens_here || '')}</textarea></label><label>Prefecture<select ${p._saved || _savingPlaces?'disabled':''} onchange="setPlaceField(${i},'prefecture',this.value)">${PREFECTURES.map(x=>`<option ${p.prefecture===x?'selected':''}>${_esc(x)}</option>`).join('')}</select></label><label>Halal<select ${p._saved || _savingPlaces?'disabled':''} onchange="setPlaceField(${i},'halal',this.value)">${['Unknown','Yes','Partial','No'].map(x=>`<option ${p.halal===x?'selected':''}>${x}</option>`).join('')}</select></label><p>Source: ${_esc(shortFrom(p.from))}</p><details><summary>Other extracted details (read-only)</summary><dl>${[['Local name',p.name_local],['Romaji',p.romaji],['Area',p.area],['Price mentioned',p.price_if_spoken],['Food mentioned',p.food_here],['Coordinates',typeof p.lat==='number'?`${p.lat}, ${p.lng}`:''],['Website',p.website],['Rating',p.rating],['Map summary',p.maps_summary]].map(([label,value])=>`<dt>${_esc(label)}</dt><dd>${_esc(value ?? 'Not recorded')}</dd>`).join('')}</dl></details><p>${p._saved?'This place has been saved.':p.is_existing?'Only reviewed location fields, prefecture, halal and source links can be updated here. Edit other original fields in Notion.':'Edits stay in this review until you select the place and save it.'}</p>${p.existing_id?`<a href="https://www.notion.so/${_esc(p.existing_id.replace(/-/g,''))}" target="_blank" rel="noopener">Open original in Notion ↗</a>`:''}<p role="status">${_esc(p._saveError || p._mapsError || '')}</p><section class="map-evidence"><h3>Location evidence</h3><p>${_esc(p.address || p.area || 'No address recorded.')} · ${p._acceptedMaps?'Map identity accepted':'Location not independently verified'}</p>${safeURL(p.google_maps_url)!=='#'?`<a href="${_esc(safeURL(p.google_maps_url))}" target="_blank" rel="noopener">Inspect Google Maps ↗</a>`:''}${p.mapsCandidate?`<h4>${_esc(p.mapsCandidate.name)}</h4><p>${_esc(p.mapsCandidate.address || '')}</p><a href="${_esc(safeURL(p.mapsCandidate.mapsUri))}" target="_blank" rel="noopener">Inspect candidate ↗</a><button class="btn" ${p._saved || _savingPlaces?'disabled':''} onclick="acceptMapsMatch(${i});openPlaceReview(${i})">Accept this location</button>`:''}</section>`;
   openModal('place-review-modal');
 }
 function editPlaceName(i,value) {
-  const p=S.extractedPlaces[i];if(!p || p._saved || p.is_existing)return;
+  const p=S.extractedPlaces[i];if(!p || _savingPlaces || p._saved || p.is_existing)return;
   const skipped=S.placeSkip.has(p.name.toLowerCase());S.placeSkip.delete(p.name.toLowerCase());setPlaceField(i,'name',value);if(skipped)S.placeSkip.add(value.toLowerCase());
 }
 function openSavedPlaces() { document.getElementById('library-category').value='places';libraryCategoryChanged();switchTab('res','material'); }
@@ -6079,7 +6098,7 @@ function renderConfirmedList() {
 
 let _savingPlaces = false;
 async function saveConfirmedPlaces() {
-  if (_savingPlaces) return;                       // guard double-click
+  if (_savingPlaces || _extractingPlaces) {toast('Wait for the current Places operation to finish.');return;}
   S.confirmedPlaces=S.extractedPlaces.filter(p=>!S.placeSkip?.has(p.name.toLowerCase()) && !p._saved);
   if (!S.confirmedPlaces.length) { toast('Select places to save first', 'error'); return; }
   _savingPlaces = true;
@@ -6111,7 +6130,8 @@ async function saveConfirmedPlaces() {
 
   let added = 0, updated = 0, failed = 0;
   try {
-    for (const p of S.confirmedPlaces) {
+    const submittedPlaces=[...S.confirmedPlaces];
+    for (const p of submittedPlaces) {
       if (p._saved) continue;
       let createStarted=false;
       try {
@@ -6171,13 +6191,15 @@ async function loadSections() {
   const area = document.getElementById('sections-area');
   if (!S.activeEpisode) { toast('Open an episode in Plan first', 'error'); return; }
   if (S.savingSections || renderingAudio || S.generatingHandoff || S.sections.some(x => x._saving)) { toast('Wait for the current save or render before reloading sections'); return; }
+  const previousSections=JSON.stringify(S.sections),episode=S.activeEpisode,episodeId=S.activeEpisodeId,request=(S.sectionLoadRequest || 0)+1;S.sectionLoadRequest=request;
+  const current=()=>request===S.sectionLoadRequest && S.activeEpisode===episode && S.activeEpisodeId===episodeId;
   area.textContent = 'Loading saved sections…';
   try {
     const rows = await notionQueryAll(DB_IDS.scripts, {
       sorts: [{ property: 'Section Order', direction: 'ascending' }],
-      filter: { property: 'Episode', rich_text: { equals: S.activeEpisode } },
+      filter: { property: 'Episode', rich_text: { equals: episode } },
     });
-    S.sections = rows.map(p => {
+    const sections = rows.map(p => {
       const pr = p.properties || {}, notes = richText(pr.Notes), settings = sectionSettings(notes);
       return {
         id: p.id, title: richText(pr['Section Title']) || 'Section', type: pr['Section Type']?.select?.name || 'Intro',
@@ -6187,7 +6209,7 @@ async function loadSections() {
         version: pr['Dialogue Version']?.number || 0, locked: pr['Script Status']?.select?.name === '✅ Approved',
       };
     });
-    for (const sec of S.sections) {
+    for (const sec of sections) {
       const draft = await localArtifact(`script-draft:${sec.id}`);
       if (draft && !sec.locked) {
         if (draft.baseDialogue === sec.dialogue && draft.baseBrief === sec.brief) {
@@ -6197,11 +6219,13 @@ async function loadSections() {
       }
       if (draft && sec.locked) sec.recoveredDraft = draft;
     }
-    S.pendingOrder = await localArtifact(`section-order:${S.activeEpisode}`) || null;
+    const pendingOrder = await localArtifact(`section-order:${episode}`) || null;
+    if(!current() || JSON.stringify(S.sections)!==previousSections || S.savingSections || S.sections.some(x=>x._saving))return;
+    S.sections=sections;S.pendingOrder=pendingOrder;
     document.getElementById('script-ep-display').textContent = S.activeEpisode;
     renderSections();
     toast(`Loaded ${S.sections.length} sections`, 'success');
-  } catch (e) { area.textContent = `Could not load sections: ${_esc(e.message)}`; }
+  } catch (e) { if(current())area.textContent = `Could not load sections: ${_esc(e.message)}`; }
 }
 
 function renderSections() {
@@ -6809,17 +6833,20 @@ function audioSpec(sec, line, index) {
     text: line.text, voice, speed, sectionId: sec.id, index, speaker: line.speaker };
 }
 async function currentAudio(sectionIndex = null) {
-  const files = [];
+  const work = [], files = [];
   for (const [i, sec] of S.sections.entries()) {
     if (sectionIndex !== null && i !== sectionIndex) continue;
     const lines = validateDialogue(sec.dialogue);
     for (const [j, line] of lines.entries()) {
       const spec = audioSpec(sec, line, j);
-      const b64 = audioCache[spec.key] || await localArtifact(`audio:${spec.key}`);
-      if (!b64) throw new Error(`Render section ${i + 1}, line ${j + 1} for the current script and voice settings first`);
-      audioCache[spec.key] = b64;
-      files.push({ ...spec, b64, filename: `${String(i + 1).padStart(2,'0')}-${String(j + 1).padStart(3,'0')}-${line.speaker}.mp3` });
+      work.push({ ...spec, sectionNumber: i + 1, filename: `${String(i + 1).padStart(2,'0')}-${String(j + 1).padStart(3,'0')}-${line.speaker}.mp3` });
     }
+  }
+  for (const { sectionNumber, ...spec } of work) {
+    const b64 = audioCache[spec.key] || await localArtifact(`audio:${spec.key}`);
+    if (!b64) throw new Error(`Render section ${sectionNumber}, line ${spec.index + 1} for the current script and voice settings first`);
+    audioCache[spec.key] = b64;
+    files.push({ ...spec, b64 });
   }
   if (!files.length) throw new Error('Load an episode with dialogue first');
   return files;
@@ -6832,18 +6859,16 @@ async function renderAllAudio() {
   const btn = document.getElementById('render-audio-btn'); btn.disabled = true;
   let created = 0, cached = 0, failed = 0;
   try {
-    for (const sec of S.sections) validateDialogue(sec.dialogue);
+    const work=S.sections.map(sec=>validateDialogue(sec.dialogue).map((line,j)=>audioSpec(sec,line,j)));
     await openArtifactDB(); // do not pay for audio if this browser cannot save it
-    for (const [i, sec] of S.sections.entries()) {
+    for (const [i, specs] of work.entries()) {
       let sectionFailed = false;
-      const lines = validateDialogue(sec.dialogue);
-      for (const [j, line] of lines.entries()) {
-        btn.textContent = `Section ${i + 1}/${S.sections.length} · line ${j + 1}/${lines.length}`;
-        const spec = audioSpec(sec, line, j);
+      for (const [j, spec] of specs.entries()) {
+        btn.textContent = `Section ${i + 1}/${work.length} · line ${j + 1}/${specs.length}`;
         try {
           const saved = audioCache[spec.key] || await localArtifact(`audio:${spec.key}`);
           if (saved) { audioCache[spec.key] = saved; cached++; continue; }
-          const b64 = await ttsAPI(line.text, spec.voice, spec.speed);
+          const b64 = await ttsAPI(spec.text, spec.voice, spec.speed);
           if (typeof b64 !== 'string' || !b64) throw new Error('TTS returned no audio');
           audioCache[spec.key] = b64;
           await localArtifact(`audio:${spec.key}`, b64);
@@ -6938,12 +6963,14 @@ function zipBytes(entries) {
 }
 async function exportAudio() {
   try {
+    const episode = S.activeEpisode, episodeId = S.activeEpisodeId;
+    const script = S.sections.map(s=>`${s.title}\n${s.dialogue}`).join('\n\n');
     const files = await currentAudio();
     const encoder = new TextEncoder();
     const entries = files.map(f => ({ name:f.filename, data:Uint8Array.from(atob(f.b64), c=>c.charCodeAt(0)) }));
-    entries.push({ name:'manifest.json', data:encoder.encode(JSON.stringify({ episode:S.activeEpisode, exportedAt:new Date().toISOString(), files:files.map(({b64,key,...f})=>f) },null,2)) });
-    entries.push({ name:'script.txt', data:encoder.encode(S.sections.map(s=>`${s.title}\n${s.dialogue}`).join('\n\n')) });
-    downloadBlob(zipBytes(entries), `nomad-${(S.activeEpisodeId || 'episode').slice(0,8)}-audio.zip`);
+    entries.push({ name:'manifest.json', data:encoder.encode(JSON.stringify({ episode, exportedAt:new Date().toISOString(), files:files.map(({b64,key,...f})=>f) },null,2)) });
+    entries.push({ name:'script.txt', data:encoder.encode(script) });
+    downloadBlob(zipBytes(entries), `nomad-${(episodeId || 'episode').slice(0,8)}-audio.zip`);
     toast('Audio ZIP prepared with ordered MP3s, script, and manifest', 'success');
   } catch(e) { toast(`Export not ready: ${_esc(e.message)}`, 'error'); }
 }
@@ -7462,40 +7489,47 @@ async function reviewCurrentEvidence() {
   const row=currentMaterial();if(!row)return;closeLibraryDetail();await verifyLibrarySelection([row]);await startManualVerdict(row.id);
 }
 function matchCurrentPlace() {
+  if(_savingPlaces || _extractingPlaces){toast('Wait for the current Places operation to finish before replacing its review.');return;}
   const r=currentMaterial();if(!r || r.category!=='places')return;closeLibraryDetail();
   S.extractedPlaces=[{name:r.name,is_existing:true,existing_id:r.id,existingLastEdited:r.lastEdited,type:libProperty(r.properties.Type),prefecture:libProperty(r.properties.Prefecture)||'Unknown',halal:libProperty(r.properties.Halal)||'Unknown',fromIds:libSourceKeys(r).filter(id=>/^[0-9a-f-]{32,36}$/i.test(id)),what_happens_here:libProperty(r.properties['B-Roll Description']),from:[]}];
   placesFromMaterial=true;S.placeSkip=new Set();switchTab('res','places');document.getElementById('places-review-area').style.display='';renderPlacesReview();
 }
 async function openIdeaDestination(key=null) {
+  if(LIB.destinationSaving){toast('Adding material to an idea. Wait for that save to finish.');return;}
   const rows=key?[currentMaterial()]:Object.values(LIB.selected);if(!rows.length||!rows[0]){toast('Select material or open a record first.');return;}
   LIB.destinationRows=rows.map(libClone);LIB.destinationReady=false;for(const id of ['destination-choice','destination-name','destination-save'])document.getElementById(id).disabled=true;if(key)closeLibraryDetail();
   document.getElementById('destination-status').textContent='Loading saved ideas…';openModal('idea-destination-modal');
-  if(!await loadLibraryIdeas()){document.getElementById('destination-status').textContent='Could not load destinations. Close this dialog and try Add to idea again. Your selection is retained.';return;}
+  const view=modalVersions['idea-destination-modal'];const loaded=await loadLibraryIdeas();if(modalVersions['idea-destination-modal']!==view)return;
+  if(!loaded){document.getElementById('destination-status').textContent='Could not load destinations. Close this dialog and try Add to idea again. Your selection is retained.';return;}
   const locked=LIB.idea?.dirty||LIB.idea?.pending;
   document.getElementById('destination-choice').innerHTML=`<option value="current">${_esc(LIB.idea?.name || 'Current idea draft')}${locked?' — saves its current edits':''}</option><option value="new" ${locked?'disabled':''}>New idea</option>${LIB.ideas.filter(i=>i.id!==LIB.idea?.id).map(i=>`<option value="${i.id}" ${locked?'disabled':''}>${_esc(i.name)}</option>`).join('')}`;
   document.getElementById('destination-name').value=LIB.idea?.name||'';LIB.destinationReady=true;for(const id of ['destination-choice','destination-name','destination-save'])document.getElementById(id).disabled=false;
   document.getElementById('destination-status').textContent=`${rows.length} material record${rows.length===1?'':'s'} will be added. ${locked?'Finish the current draft before switching to another idea.':'Original material stays in the Library.'}`;
 }
 async function saveIdeaDestination(btn) {
+  if(LIB.destinationSaving || LIB.busy)return;
+  const rows=(LIB.destinationRows || []).map(libClone),name=document.getElementById('destination-name').value.trim(),choice=document.getElementById('destination-choice').value,view=modalVersions['idea-destination-modal'];
+  LIB.destinationSaving=true;
   btn.disabled=true;const status=document.getElementById('destination-status');
   try{
     if(!LIB.destinationReady)throw new Error('Wait for destinations to load.');
     if(LIB.busy||LIB.idea?.pending||LIB.idea?.incomplete)throw new Error('Resolve the pending idea save in Ideas before adding more material.');
-    const choice=document.getElementById('destination-choice').value;
+    LIB.busy=true;
     if(choice!=='current' && LIB.idea.dirty)throw new Error('Save the current idea before switching destinations.');
     if(choice==='new')LIB.idea=blankLibraryIdea();else if(choice!=='current')LIB.idea=await readLibraryIdea(choice);
-    if(!LIB.idea.name)LIB.idea.name=document.getElementById('destination-name').value.trim();
+    if(!LIB.idea.name)LIB.idea.name=name;
     if(!LIB.idea.name)throw new Error('Give the idea a working title.');
-    for(const row of LIB.destinationRows)if(!LIB.idea.items.some(it=>it.material.key===row.key))LIB.idea.items.push({placementId:libID(),snapshotRevision:libID(),material:libClone(row),purpose:'',pageId:null,lastEdited:null});
-    LIB.idea.dirty=true;await persistLibrary();status.textContent='Saving idea and material…';await saveLibraryIdea();
+    for(const row of rows)if(!LIB.idea.items.some(it=>it.material.key===row.key))LIB.idea.items.push({placementId:libID(),snapshotRevision:libID(),material:libClone(row),purpose:'',pageId:null,lastEdited:null});
+    LIB.idea.dirty=true;await persistLibrary();status.textContent='Saving idea and material…';LIB.busy=false;await saveLibraryIdea();
     if(LIB.idea.dirty||LIB.idea.pending)throw new Error('Save did not finish. The draft is retained in Ideas; use Check / resume save there.');
-    closeModal('idea-destination-modal');renderLibrarySelection();toast(`Added to ${LIB.idea.name}`,'success');
-  }catch(e){status.textContent=e.message;}finally{btn.disabled=false;}
+    if(modalVersions['idea-destination-modal']===view)closeModal('idea-destination-modal');renderLibrarySelection();toast(`Added to ${LIB.idea.name}`,'success');
+  }catch(e){if(modalVersions['idea-destination-modal']===view)status.textContent=e.message;else toast(e.message,'error');}finally{LIB.destinationSaving=false;LIB.busy=false;btn.disabled=false;renderLibraryIdea();}
 }
 let materialEdit=null;
 async function openMaterialEdit() {
-  const row=currentMaterial();if(!row)return;closeLibraryDetail();materialEdit={row,fields:{}};
+  const row=currentMaterial();if(!row)return;closeLibraryDetail();const ctx=materialEdit={row,fields:{}};
   const recovered=await localArtifact(`material-edit:${row.id}`);
+  if(materialEdit!==ctx || LIB.detailKey!==row.key)return;
   const editable=Object.entries(row.properties).filter(([,p])=>['title','rich_text','url','number','date'].includes(p.type));
   document.getElementById('material-edit-fields').innerHTML=editable.map(([name,p])=>{const value=recovered?.fields&&name in recovered.fields?recovered.fields[name]:p.type==='number'?p.number??'':p.type==='date'?p.date?.start||'':libProperty(p);materialEdit.fields[name]=value;return `<label>${_esc(name)}${recovered && recovered.baseEdited!==row.lastEdited?`<small>Current saved value: ${_esc(libProperty(p)||'Empty')}</small>`:''}${['title','rich_text'].includes(p.type)?`<textarea aria-label="${_esc(name)}" rows="${p.type==='title'?2:4}" data-property="${_esc(name)}" oninput="retainMaterialEdit(this)">${_esc(value)}</textarea>`:`<input aria-label="${_esc(name)}" type="${p.type==='number'?'number':p.type==='date'?'text':'url'}" data-property="${_esc(name)}" value="${_esc(value)}" oninput="retainMaterialEdit(this)">`}</label>`;}).join('');
   document.getElementById('material-edit-status').textContent=(recovered && recovered.baseEdited!==row.lastEdited?'Recovered edits are based on an older record. Compare the latest fields before saving. ':'')+'Text, links, numbers and dates are editable here. Categories, relations and computed fields remain in Notion. Empty values explicitly clear a field.';openModal('material-edit-modal');
@@ -7503,7 +7537,7 @@ async function openMaterialEdit() {
 function materialFieldValue(p) {return String(p.type==='number'?p.number??'':p.type==='date'?p.date?.start||'':libProperty(p));}
 function retainMaterialEdit(el) {materialEdit.fields[el.dataset.property]=el.value;const changed=Object.fromEntries(Object.entries(materialEdit.fields).filter(([name,value])=>String(value)!==materialFieldValue(materialEdit.row.properties[name])));localArtifact(`material-edit:${materialEdit.row.id}`,{baseEdited:materialEdit.row.lastEdited,fields:changed}).catch(()=>{document.getElementById('material-edit-status').textContent='Edits are in memory only; keep this dialog open until saved.';});}
 async function saveMaterialEdit(btn) {
-  const {row,fields}=materialEdit;btn.disabled=true;const status=document.getElementById('material-edit-status');
+  if(!materialEdit || materialEdit.saving)return;const ctx=materialEdit,{row}=ctx,fields={...ctx.fields},view=modalVersions['material-edit-modal'];ctx.saving=true;btn.disabled=true;const status=document.getElementById('material-edit-status');
   try{
     const properties={};for(const [name,value] of Object.entries(fields)){
       const p=row.properties[name],v=String(value).trim();if(String(value)===materialFieldValue(p))continue;if(p.type==='title'&&!v)throw new Error('The title cannot be empty.');
@@ -7516,9 +7550,12 @@ async function saveMaterialEdit(btn) {
     status.textContent='Checking original…';const current=await notionAPI(`pages/${row.id}`);
     if(current.archived||current.in_trash||current.last_edited_time!==row.lastEdited)throw new Error('Original changed. Your draft is retained; reopen the latest record before applying edits.');
     const saved=await notionAPI(`pages/${row.id}`,'PATCH',{properties});
-    const fresh=libMaterial(saved,row.category);LIB.rows[row.category]=LIB.rows[row.category].map(r=>r.id===row.id?fresh:r);if(LIB.selected[row.key])LIB.selected[row.key]=libClone(fresh);persistLibrarySoon();
-    await localArtifact(`material-edit:${row.id}`,null);closeModal('material-edit-modal');renderMaterialLibrary();openLibraryDetail(fresh.key);toast('Material saved','success');
-  }catch(e){status.textContent=`Not saved: ${e.message}`;}finally{btn.disabled=false;}
+    const fresh=libMaterial(saved,row.category);LIB.rows[row.category]=(LIB.rows[row.category] || []).map(r=>r.id===row.id?fresh:r);if(LIB.selected[row.key])LIB.selected[row.key]=libClone(fresh);persistLibrarySoon();
+    const unchanged=JSON.stringify(ctx.fields)===JSON.stringify(fields);
+    if(unchanged && !(materialEdit!==ctx && materialEdit?.row.id===row.id))await localArtifact(`material-edit:${row.id}`,null);
+    else if(!unchanged && !(materialEdit!==ctx && materialEdit?.row.id===row.id)){ctx.row=fresh;await localArtifact(`material-edit:${row.id}`,{baseEdited:fresh.lastEdited,fields:ctx.fields});}
+    renderMaterialLibrary();if(materialEdit===ctx && modalVersions['material-edit-modal']===view){if(unchanged){closeModal('material-edit-modal');openLibraryDetail(fresh.key);}else status.textContent='Submitted fields saved. Your newer edits remain unsaved.';}toast(`Saved ${row.name}`,'success');
+  }catch(e){if(materialEdit===ctx && modalVersions['material-edit-modal']===view)status.textContent=`Not saved: ${e.message}`;else toast(`Could not save ${row.name}: ${e.message}`,'error');}finally{ctx.saving=false;btn.disabled=false;}
 }
 async function archiveCurrentMaterial() {
   const row=currentMaterial();if(!row)return;closeLibraryDetail();
@@ -7563,11 +7600,12 @@ function confirmIdeaChange(title,message,action) {
 }
 function finishIdeaConfirmation(accepted) { const resolve=LIB.confirmResolve; LIB.confirmResolve=null; closeModal('idea-confirm-modal'); resolve?.(accepted); }
 async function ideaMaySwitch() {
-  if (LIB.busy || LIB.idea?.pending || LIB.confirmResolve) return false;
+  if (LIB.busy || LIB.destinationSaving || LIB.idea?.pending || LIB.confirmResolve) return false;
   return !LIB.idea?.dirty || confirmIdeaChange('Leave this unsaved idea?', 'Your edits are saved only in this browser. Download the draft to keep a copy before replacing it. Saved Notion records stay available.', 'Discard local edits');
 }
 async function newLibraryIdea() {
   await restoreLibrary(); if (!await ideaMaySwitch()) { if (LIB.idea?.pending) toast('Resolve the pending save before starting another idea.'); return; }
+  if(LIB.busy || LIB.destinationSaving)return;
   LIB.idea = blankLibraryIdea(); renderLibraryIdea(); persistLibrarySoon(); document.getElementById('idea-name').focus();
 }
 async function libraryCollect() {
@@ -7663,6 +7701,7 @@ async function readLibraryIdea(id) {
 }
 async function openLibraryIdea(id) {
   if (!await ideaMaySwitch()) { if (LIB.idea?.pending) toast('Resolve the pending save first, or download the draft and discard its local recovery state.'); return; }
+  if(LIB.busy || LIB.destinationSaving)return;
   document.getElementById('idea-list-status').textContent='Opening saved idea…'; LIB.busy=true; renderLibraryIdea();
   try { const idea=await readLibraryIdea(id); LIB.idea=idea; await persistLibrary(); document.getElementById('idea-recovery').replaceChildren(); document.getElementById('idea-list-status').textContent='Opened from Notion.'; }
   catch (e) { document.getElementById('idea-list-status').textContent=`Could not open idea: ${e.message}. Current draft retained.`; }

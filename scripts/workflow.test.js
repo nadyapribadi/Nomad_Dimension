@@ -575,3 +575,134 @@ test('episode snapshots distinguish local drafts and exclude credentials', () =>
   assert.equal(data.audioIncluded, false);
   assert.doesNotMatch(JSON.stringify(data), /must-not-export/);
 });
+
+test('late section loads cannot overwrite a different episode or newer local section edits', async () => {
+  for (const switchEpisode of [true, false]) {
+    const h = setup();
+    h.S.activeEpisode = 'First';
+    h.S.activeEpisodeId = 'first';
+    h.S.sections = [{ id: 'local', dialogue: 'Draft' }];
+    let release;
+    h.context.notionQueryAll = () => new Promise((r) => (release = r));
+    const load = h.run('loadSections()');
+    if (switchEpisode) {
+      h.S.activeEpisode = 'Second';
+      h.S.activeEpisodeId = 'second';
+      h.S.sections = [{ id: 'second', dialogue: 'Second draft' }];
+    } else h.S.sections[0].draftDialogue = 'Newer local edits';
+    release([
+      {
+        id: 'old',
+        properties: { 'Section Title': { title: [{ text: { content: 'Old response' } }] } },
+      },
+    ]);
+    await load;
+    assert.equal(h.S.sections[0].id, switchEpisode ? 'second' : 'local');
+    if (!switchEpisode) assert.equal(h.S.sections[0].draftDialogue, 'Newer local edits');
+  }
+});
+
+test('late plan suggestions preserve a concept edited while the AI request was running', async () => {
+  const h = setup();
+  h.S.ep = { sections: [], assign: { selected: 'section' } };
+  let release;
+  h.context.aiRun = () => new Promise((r) => (release = r));
+  const task = h.run("draftAngle(document.getElementById('draft-angle'))");
+  h.element('ep-concept').value = 'My newer question';
+  release({ text: JSON.stringify({ concept: 'Old generated question', hook: 'Old hook' }) });
+  await task;
+  assert.equal(h.element('ep-concept').value, 'My newer question');
+  assert.notEqual(h.element('ep-hook').value, 'Old hook');
+  assert.equal(h.element('draft-angle').disabled, false);
+});
+
+test('audio rendering captures voices and speed for the whole submitted batch', async () => {
+  const h = setup();
+  h.S.activeEpisode = 'Episode';
+  h.S.sections = [
+    { id: 'sec', title: 'Intro', dialogue: 'KAI: First\nMIA: Second', version: 1, locked: true },
+  ];
+  for (const host of ['kai', 'mia']) {
+    h.element(`${host}-voice`).value = `${host}-original`;
+    h.element(`${host}-speed`).value = '1';
+  }
+  h.context.openArtifactDB = async () => ({});
+  let release, entered;
+  const gate = new Promise((r) => (release = r)),
+    waiting = new Promise((r) => (entered = r));
+  const requests = [];
+  h.context.ttsAPI = async (text, voice, speed) => {
+    requests.push({ text, voice, speed });
+    if (requests.length === 1) {
+      entered();
+      await gate;
+    }
+    return btoa('fake audio');
+  };
+  const render = h.run('renderAllAudio()');
+  await waiting;
+  h.element('mia-voice').value = 'new-voice';
+  h.element('mia-speed').value = '1.5';
+  release();
+  await render;
+  assert.equal(requests[1].voice, 'mia-original');
+  assert.equal(requests[1].speed, 1);
+  await assert.rejects(h.run('currentAudio()'), /current script and voice settings/);
+  assert.equal(h.run('renderingAudio'), false);
+});
+
+test('Places cannot replace or edit the submitted review while its save is running', async () => {
+  const h = setup();
+  h.run("S.extractedPlaces=[{name:'Submitted place',from:[]}];_savingPlaces=true");
+  h.run("setPlaceField(0,'name','Later edit')");
+  await h.run('extractPlaces()');
+  h.run('matchCurrentPlace()');
+  assert.equal(h.S.extractedPlaces[0].name, 'Submitted place');
+  assert.equal(h.calls.length, 0);
+  h.run('_savingPlaces=false');
+  h.run("setPlaceField(0,'name','After save')");
+  assert.equal(h.S.extractedPlaces[0].name, 'After save');
+});
+
+test('audio export keeps its original episode, script and voices across delayed file reads', async () => {
+  const h = setup();
+  h.S.activeEpisode = 'Original episode';
+  h.S.activeEpisodeId = 'original-id';
+  h.S.sections = [{ id: 'sec', title: 'Intro', dialogue: 'KAI: First\nMIA: Second', version: 1 }];
+  for (const host of ['kai', 'mia']) {
+    h.element(`${host}-voice`).value = `${host}-original`;
+    h.element(`${host}-speed`).value = '1';
+  }
+  let release;
+  const requests = [];
+  h.context.localArtifact = async (key) => {
+    requests.push(key);
+    if (requests.length === 1) await new Promise((r) => (release = r));
+    return btoa('fake audio');
+  };
+  let entries, filename;
+  h.context.zipBytes = (value) => {
+    entries = value;
+    return new Blob();
+  };
+  h.context.downloadBlob = (_blob, name) => {
+    filename = name;
+  };
+  const exporting = h.run('exportAudio()');
+  h.S.activeEpisode = 'Different episode';
+  h.S.activeEpisodeId = 'different-id';
+  h.S.sections[0].dialogue = 'KAI: Different script';
+  h.S.sections = [];
+  h.element('mia-voice').value = 'new-voice';
+  h.element('mia-speed').value = '1.5';
+  release();
+  await exporting;
+  assert.equal(requests.length, 2);
+  assert.match(requests[1], /original-id.*Second.*mia-original/);
+  const decode = (name) => new TextDecoder().decode(entries.find((e) => e.name === name).data);
+  const manifest = JSON.parse(decode('manifest.json'));
+  assert.equal(manifest.episode, 'Original episode');
+  assert.equal(manifest.files[1].speed, 1);
+  assert.equal(decode('script.txt'), 'Intro\nKAI: First\nMIA: Second');
+  assert.equal(filename, 'nomad-original-audio.zip');
+});
