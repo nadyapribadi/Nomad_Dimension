@@ -1470,3 +1470,146 @@ test('material save receipts are separate for each reviewed source', () => {
   assert.equal(t.run("REVIEW.receipts[reviewReceiptKey('prep')]"), undefined);
   assert.equal(t.run("REVIEW.receipts['prep:tokyo'].saved"), 1);
 });
+
+function simultaneousSaveSetup() {
+  const t = setup();
+  t.c.enhanceTable = () => {};
+  t.run(`S.epQueue=[
+    {id:'source-a',title:'First video',breakdown:{food:[{dish:'First dish',source_page_id:'source-a'}],glossary:[{term:'First term',meaning:'Original meaning',source_page_id:'source-a'}]}},
+    {id:'source-b',title:'Second video',breakdown:{food:[{dish:'Second dish',source_page_id:'source-b'}],glossary:[{term:'Second term',source_page_id:'source-b'}]}}
+  ];S.epSelected=new Set([0,1]);S.prepFocusId='source-a';S.reviewSourceId='source-a';rebuildCombinedOutline();
+  for(const key of ['food','glossary'])for(const it of poolFor(key,'prep'))REVIEW.decisions[it._key]='accepted';`);
+  return t;
+}
+
+test('a second source can queue while the first saves without changing either save snapshot or receipts', async () => {
+  const t = simultaneousSaveSetup();
+  let release, entered;
+  const gate = new Promise((r) => (release = r));
+  const waiting = new Promise((r) => (entered = r));
+  let blocked = false;
+  t.c.before = async (call) => {
+    if (call.endpoint === 'pages' && !blocked) {
+      blocked = true;
+      entered();
+      await gate;
+    }
+  };
+  const first = t.run("saveAcceptedMaterial('prep',document.getElementById('save-first'))");
+  await waiting;
+  t.run(`openSourceRecord(1);reviewSourceMaterial(1);
+    for(const key of ['food','glossary'])for(const it of poolFor(key,'prep'))REVIEW.decisions[it._key]='accepted';
+    renderReviewInto('extract-review','prep');`);
+  const screen = t.element('extract-review').innerHTML;
+  assert.match(screen, />Queue accepted \(2\)<\/button>/);
+  assert.doesNotMatch(screen, /disabled[^>]*>Queue accepted/);
+  const second = t.run("saveAcceptedMaterial('prep',document.getElementById('save-second'))");
+  await t.run("saveAcceptedMaterial('prep',document.getElementById('duplicate'))");
+  assert.equal(t.run("REVIEW.jobs['prep:source-b'].state"), 'queued');
+  assert.equal(t.calls.filter((c) => c.endpoint === 'pages').length, 1);
+  // Mutate navigation and the old source after submission; submitted rows stay fixed.
+  t.run(`S.epQueue[0].breakdown.glossary[0].meaning='Changed after submission';
+    S.reviewSourceId='source-b';S.epSelected=new Set([1]);rebuildCombinedOutline();`);
+  release();
+  await Promise.all([first, second]);
+  assert.equal(t.pages.size, 4);
+  assert.equal(t.run("REVIEW.receipts['prep:source-a'].saved"), 2);
+  assert.equal(t.run("REVIEW.receipts['prep:source-b'].saved"), 2);
+  assert.equal(t.run("REVIEW.jobs['prep:source-b'].state"), 'done');
+  const evidence = [...t.pages.values()].map((p) => JSON.parse(t.text(p.children[0].code)));
+  assert.deepEqual(
+    evidence.map((e) => e.observation.source_page_id),
+    ['source-a', 'source-a', 'source-b', 'source-b']
+  );
+  assert.equal(evidence[1].observation.meaning, 'Original meaning');
+});
+
+test('a failed source releases the queue and retry reconciles its lost response without resaving the second source', async () => {
+  const t = simultaneousSaveSetup();
+  let release, entered;
+  const gate = new Promise((r) => (release = r));
+  const waiting = new Promise((r) => (entered = r));
+  let failed = false;
+  t.c.after = async (call) => {
+    if (call.endpoint === 'pages' && !failed) {
+      failed = true;
+      entered();
+      await gate;
+      throw new Error('Create response lost');
+    }
+  };
+  const first = t.run("saveAcceptedMaterial('prep',null)");
+  await waiting;
+  t.run(
+    `S.reviewSourceId='source-b';for(const key of ['food','glossary'])for(const it of poolFor(key,'prep'))REVIEW.decisions[it._key]='accepted';`
+  );
+  const second = t.run("saveAcceptedMaterial('prep',null)");
+  release();
+  await Promise.all([first, second]);
+  assert.equal(t.run("REVIEW.jobs['prep:source-a'].state"), 'failed');
+  assert.equal(t.run("REVIEW.jobs['prep:source-b'].state"), 'done');
+  assert.equal(t.run("REVIEW.receipts['prep:source-a'].remaining"), 2);
+  assert.equal(t.pages.size, 3);
+  t.run("S.reviewSourceId='source-a'");
+  await t.run("saveAcceptedMaterial('prep',null)");
+  assert.equal(t.pages.size, 4);
+  assert.equal(t.run("REVIEW.receipts['prep:source-a'].saved"), 2);
+  assert.equal(t.run("REVIEW.receipts['prep:source-b'].saved"), 2);
+  assert.equal(t.calls.filter((c) => c.endpoint === 'pages').length, 4);
+});
+
+test('stopping a save completes its in-flight record and retains the rest while another source proceeds', async () => {
+  const t = simultaneousSaveSetup();
+  let release, entered;
+  const gate = new Promise((r) => (release = r));
+  const waiting = new Promise((r) => (entered = r));
+  let blocked = false;
+  t.c.before = async (call) => {
+    if (call.endpoint === 'pages' && !blocked) {
+      blocked = true;
+      entered();
+      await gate;
+    }
+  };
+  const first = t.run("saveAcceptedMaterial('prep',null)");
+  await waiting;
+  t.run(`stopMaterialSave('prep:source-a');focusPrepSource('source-b');reviewSourceMaterial(1);
+    for(const key of ['food','glossary'])for(const it of poolFor(key,'prep'))REVIEW.decisions[it._key]='accepted';`);
+  const second = t.run("saveAcceptedMaterial('prep',null)");
+  release();
+  await Promise.all([first, second]);
+  assert.equal(t.pages.size, 3);
+  assert.equal(t.run("REVIEW.jobs['prep:source-a'].state"), 'stopped');
+  assert.equal(t.run("REVIEW.receipts['prep:source-a'].remaining"), 1);
+  assert.equal(t.run("REVIEW.receipts['prep:source-b'].saved"), 2);
+});
+
+test('queued records cannot be changed by bulk decisions and cancelling them makes no writes', async () => {
+  const t = simultaneousSaveSetup();
+  let release, entered;
+  const gate = new Promise((r) => (release = r));
+  const waiting = new Promise((r) => (entered = r));
+  let blocked = false;
+  t.c.before = async (call) => {
+    if (call.endpoint === 'pages' && !blocked) {
+      blocked = true;
+      entered();
+      await gate;
+    }
+  };
+  const first = t.run("saveAcceptedMaterial('prep',null)");
+  await waiting;
+  t.run(
+    `S.reviewSourceId='source-b';REVIEW.selected=new Set();for(const key of ['food','glossary'])for(const it of poolFor(key,'prep')){REVIEW.decisions[it._key]='accepted';REVIEW.selected.add(it._key);}`
+  );
+  const second = t.run("saveAcceptedMaterial('prep',null)");
+  await t.run("decideReview('prep','food','skipped')");
+  assert.equal(t.run("REVIEW.decisions[poolFor('food','prep')[0]._key]"), 'accepted');
+  t.run("stopMaterialSave('prep:source-b')");
+  release();
+  await Promise.all([first, second]);
+  assert.equal(t.pages.size, 2);
+  assert.equal(t.run("REVIEW.jobs['prep:source-b'].state"), 'stopped');
+  await t.run("saveAcceptedMaterial('prep',null)");
+  assert.equal(t.pages.size, 4);
+});

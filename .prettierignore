@@ -5,3 +5,6 @@ Template/
 Docs/
 index.html
 *.docx
+
+# Installed agent packages maintain their own formatting.
+.agents/skills/

@@ -3609,7 +3609,7 @@ function sourceQueueNav(sel,pos) {
   return `<div class="source-queue-nav"><label>Source ${pos+1} of ${sel.length}<select aria-label="Current source" onchange="focusPrepSource(this.value)">${sel.map(({v})=>`<option value="${_esc(v.id)}" ${v.id===S.prepFocusId?'selected':''}>${_esc(v.title)} · ${v._breakdownUnsaved?'Save pending':isBreakdownCurrent(v)?'Analysis saved':v.transcript?'Ready to analyse':'Needs transcript'}</option>`).join('')}</select></label><div class="idea-actions"><button class="btn btn-sm" onclick="movePrepSource(-1)" ${pos<=0?'disabled':''}>Previous source</button><button class="btn btn-sm" onclick="movePrepSource(1)" ${pos>=sel.length-1?'disabled':''}>Next source</button></div></div>`;
 }
 function focusPrepSource(id) {
-  if(REVIEW.busy || S.extractionChat?.saving)return;
+  if(S.extractionChat?.saving)return;
   S.prepFocusId=id;S.reviewSourceId=null;prepStep(2);
 }
 function movePrepSource(delta) {
@@ -4247,7 +4247,7 @@ function materialEvidence(blocks) {
   for(const b of blocks || [])if(b.type==='code')try{const d=JSON.parse(richText(b.code));if(d.nomadMaterial===1)return d;}catch{/* unrelated blocks */}
   return null;
 }
-const REVIEW = {decisions:{},edits:{},drafts:{},receipts:{},loaded:false,busy:false};
+const REVIEW = {decisions:{},edits:{},drafts:{},receipts:{},loaded:false,jobs:{}};
 async function restoreReviews() {
   if(REVIEW.loaded)return;
   const saved=await localArtifact('material-review-v1');
@@ -4291,21 +4291,22 @@ function renderReviewInto(elId, src) {
   const el=document.getElementById(elId);if(!el)return;
   const pools=Object.fromEntries(Object.keys(RESEARCH_STORES).filter(k=>src!=='prep'||k!=='places').map(k=>[k,poolFor(k,src)]));
   const keys=Object.keys(pools).filter(k=>pools[k].length);
-  if(!keys.length){el.innerHTML=`<div class="empty-state"><h3>No candidates waiting</h3>${REVIEW.receipts[reviewReceiptKey(src)]?`<p role="status">Last save: ${REVIEW.receipts[reviewReceiptKey(src)].saved} material records saved or reconciled.</p>`:''}<p>Saved material stays in your Library. Open a source to extract more, or return to browsing.</p><button class="btn" onclick="switchTab('res','material')">Browse material</button></div>`;return;}
+  const job=REVIEW.jobs[reviewReceiptKey(src)],saving=materialSavePending(job),otherSaving=Object.values(REVIEW.jobs).some(j=>j.scope!==reviewReceiptKey(src) && materialSavePending(j)),saveStatus=materialSaveStatus(src);
+  if(!keys.length){el.innerHTML=`${saveStatus}<div class="empty-state"><h3>No candidates waiting</h3>${REVIEW.receipts[reviewReceiptKey(src)]?`<p role="status">Last save: ${REVIEW.receipts[reviewReceiptKey(src)].saved} material records saved or reconciled.</p>`:''}<p>Saved material stays in your Library. Open a source to extract more, or return to browsing.</p><button class="btn" onclick="switchTab('res','material')">Browse material</button></div>`;return;}
   if(!keys.includes(_reviewTab[src]))_reviewTab[src]=keys[0];
   const active=_reviewTab[src],cfg=RESEARCH_STORES[active],pool=pools[active];
   const total=Object.values(pools).flat(),accepted=total.filter(it=>REVIEW.decisions[it._key]==='accepted').length;
   const selected=(REVIEW.selected ||= new Set());
-  el.innerHTML=`${REVIEW.receipts[reviewReceiptKey(src)]?`<p role="status" class="library-message">Last save: ${REVIEW.receipts[reviewReceiptKey(src)].saved} saved or reconciled · ${REVIEW.receipts[reviewReceiptKey(src)].remaining} accepted records still to save.</p>`:''}<div class="review-summary"><div><h3>Review extracted material</h3><p>${total.length} candidates · ${accepted} accepted. Accepting keeps a candidate for saving; it does not verify its claims.</p></div><button class="btn btn-primary" onclick="saveAcceptedMaterial('${src}',this)" ${!accepted || REVIEW.busy?'disabled':''}>Save accepted (${accepted})</button></div>
+  el.innerHTML=`${saveStatus}${REVIEW.receipts[reviewReceiptKey(src)]?`<p role="status" class="library-message">Last save: ${REVIEW.receipts[reviewReceiptKey(src)].saved} saved or reconciled · ${REVIEW.receipts[reviewReceiptKey(src)].remaining} accepted records still to save.</p>`:''}<div class="review-summary"><div><h3>Review extracted material</h3><p>${total.length} candidates · ${accepted} accepted. Accepting keeps a candidate for saving; it does not verify its claims.</p></div><button class="btn btn-primary" onclick="saveAcceptedMaterial('${src}',this)" ${!accepted || saving?'disabled':''}>${saving?(job.state==='queued'?'Save queued':`Saving (${job.saved}/${job.total})`):`${otherSaving?'Queue accepted':'Save accepted'} (${accepted})`}</button></div>
     <div class="review-categories" role="group" aria-label="Candidate categories">${keys.map(k=>`<button class="btn btn-sm" aria-pressed="${k===active}" onclick="switchReviewTab('${src}','${k}')">${RESEARCH_STORES[k].label} <span>${pools[k].length}</span></button>`).join('')}</div>
     <div class="review-bulk"><span>${pool.filter(it=>selected.has(it._key)).length} selected in this category</span><button class="btn btn-sm" onclick="reviewAll('${src}','${active}',true)">Select shown</button><button class="btn btn-sm" onclick="reviewAll('${src}','${active}',false)">Clear shown</button><button class="btn btn-sm" onclick="decideReview('${src}','${active}','accepted')">Accept selected shown</button><button class="btn btn-sm" onclick="decideReview('${src}','${active}','skipped')">Skip selected shown</button></div>
-    ${(S._lastPush || {})[`${src}:${active}`]?`<p role="status">${S._lastPush[`${src}:${active}`].added} saved · ${S._lastPush[`${src}:${active}`].skipped} existing receipts reconciled.</p>`:''}
-    ${S._pushErrors?.[active]?`<p class="library-error" role="alert">${_esc(S._pushErrors[active])} Accepted candidates remain available.</p>`:''}
-    <div class="review-table-wrap"><table id="review-${src}-${active}" class="data-table"><thead><tr><th></th><th>Material</th><th>Source context</th><th data-filter-kind="select">Decision</th><th data-filter-kind="none">Action</th></tr></thead><tbody>${pool.map(it=>`<tr data-row-key="${_esc(it._key)}"><td><input type="checkbox" aria-label="Select ${_esc(cfg.name(it))}" ${selected.has(it._key)?'checked':''} onchange="toggleReview(${_esc(JSON.stringify(it._key))},'${src}',this)"></td><td><strong>${_esc(cfg.name(it))}</strong><p>${_esc(Object.entries(cfg.props(it)).filter(([k])=>![cfg.titleProp,'Source Video','Source URL','Date Added','Retrieved Date'].includes(k)).slice(0,3).map(([k,v])=>`${k}: ${_propText(v)}`).join(' · '))}</p></td><td>${_esc(it.source_excerpt || it.source_title || it.source_name || it.source_url || 'Source context not recorded')}<small>${_esc(it.timestamp || '')}</small></td><td>${_esc(REVIEW.decisions[it._key] || 'pending')}</td><td><button class="btn btn-sm" data-key="${_esc(it._key)}" onclick="openCandidateReview('${src}','${active}',this.dataset.key)">Review</button></td></tr>`).join('')}</tbody></table></div>`;
+    ${(S._lastPush || {})[`${reviewReceiptKey(src)}:${active}`]?`<p role="status">${S._lastPush[`${reviewReceiptKey(src)}:${active}`].added} saved · ${S._lastPush[`${reviewReceiptKey(src)}:${active}`].skipped} existing receipts reconciled.</p>`:''}
+    ${job?.errors?.[active]?`<p class="library-error" role="alert">${_esc(job.errors[active])} Accepted candidates remain available.</p>`:''}
+    <div class="review-table-wrap"><table id="review-${src}-${active}" class="data-table"><thead><tr><th></th><th>Material</th><th>Source context</th><th data-filter-kind="select">Decision</th><th data-filter-kind="none">Action</th></tr></thead><tbody>${pool.map(it=>`<tr data-row-key="${_esc(it._key)}"><td><input type="checkbox" aria-label="Select ${_esc(cfg.name(it))}" ${selected.has(it._key)?'checked':''} onchange="toggleReview(${_esc(JSON.stringify(it._key))},'${src}',this)"></td><td><strong>${_esc(cfg.name(it))}</strong><p>${_esc(Object.entries(cfg.props(it)).filter(([k])=>![cfg.titleProp,'Source Video','Source URL','Date Added','Retrieved Date'].includes(k)).slice(0,3).map(([k,v])=>`${k}: ${_propText(v)}`).join(' · '))}</p></td><td>${_esc(it.source_excerpt || it.source_title || it.source_name || it.source_url || 'Source context not recorded')}<small>${_esc(it.timestamp || '')}</small></td><td>${_esc(REVIEW.decisions[it._key] || 'pending')}</td><td><button class="btn btn-sm" data-key="${_esc(it._key)}" onclick="openCandidateReview('${src}','${active}',this.dataset.key)" ${materialCandidateSaving(it._key)?'disabled':''}>Review</button></td></tr>`).join('')}</tbody></table></div>`;
   enhanceTable(`review-${src}-${active}`);
 }
 function openCandidateReview(src,category,key) {
-  const item=poolFor(category,src).find(it=>it._key===key);if(!item)return;
+  const item=poolFor(category,src).find(it=>it._key===key);if(!item || materialCandidateSaving(key))return;
   REVIEW.current={src,category,key};
   const fields=Object.entries(item).filter(([k,v])=>!k.startsWith('_') && !['source_page_id','source_url','source_name','source_title','needs_verification'].includes(k) && ['string','number','boolean'].includes(typeof v));
   document.getElementById('candidate-fields').innerHTML=fields.map(([k,v])=>`<label>${_esc(k.replaceAll('_',' '))}${typeof v==='boolean'?`<input aria-label="${_esc(k.replaceAll('_',' '))}" type="checkbox" data-field="${_esc(k)}" data-type="boolean" ${v?'checked':''}>`:`<textarea aria-label="${_esc(k.replaceAll('_',' '))}" rows="${String(v).length>150?4:2}" data-field="${_esc(k)}" data-type="${typeof v}">${_esc(v)}</textarea>`}</label>`).join('');
@@ -4315,6 +4316,7 @@ function openCandidateReview(src,category,key) {
 }
 async function saveCandidateReview(decision,next=false) {
   const {src,category,key}=REVIEW.current,edits={};
+  if(materialCandidateSaving(key)){document.getElementById('candidate-error').textContent='This record is already queued for saving. Stop its save before editing.';return;}
   try{
     for(const field of document.querySelectorAll('#candidate-fields [data-field]')){
       const value=field.dataset.type==='boolean'?field.checked:field.dataset.type==='number'?Number(field.value):field.value;
@@ -4358,7 +4360,7 @@ async function ensureExisting(key, src) {
 }
 function switchReviewTab(src, key) {
   _reviewTab[src] = key;
-  if (S._lastPush) delete S._lastPush[`${src}:${key}`];   // clear the "saved" banner when you leave/return
+  if (S._lastPush) delete S._lastPush[`${reviewReceiptKey(src)}:${key}`];   // clear the "saved" banner when you leave/return
   renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
 }
 function reviewAll(src, key, on) {
@@ -4376,31 +4378,65 @@ async function decideReview(src,key,decision,oneKey=null) {
   const visible=visibleTableKeys(`review-${src}-${key}`);
   const items=poolFor(key,src).filter(it=>oneKey?it._key===oneKey:REVIEW.selected?.has(it._key) && (!visible || visible.has(it._key)));
   if(!items.length){toast('Select candidates to review.');return;}
-  for(const it of items)REVIEW.decisions[it._key]=decision;
+  for(const it of items)if(!materialCandidateSaving(it._key))REVIEW.decisions[it._key]=decision;
   try{await persistReviews();renderReviewInto(src==='web'?'web-review':'extract-review',src);}
   catch(e){toast(`Review is not stored on this device: ${e.message}`,'error');}
 }
 function reviewReceiptKey(src) {return src==='prep' && S.reviewSourceId ? `prep:${S.reviewSourceId}` : src;}
-async function saveAcceptedMaterial(src,btn) {
-  if(REVIEW.busy)return;REVIEW.busy=true;btn.disabled=true;
-  const count=()=>Object.keys(RESEARCH_STORES).flatMap(key=>poolFor(key,src)).filter(it=>REVIEW.decisions[it._key]==='accepted').length,before=count();
-  try{for(const key of Object.keys(RESEARCH_STORES))if(poolFor(key,src).some(it=>REVIEW.decisions[it._key]==='accepted'))await pushStore(key,null,src);}
-  finally{REVIEW.receipts[reviewReceiptKey(src)]={saved:before-count(),remaining:count(),at:new Date().toISOString()};await persistReviews().catch(()=>{});REVIEW.busy=false;btn.disabled=false;renderReviewInto(src==='web'?'web-review':'extract-review',src);}
+function materialSavePending(job) {return job && ['queued','saving'].includes(job.state);}
+function materialCandidateSaving(key) {return Object.values(REVIEW.jobs).some(job=>materialSavePending(job) && job.keys.has(key));}
+function refreshMaterialSaves() {
+  for(const [id,src] of [['extract-review','prep'],['web-review','web']])try{renderReviewInto(id,src);}catch(e){console.error('Material save display failed',e.message);}
 }
+function guardMaterialSaveExit(event) {
+  if(Object.values(REVIEW.jobs).some(materialSavePending)){event.preventDefault();event.returnValue='';}
+}
+globalThis.addEventListener?.('beforeunload',guardMaterialSaveExit);
+function materialSaveStatus(src) {
+  const scope=reviewReceiptKey(src);
+  const pending=Object.values(REVIEW.jobs).some(materialSavePending);
+  return (pending?'<p class="library-message">You can work on other sources while saves finish. Keep this browser tab open.</p>':'')+Object.values(REVIEW.jobs).filter(job=>materialSavePending(job) || job.scope===scope).map(job=>`<div class="library-message" role="status"><strong>${_esc(job.title)}</strong> · ${job.state==='queued'?'Queued — waiting for the current save':job.state==='saving'?`Saving · ${job.saved} of ${job.total} confirmed`:job.state==='done'?`Saved ${job.saved} material records`:`${job.saved} saved · ${job.total-job.saved} remain accepted`}${job.error?`<p class="library-error">${_esc(job.error)} Retry checks existing receipts before creating records.</p>`:''}${materialSavePending(job)?` <button class="btn btn-sm" onclick="stopMaterialSave(${_esc(JSON.stringify(job.scope))})" ${job.stop?'disabled':''}>${job.stop?'Stopping after current record…':job.state==='queued'?'Cancel queued save':'Stop after current record'}</button>`:''}</div>`).join('');
+}
+function stopMaterialSave(scope) {
+  const job=REVIEW.jobs[scope];if(!materialSavePending(job))return;
+  job.stop=true;if(job.state==='queued')job.state='stopped';refreshMaterialSaves();
+}
+// A save owns immutable candidates, destinations and receipt scope. Navigation
+// can change the visible source while this queue serializes Notion writes.
+async function saveAcceptedMaterial(src,btn,onlyCategory=null) {
+  const scope=reviewReceiptKey(src);
+  if(materialSavePending(REVIEW.jobs[scope]))return;
+  const categories=Object.keys(RESEARCH_STORES).filter(key=>(src!=='prep'||key!=='places') && (!onlyCategory || key===onlyCategory));
+  const items=Object.fromEntries(categories.map(key=>[key,JSON.parse(JSON.stringify(poolFor(key,src).filter(it=>REVIEW.decisions[it._key]==='accepted')))]).filter(([,rows])=>rows.length));
+  const total=Object.values(items).flat().length;if(!total){toast('Accept material before saving.');return;}
+  const job={scope,src,items,total,keys:new Set(Object.values(items).flat().map(it=>it._key)),databases:Object.fromEntries(Object.keys(items).map(key=>[key,RESEARCH_STORES[key].db()])),title:src==='web'?'Web research':S.epQueue.find(v=>v.id===S.reviewSourceId)?.title || 'Selected sources',state:'queued',saved:0,completed:0,errors:{},stop:false};
+  REVIEW.jobs[scope]=job;
+  const run=async()=>{
+    if(job.stop)return;
+    job.state='saving';
+    try{refreshMaterialSaves();for(const key of Object.keys(job.items)){if(job.stop || job.error)break;await writeMaterialStore(key,job);}}
+    catch(e){job.error=e.message;}
+    finally{
+      job.state=job.error?'failed':job.stop?'stopped':'done';
+      REVIEW.receipts[scope]={saved:job.saved,remaining:job.total-job.saved,at:new Date().toISOString()};
+      // Release the source before local persistence, and never let a UI render
+      // failure or a rejected job poison later queued saves.
+      try{refreshMaterialSaves();await persistReviews();}catch(e){toast(`Save status could not be stored locally: ${e.message}`,'error');}
+    }
+  };
+  const promise=(REVIEW.saveTail || Promise.resolve()).catch(()=>{}).then(run);
+  REVIEW.saveTail=promise.catch(()=>{});refreshMaterialSaves();return promise;
+}
+function pushStore(key,btn,src) {return saveAcceptedMaterial(src,btn,key);}
 
-let _pushingStore = false;
-async function pushStore(key, btn, src) {
-  if (_pushingStore) return;                         // re-entry guard (double-click / tab-switch)
-  const cfg = RESEARCH_STORES[key];
-  const items = poolFor(key, src).filter(it => REVIEW.decisions[it._key] === 'accepted');
-  if (!items.length) { toast('Accept material before saving.', 'error'); return; }
-  _pushingStore = true;
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-  let added = 0, skipped = 0, failed = 0;
+async function writeMaterialStore(key, job) {
+  const cfg = RESEARCH_STORES[key], items=job.items[key], db=job.databases[key];
+  let added = 0, skipped = 0;
   try {
-    delete (S._pushErrors ||= {})[key];
-    const existing=await notionQueryAll(cfg.db());
+    delete job.errors[key];delete (S._pushErrors ||= {})[key];
+    const existing=await notionQueryAll(db);
     for (const it of items) {
+      if(job.stop || job.error)break;
       const name=String(cfg.name(it) || '').trim(),identity=materialIdentity(it);
       if(!name)continue;
       const intentKey=`material-create-v2:${key}:${identity}`;
@@ -4411,34 +4447,28 @@ async function pushStore(key, btn, src) {
         const matches=existing.filter(r=>richText(r.properties?.[cfg.titleProp]).trim().toLowerCase()===name.toLowerCase());
         let receipt=null;
         for(const row of matches){const evidence=materialEvidence(await getPageBlocks(row.id));if(evidence?.identity===identity){receipt=row;break;}}
-        if(receipt){await localArtifact(intentKey,null);S._pushed.add(it._key);skipped++;continue;}
+        if(receipt){await localArtifact(intentKey,null);S._pushed.add(it._key);job.saved++;skipped++;continue;}
         if(await localArtifact(intentKey))throw new Error('Earlier save may have reached Notion. No matching receipt was found; inspect the original before retrying.');
         const evidence=materialEvidenceBlock(it);
         await localArtifact(intentKey,{name,at:new Date().toISOString()});
         createStarted=true;
-        const page=await notionAPI('pages','POST',{parent:{database_id:cfg.db()},properties:cfg.props(it),children:[evidence]});
+        const page=await notionAPI('pages','POST',{parent:{database_id:db},properties:cfg.props(it),children:[evidence]});
         // Creation response is a receipt; keep the uncertain intent until the
         // stored evidence is read back, so a timeout cannot cause a blind replay.
         created=true;
         const saved=materialEvidence(await getPageBlocks(page.id));
         if(saved?.identity!==identity)throw new Error('Created record needs verification. Your accepted candidate is retained; retry checks its receipt first.');
-        await localArtifact(intentKey,null);existing.push(page);S._pushed.add(it._key);added++;
-      }catch(e){if(createStarted && !created && e.status>=400 && e.status<500 && e.status!==408)await localArtifact(intentKey,null);failed++;(S._pushErrors ||= {})[key]=e.message;}
+        await localArtifact(intentKey,null);existing.push(page);S._pushed.add(it._key);job.saved++;added++;
+      }catch(e){if(createStarted && !created && e.status>=400 && e.status<500 && e.status!==408)await localArtifact(intentKey,null);job.error=e.message;job.errors[key]=e.message;(S._pushErrors ||= {})[key]=e.message;}finally{job.completed++;refreshMaterialSaves();}
     }
-    toast([added && `${added} added`, skipped && `${skipped} skipped`, failed && `${failed} failed`]
-      .filter(Boolean).join(' · ') + (failed ? ` · ${S._pushErrors?.[key] || 'Review failed rows'}` : '') || 'nothing to push', failed ? 'error' : 'success');
     if (added) { delete LIB.rows[key]; LIB.loaded=false; }
     if (added || skipped) {
-      (S._lastPush ||= {})[`${src}:${key}`] = {
+      (S._lastPush ||= {})[`${job.scope}:${key}`] = {
         added, skipped,
-        url: `https://www.notion.so/${cfg.db().replace(/-/g, '')}`,
+        url: `https://www.notion.so/${db.replace(/-/g, '')}`,
       };
     }
-  } catch(e) { (S._pushErrors ||= {})[key]=e.message;toast(e.message,'error'); } finally {
-    _pushingStore = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Save accepted material'; }
-    renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
-  }
+  } catch(e) { job.error=e.message;job.errors[key]=e.message;(S._pushErrors ||= {})[key]=e.message; }
 }
 
 async function runWebResearch(btn) {
