@@ -10,11 +10,16 @@
 //     -> { extract: {...}, sources: [{title,url}], model }   (open question)
 //   POST { mode:'verify', store, items:[{name, detail}] }
 //     -> { verified: [{name, verdict, confidence, source_url, as_of_date,
-//                      corrected_value, note}], sources, model }
+//                      corrected_value, note, reason?}], sources, model }
+//        reason is set only on our own ungrounded downgrade, so the UI can
+//        tell "searched, found nothing" apart from "no source retrieved".
 // Needs GEMINI_API_KEY. 502 on provider/network failure, 504 on our own
 // 24.5s application deadline.
 
 const MODEL = 'gemini-3.6-flash';
+// Ceiling advertised to the provider. Reaching it is only treated as
+// truncation when the reply also fails to parse (see classifyUnparsed).
+const MAX_OUTPUT_TOKENS = 4096;
 
 const SHAPE = JSON.stringify({
   places: [
@@ -107,10 +112,14 @@ exports.handler = async (event) => {
 
   const parsed = parseJsonLoose(call.text);
   if (!parsed) {
+    // Unparseable output is truncation only when the provider also reports it
+    // ran out of room. Otherwise the reply was malformed on its own.
+    const truncated = hitOutputCap(call.usage);
     return respond(502, {
-      error:
-        'The model returned malformed JSON. Retry failed checks one at a time; previous findings are unchanged.',
-      code: 'invalid_model_json',
+      error: truncated
+        ? 'The model reached its output limit before completing the findings. Retry failed checks one at a time.'
+        : 'The model returned malformed JSON. Retry failed checks one at a time; previous findings are unchanged.',
+      code: truncated ? 'output_truncated' : 'invalid_model_json',
     });
   }
 
@@ -208,7 +217,7 @@ async function runGemini(key, prompt, verify = false) {
           input: prompt,
           tools: [{ type: 'google_search' }],
           ...(verify ? { response_format: VERIFY_SCHEMA } : {}),
-          generation_config: { max_output_tokens: 4096, temperature: 0.2 },
+          generation_config: { max_output_tokens: MAX_OUTPUT_TOKENS, temperature: 0.2 },
         }),
         signal: ac.signal,
       }
@@ -236,19 +245,12 @@ async function runGemini(key, prompt, verify = false) {
         error:
           'The model returned no final answer. Retry failed checks; previous findings are unchanged.',
       };
-    if ((data.usage && data.usage.total_output_tokens) >= 4096)
-      return {
-        status: 502,
-        code: 'output_truncated',
-        error:
-          'The model reached its output limit before completing the findings. Retry failed checks one at a time.',
-      };
     // Evidence of retrieval: a successful search step, or the usage counter.
     const grounding = (data.usage && data.usage.grounding_tool_count) || [];
     const grounded =
       steps.some((s) => s && s.type === 'google_search_result' && !s.is_error) ||
       grounding.some((g) => g && g.type === 'google_search' && (g.count || 0) > 0);
-    return { text, grounded };
+    return { text, grounded, usage: data.usage || null };
   } catch (e) {
     if (e.name === 'AbortError') {
       return {
@@ -324,6 +326,14 @@ function parseJsonLoose(raw) {
   return null;
 }
 
+// Reaching the advertised output ceiling is real evidence of truncation, but
+// useless on its own: a reply can sit exactly at the cap and still parse. Only
+// consult it once parsing has already failed.
+function hitOutputCap(usage) {
+  const used = Number(usage && usage.total_output_tokens);
+  return Number.isFinite(used) && used >= MAX_OUTPUT_TOKENS;
+}
+
 // A "confirmed"/"corrected" verdict counts as evidence only when the model
 // actually searched the web during this response. Without a search step the
 // URL came from model memory, and the verdict is downgraded instead of
@@ -340,6 +350,7 @@ function enforceGrounding(verified, grounded) {
       as_of_date: '',
       corrected_value: '',
       note: 'No grounded source was retrieved for this claim.',
+      reason: 'not_grounded',
     };
   });
 }
@@ -388,6 +399,7 @@ module.exports._internal = {
   buildAskPrompt,
   runGemini,
   enforceGrounding,
+  hitOutputCap,
   citedSources,
   extractSources,
   VERIFY_SCHEMA,

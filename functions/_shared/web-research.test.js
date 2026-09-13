@@ -84,16 +84,8 @@ test('grounded verification uses the Interactions API with search and a response
   assert.equal(result.grounded, true);
 });
 
-test('truncated, blocked and answer-less replies fail specifically without attempting another paid call', async (t) => {
+test('blocked and answer-less replies fail specifically without attempting another paid call', async (t) => {
   for (const [payload, code] of [
-    [
-      {
-        status: 'completed',
-        steps: [{ type: 'model_output', content: [{ type: 'text', text: '{"verified":[]}' }] }],
-        usage: { total_output_tokens: 4096 },
-      },
-      'output_truncated',
-    ],
     [{ status: 'failed' }, 'generation_stopped'],
     [{ status: 'completed', steps: [{ type: 'thought' }] }, 'empty_model_reply'],
   ]) {
@@ -107,6 +99,21 @@ test('truncated, blocked and answer-less replies fail specifically without attem
     assert.equal(calls, 1);
     t.mock.restoreAll();
   }
+});
+
+test('runGemini reports usage instead of guessing truncation from the token count', async (t) => {
+  t.mock.method(global, 'fetch', async () => ({
+    ok: true,
+    json: async () => ({
+      status: 'completed',
+      steps: [{ type: 'model_output', content: [{ type: 'text', text: '{"verified":[]}' }] }],
+      usage: { total_output_tokens: 4096 },
+    }),
+  }));
+  const result = await runGemini('fake', 'Prompt', true);
+  assert.equal(result.error, undefined);
+  assert.equal(result.text, '{"verified":[]}');
+  assert.equal(result.usage.total_output_tokens, 4096);
 });
 
 test('balanced JSON recovery ignores braces in quoted notes and trailing surrounding prose', () => {
@@ -160,6 +167,62 @@ test('HTTP handler rejects malformed shapes and oversize batches without claimin
   assert.equal(calls, 1);
 });
 
+function withVerifyHandler(t) {
+  const { handler } = require('../web-research'),
+    { makeSession, COOKIE } = require('./auth');
+  const oldPassword = process.env.APP_PASSWORD,
+    oldKey = process.env.GEMINI_API_KEY;
+  process.env.APP_PASSWORD = 'fixture-password-long-enough';
+  process.env.GEMINI_API_KEY = 'fixture-key';
+  t.after(() => {
+    if (oldPassword === undefined) delete process.env.APP_PASSWORD;
+    else process.env.APP_PASSWORD = oldPassword;
+    if (oldKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = oldKey;
+  });
+  return (items) =>
+    handler({
+      httpMethod: 'POST',
+      headers: { cookie: COOKIE + '=' + makeSession(process.env.APP_PASSWORD) },
+      body: JSON.stringify({ mode: 'verify', items }),
+    });
+}
+
+test('truncation needs agreement: unparseable output at the cap, not a valid reply at the cap', async (t) => {
+  const invoke = withVerifyHandler(t);
+  const items = [{ name: 'A claim' }];
+  const reply = (text, usage) => {
+    t.mock.restoreAll();
+    t.mock.method(global, 'fetch', async () => ({
+      ok: true,
+      json: async () => ({
+        status: 'completed',
+        steps: [{ type: 'model_output', content: [{ type: 'text', text }] }],
+        ...(usage ? { usage } : {}),
+      }),
+    }));
+    return invoke(items);
+  };
+
+  // Cut off mid-JSON and the provider says it hit the ceiling -> truncation.
+  const cut = await reply('{"verified":[{"name":"A cl', { total_output_tokens: 4096 });
+  assert.equal(cut.statusCode, 502);
+  assert.equal(JSON.parse(cut.body).code, 'output_truncated');
+
+  // Unparseable with no cap evidence -> malformed, a different problem.
+  const malformed = await reply('the model rambled with no JSON', null);
+  assert.equal(malformed.statusCode, 502);
+  assert.equal(JSON.parse(malformed.body).code, 'invalid_model_json');
+
+  // Complete JSON that merely reached the ceiling is a real answer.
+  const complete = await reply(
+    '{"verified":[{"name":"A claim","verdict":"unsupported","confidence":"low","source_url":"","as_of_date":"","corrected_value":"","note":"n"}]}',
+    { total_output_tokens: 4096 }
+  );
+  assert.equal(complete.statusCode, 200);
+  assert.equal(JSON.parse(complete.body).verified[0].name, 'A claim');
+});
+
 const { enforceGrounding } = require('../web-research')._internal;
 
 test('enforceGrounding: ungrounded confirmation is downgraded, grounded evidence is kept', () => {
@@ -179,6 +242,7 @@ test('enforceGrounding: ungrounded confirmation is downgraded, grounded evidence
   assert.equal(downgraded.source_url, '');
   assert.equal(downgraded.confidence, 'low');
   assert.match(downgraded.note, /No grounded source/);
+  assert.equal(downgraded.reason, 'not_grounded');
 
   const noUrl = enforceGrounding([{ ...confirmed, source_url: 'not a url' }], true)[0];
   assert.equal(noUrl.verdict, 'unsupported');

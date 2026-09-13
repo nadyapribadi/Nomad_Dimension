@@ -549,20 +549,22 @@ test('fact-check saves a labelled AI finding automatically while leaving origina
   assert.match(t.element('vlib-results').innerHTML, /Not reviewed · optional/);
 });
 
-test('depleted credits stop later fact-check groups and preserve automatically saved results and pending rows', async () => {
+test('one failed batch is split into smaller batches so only the claim that keeps failing stops and later groups still run', async () => {
   const t = setup(),
     S = t.run('S');
-  S.vlib = Array.from({ length: 12 }, (_, i) => ({
+  S.vlib = Array.from({ length: 6 }, (_, i) => ({
     id: t.add('research', `Claim ${i}`).material.id,
     name: `Claim ${i}`,
     store: 'research',
     fields: 'Context',
   }));
   S._vlibSkip = new Set();
-  let calls = 0;
-  t.c._verifyBatch = async (store, items) => {
-    calls++;
-    if (calls === 2) throw new Error('Your prepayment credits are depleted.');
+  const batches = [];
+  t.c._verifyBatch = async (_store, items) => {
+    batches.push(items.map((item) => item.name).join(' + '));
+    if (items.some((item) => item.name === 'Claim 2')) {
+      throw new Error('Your prepayment credits are depleted.');
+    }
     return {
       verified: items.map((item) => ({
         name: item.name,
@@ -573,15 +575,27 @@ test('depleted credits stop later fact-check groups and preserve automatically s
   };
   t.c.confirmIdeaChange = async () => true;
   await t.run('runLibVerify()');
-  assert.equal(calls, 2);
-  assert.equal(S.vlib.filter((r) => r._newStatus).length, 4);
-  assert.equal(S.vlib.filter((r) => !S._vlibSkip.has(r.id)).length, 8);
-  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 4);
-  assert.match(t.element('verify-save-status').textContent, /Checks stopped/);
-  assert.match(
-    t.element('verify-save-status').textContent,
-    /Next run: 8 claims currently selected/
+  assert.deepEqual(batches, [
+    'Claim 0 + Claim 1 + Claim 2 + Claim 3',
+    'Claim 0 + Claim 1',
+    'Claim 2 + Claim 3',
+    'Claim 2',
+    'Claim 3',
+    'Claim 4 + Claim 5',
+  ]);
+  assert.equal(S.vlib.filter((r) => r._newStatus).length, 5);
+  assert.deepEqual(
+    S.vlib.filter((r) => r._retry).map((r) => r.name),
+    ['Claim 2'],
+    'only the claim that failed on its own is marked unfinished'
   );
+  assert.match(S.vlib[2]._checkError, /prepayment credits are depleted/);
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 5);
+  const status = t.element('verify-save-status').textContent;
+  assert.match(status, /5 findings saved · 1 checks failed/);
+  assert.match(status, /0 not attempted/);
+  assert.match(status, /Next run: 1 claims currently selected/);
+  assert.doesNotMatch(status, /Checks stopped/);
 });
 
 test('reviewed checks reject newer source versions and retain the proposal', async () => {
@@ -1202,7 +1216,7 @@ test('YouTube errors cannot be reported as successful empty discovery results', 
   assert.equal(t.element('yt-fetch-btn').disabled, false);
 });
 
-test('configuration failures stop fact-check groups and retain unfinished selections', async () => {
+test('a configuration failure is attributed claim by claim instead of stopping later groups', async () => {
   const t = setup(),
     S = t.run('S');
   S.vlib = Array.from({ length: 9 }, (_, i) => ({
@@ -1219,13 +1233,21 @@ test('configuration failures stop fact-check groups and retain unfinished select
     throw Object.assign(new Error('Configuration missing'), { status: 503 });
   };
   await t.run('runLibVerify()');
-  assert.equal(calls, 1);
+  // Three groups of four, three and one: every failed batch is retried as
+  // pairs and then singles, so the whole selection is attempted.
+  assert.equal(calls, 15);
   assert.equal(S._vlibSkip.size, 0);
-  assert.match(t.element('verify-save-status').textContent, /Configuration missing/);
-  assert.match(
-    t.element('verify-save-status').textContent,
-    /Next run: 9 claims currently selected/
+  assert.equal(
+    S.vlib.every((r) => r._retry && /Configuration missing/.test(r._checkError)),
+    true
   );
+  assert.equal(t.calls.length, 0);
+  assert.match(t.element('vlib-results').innerHTML, /Configuration missing/);
+  const status = t.element('verify-save-status').textContent;
+  assert.match(status, /0 findings saved · 9 checks failed/);
+  assert.match(status, /0 not attempted/);
+  assert.match(status, /Next run: 9 claims currently selected/);
+  assert.doesNotMatch(status, /Checks stopped/);
 });
 
 test('transcript save failure retains text and retries saving without fetching again', async () => {
@@ -2010,12 +2032,84 @@ test('duplicate model entries fail the affected claim rather than arbitrarily sa
   assert.match(t.r._checkError, /duplicated/);
 });
 
-test('same-name records with different context require separate checks to avoid a mismatched result', async () => {
-  const t = factFixture();
-  t.run("S.vlib.push({...fact,id:'different-record',fields:'Different source'})");
+test('same-name records with different context are re-checked one at a time so each result stays attributed', async () => {
+  const t = setup(),
+    S = t.run('S'),
+    first = t.add('research', 'A claim'),
+    second = t.add('research', 'A claim');
+  t.c.fact = {
+    id: first.material.id,
+    name: 'A claim',
+    store: 'research',
+    fields: 'Context A',
+    lastEdited: first.material.lastEdited,
+  };
+  t.c.other = {
+    id: second.material.id,
+    name: 'A claim',
+    store: 'research',
+    fields: 'Context B',
+    lastEdited: second.material.lastEdited,
+  };
+  t.run('S.vlib=[fact,other];S._vlibSkip=new Set()');
+  t.c.confirmIdeaChange = async () => true;
+  const batches = [];
+  t.c._verifyBatch = async (_store, items) => {
+    batches.push(items.map((item) => item.detail).join(' | '));
+    return {
+      verified: items.map((item) => ({
+        name: item.name,
+        verdict: 'confirmed',
+        source_url: `https://example.org/${item.detail === 'Context A' ? 'a' : 'b'}`,
+        note: item.detail,
+      })),
+    };
+  };
   await t.run('runLibVerify()');
-  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 0);
-  assert.match(t.r._checkError, /same-name records separately/);
+  assert.deepEqual(batches, ['Context A | Context B', 'Context A', 'Context B']);
+  assert.equal(S._vlibSkip.size, 2);
+  assert.equal(
+    t.text(t.pages.get(first.material.id).properties['Verify Note']).includes('Context A'),
+    true
+  );
+  assert.equal(
+    t.text(t.pages.get(second.material.id).properties['Verify Note']).includes('Context B'),
+    true
+  );
+});
+
+test('a batch reply that omits one claim re-checks that claim alone and keeps the rest of the reply', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 4 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+    fields: 'Context',
+  }));
+  S._vlibSkip = new Set();
+  const batches = [];
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => {
+    batches.push(items.map((item) => item.name).join(' + '));
+    const answered = items.length > 1 ? items.filter((item) => item.name !== 'Claim 2') : items;
+    return {
+      verified: answered.map((item) => ({
+        name: item.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  await t.run('runLibVerify()');
+  assert.deepEqual(batches, ['Claim 0 + Claim 1 + Claim 2 + Claim 3', 'Claim 2']);
+  assert.equal(S._vlibSkip.size, 4);
+  assert.equal(
+    S.vlib.some((r) => r._retry),
+    false
+  );
+  assert.match(t.element('verify-save-status').textContent, /4 findings saved · 0 checks failed/);
 });
 
 test('unsaved extraction checks persist locally without creating material in Notion', async () => {
