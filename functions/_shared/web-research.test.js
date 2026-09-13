@@ -46,9 +46,9 @@ test('buildVerifyPrompt: validates the bounded request and provides valid JSON',
   assert.ok(JSON.parse(require('../web-research')._internal.SHAPE).research);
 });
 
-const { runGemini, VERIFY_SCHEMA } = require('../web-research')._internal;
+const { runGemini } = require('../web-research')._internal;
 
-test('grounded verification requests structured JSON and bounded thinking in one provider call', async (t) => {
+test('grounded verification avoids request settings that suppress search retrieval', async (t) => {
   let body,
     calls = 0;
   t.mock.method(global, 'fetch', async (_url, options) => {
@@ -75,12 +75,14 @@ test('grounded verification requests structured JSON and bounded thinking in one
       }),
     };
   });
-  const result = await runGemini('fake-key', 'Prompt', true);
+  const result = await runGemini('fake-key', 'Prompt');
   assert.equal(calls, 1);
   assert.deepEqual(body.tools, [{ google_search: {} }]);
   assert.equal(body.generationConfig.responseMimeType, 'application/json');
-  assert.deepEqual(body.generationConfig.responseJsonSchema, VERIFY_SCHEMA);
-  assert.equal(body.generationConfig.thinkingConfig.thinkingLevel, 'MINIMAL');
+  // Structured-output schemas and minimal thinking make generateContent skip
+  // the search tool; they must not be sent alongside google_search.
+  assert.equal(body.generationConfig.responseJsonSchema, undefined);
+  assert.equal(body.generationConfig.thinkingConfig, undefined);
   assert.equal(result.text.trim(), '{"verified":[]}');
   assert.equal(result.sources.length, 1);
 });
@@ -102,7 +104,7 @@ test('truncated, blocked and thought-only replies fail specifically without atte
       calls++;
       return { ok: true, json: async () => ({ candidates: [candidate] }) };
     });
-    const result = await runGemini('fake', 'Prompt', true);
+    const result = await runGemini('fake', 'Prompt');
     assert.equal(result.code, code);
     assert.equal(calls, 1);
     t.mock.restoreAll();

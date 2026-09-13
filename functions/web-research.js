@@ -53,32 +53,6 @@ const VERIFY_EXAMPLE = {
     },
   ],
 };
-const VERIFY_SCHEMA = {
-  type: 'object',
-  required: ['verified'],
-  additionalProperties: false,
-  properties: {
-    verified: {
-      type: 'array',
-      minItems: 1,
-      maxItems: 4,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: Object.keys(VERIFY_EXAMPLE.verified[0]),
-        properties: {
-          name: { type: 'string' },
-          verdict: { type: 'string', enum: ['confirmed', 'corrected', 'unsupported'] },
-          confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
-          source_url: { type: 'string' },
-          as_of_date: { type: 'string' },
-          corrected_value: { type: 'string' },
-          note: { type: 'string' },
-        },
-      },
-    },
-  },
-};
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return respond(200, '');
@@ -97,7 +71,7 @@ exports.handler = async (event) => {
   const prompt = body.mode === 'verify' ? buildVerifyPrompt(body) : buildAskPrompt(body);
   if (prompt.error) return respond(400, { error: prompt.error });
 
-  const call = await runGemini(key, prompt.text, body.mode === 'verify');
+  const call = await runGemini(key, prompt.text);
   if (call.error)
     return respond(call.status, { error: call.error, code: call.code || 'provider_error' });
 
@@ -161,9 +135,10 @@ function buildVerifyPrompt(body) {
     .join('\n');
   return {
     text: `These ${items.length} "${store}" entries were pulled from Japan travel
-vlogs and are UNVERIFIED. Fact-check each against the web. Use at most ONE
-web search per entry. A supported or contradicted finding requires a retrieved
-source URL; do not claim confirmation from memory alone. If
+vlogs and are UNVERIFIED. Fact-check each against the web. You MUST use the
+search tool and actually retrieve pages — never answer from memory alone. Use
+at most ONE web search per entry. A supported or contradicted finding requires
+a retrieved source URL; do not claim confirmation from memory alone. If
 an entry is inherently unverifiable (a personal anecdote, a vague claim, no
 proper noun) just return verdict "unsupported" with an empty source_url — do
 not keep searching.
@@ -187,7 +162,7 @@ ${JSON.stringify(VERIFY_EXAMPLE)}`,
   };
 }
 
-async function runGemini(key, prompt, verify = false) {
+async function runGemini(key, prompt) {
   // Bound search latency below the browser's 30s deadline.
   const ac = new AbortController();
   const killer = setTimeout(() => ac.abort(), 24500);
@@ -200,12 +175,15 @@ async function runGemini(key, prompt, verify = false) {
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           tools: [{ google_search: {} }],
+          // No responseJsonSchema / thinkingConfig here: on generateContent,
+          // combining structured-output settings or a minimal thinking level
+          // with the google_search tool makes the model skip retrieval and
+          // answer from memory. JSON is enforced by prompt + parseJsonLoose,
+          // and enforceGrounding rejects any verdict without retrieved chunks.
           generationConfig: {
             maxOutputTokens: 4096,
             temperature: 0.2,
-            thinkingConfig: { thinkingLevel: 'MINIMAL', includeThoughts: false },
             responseMimeType: 'application/json',
-            ...(verify ? { responseJsonSchema: VERIFY_SCHEMA } : {}),
           },
         }),
         signal: ac.signal,
@@ -360,7 +338,6 @@ module.exports._internal = {
   buildAskPrompt,
   runGemini,
   enforceGrounding,
-  VERIFY_SCHEMA,
   VERIFY_EXAMPLE,
   SHAPE,
   MODEL,
