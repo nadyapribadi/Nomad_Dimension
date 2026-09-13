@@ -10,6 +10,7 @@
   "scripts": {
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "dev": "netlify dev",
+    "graph:index": "npx gitnexus@latest analyze --max-file-size 1024 --skip-agents-md",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
