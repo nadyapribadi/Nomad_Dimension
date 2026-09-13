@@ -151,3 +151,86 @@ test('valid saved routing still calls the selected provider and model', async ()
     else process.env.OPENAI_API_KEY = oldKey;
   }
 });
+
+test('explicit fallback uses the existing saved fallback with one model attempt', async () => {
+  const oldToken = process.env.NOTION_TOKEN,
+    oldKey = process.env.OPENAI_API_KEY,
+    oldFetch = global.fetch;
+  try {
+    process.env.NOTION_TOKEN = 'fixture';
+    process.env.OPENAI_API_KEY = 'fixture';
+    delete require.cache[require.resolve('../ai-run')];
+    const fresh = require('../ai-run').handler;
+    let models = [];
+    global.fetch = async (url, options) => {
+      if (url.includes('/blocks/'))
+        return {
+          ok: true,
+          json: async () => ({
+            results: [
+              {
+                type: 'code',
+                code: {
+                  rich_text: [
+                    {
+                      plain_text: JSON.stringify({
+                        dialogue: { provider: 'openai', model: 'dialogue' },
+                        outline: {
+                          provider: 'deepseek',
+                          model: 'primary',
+                          fallback: { provider: 'openai', model: 'saved-fallback' },
+                        },
+                      }),
+                    },
+                  ],
+                },
+              },
+            ],
+            has_more: false,
+          }),
+        };
+      if (url.startsWith('https://api.openai.com/')) {
+        models.push(JSON.parse(options.body).model);
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: '{"summary":"done"}' }, finish_reason: 'stop' }],
+          }),
+        };
+      }
+      if (url === 'https://api.notion.com/v1/pages') return { ok: true };
+      throw new Error('Unexpected provider');
+    };
+    const response = await fresh(
+      post({
+        task: 'outline',
+        routeChoice: 'fallback',
+        singleAttempt: true,
+        maxTokens: 100,
+        messages: [{ role: 'user', content: 'Return JSON' }],
+      })
+    );
+    assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(models, ['saved-fallback']);
+    assert.equal(
+      (
+        await fresh(
+          post({
+            task: 'places',
+            routeChoice: 'fallback',
+            singleAttempt: true,
+            messages: [{ role: 'user', content: 'Return JSON' }],
+          })
+        )
+      ).statusCode,
+      503
+    );
+    assert.equal(models.length, 1);
+  } finally {
+    global.fetch = oldFetch;
+    if (oldToken === undefined) delete process.env.NOTION_TOKEN;
+    else process.env.NOTION_TOKEN = oldToken;
+    if (oldKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = oldKey;
+  }
+});

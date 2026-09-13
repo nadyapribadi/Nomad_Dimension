@@ -186,3 +186,9 @@ retains completed extraction parts and asks the operator to resume explicitly.
 An explicit null model fallback disables provider switching. An omitted fallback
 in a direct `callModel` request still uses the built-in task default. Extraction
 uses `singleAttempt`, suppressing both same-model retries and provider fallback.
+
+`ai-run` also accepts `routeChoice: "fallback"` for an explicit retry through the
+existing saved task fallback. It cannot be combined with provider/model overrides.
+No saved fallback means 503 before calling a provider. The extraction client keeps
+singleAttempt enabled and reuses completed source checkpoints. DeepSeek V4/chat
+structured extraction requests non-thinking JSON; other tasks retain their mode.

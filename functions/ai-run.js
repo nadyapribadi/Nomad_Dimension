@@ -67,6 +67,7 @@ exports.handler = async (event) => {
     temperature,
     episode,
     singleAttempt,
+    routeChoice = 'primary',
   } = payload;
 
   // Validate before looking up settings or making any paid request.
@@ -86,17 +87,28 @@ exports.handler = async (event) => {
       code: 'invalid_request',
     });
   }
+  if (
+    !['primary', 'fallback'].includes(routeChoice) ||
+    (routeChoice === 'fallback' && (provider || model))
+  ) {
+    return respond(400, {
+      error: 'Select a saved primary or fallback route',
+      code: 'invalid_request',
+    });
+  }
   let p = provider;
   let m = model;
   let fallback = null;
   if (!p) {
     try {
       const routing = await getRouting();
-      const route = routing?.[task];
-      if (!route?.provider || !route?.model) throw new Error(`No saved model choice for ${task}`);
+      const saved = routing?.[task];
+      const route = routeChoice === 'fallback' ? saved?.fallback : saved;
+      if (!route?.provider || !route?.model)
+        throw new Error(`No saved ${routeChoice} model choice for ${task}`);
       p = route.provider;
       m = route.model;
-      fallback = route.fallback || null;
+      fallback = routeChoice === 'fallback' ? null : route.fallback || null;
     } catch (error) {
       return respond(503, {
         error: `AI choices could not be loaded: ${error.message}. No model was called. Check Settings and retry.`,
@@ -117,6 +129,7 @@ exports.handler = async (event) => {
       maxTokens,
       temperature,
       singleAttempt: singleAttempt === true,
+      structuredOutput: singleAttempt === true && ['outline', 'places'].includes(task),
     });
   } catch (err) {
     return respond(STATUS_BY_CODE[err.code] || 500, {

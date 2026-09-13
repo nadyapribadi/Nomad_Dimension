@@ -1335,3 +1335,138 @@ test('material and Places HTTP 408 creates retain their replay protection', asyn
   await h.run('saveConfirmedPlaces()');
   assert.equal(h.calls.filter((c) => c.endpoint === 'pages').length, 1);
 });
+
+test('chat import offers quote recovery without changing the quoted words or accepting truncated JSON', () => {
+  const t = setup();
+  t.c.paste = '{"summary":"Osaka is the "kitchen of Japan," with many foods.","food":[]}';
+  const result = t.run('parseExtractionImport(paste)');
+  assert.equal(result.repairs, 2);
+  assert.equal(result.parsed.summary, 'Osaka is the "kitchen of Japan," with many foods.');
+  t.c.paste = '{"summary":"Incomplete';
+  assert.throws(() => t.run('parseExtractionImport(paste)'), /incomplete or malformed/);
+});
+
+test('chat drafts are isolated by source and importing does not jump away from the queue', async () => {
+  const t = setup(),
+    first = t.add(),
+    second = t.add('food'),
+    S = t.run('S');
+  S.epQueue = [
+    {
+      id: first.material.id,
+      title: 'Tokyo',
+      transcript: 'Tokyo source',
+      url: 'https://example.com/tokyo',
+    },
+    {
+      id: second.material.id,
+      title: 'Osaka',
+      transcript: 'Osaka source',
+      url: 'https://example.com/osaka',
+    },
+  ];
+  S.epSelected = new Set([0, 1]);
+  await t.run('openExtractionChat(0)');
+  t.element('extract-chat-result').value = JSON.stringify({ summary: 'Tokyo draft' });
+  t.run('retainExtractionChat()');
+  await t.run('openExtractionChat(1)');
+  assert.equal(t.element('extract-chat-result').value, '');
+  t.element('extract-chat-result').value = JSON.stringify({ summary: 'Osaka draft' });
+  t.run('retainExtractionChat();reviewExtractionChat()');
+  assert.equal(t.element('extract-chat-use').disabled, true);
+  t.element('extract-chat-confirm').checked = true;
+  await t.run('useExtractionChat()');
+  assert.equal(t.element('res-tab-prep').dataset.step, '2');
+  assert.equal(S.epQueue[0].breakdown, undefined);
+  assert.equal(S.epQueue[1].breakdown.summary, 'Osaka draft');
+  assert.ok(
+    t.calls
+      .filter((c) => c.method === 'PATCH')
+      .every((c) => c.endpoint === `pages/${second.material.id}`)
+  );
+  await t.run('openExtractionChat(0)');
+  assert.match(t.element('extract-chat-result').value, /Tokyo draft/);
+});
+
+test('source-ID mismatch blocks import and a reordered queue retains the right destination', async () => {
+  const t = setup(),
+    item = t.add(),
+    S = t.run('S');
+  const v = { id: item.material.id, title: 'Osaka', transcript: 'Source transcript' };
+  S.epQueue = [v];
+  S.epSelected = new Set([0]);
+  await t.run('openExtractionChat(0)');
+  t.element('extract-chat-result').value = JSON.stringify({
+    source_id: 'another-source',
+    summary: 'Wrong',
+  });
+  t.run('reviewExtractionChat()');
+  assert.match(t.element('extract-chat-review').textContent, /different source/);
+  assert.equal(t.element('extract-chat-use').disabled, true);
+  t.element('extract-chat-result').value = JSON.stringify({ source_id: v.id, summary: 'Correct' });
+  t.run('reviewExtractionChat()');
+  t.element('extract-chat-confirm').checked = true;
+  S.epQueue = [{ id: 'other', title: 'Tokyo' }, v];
+  S.epSelected = new Set([1]);
+  await t.run('useExtractionChat()');
+  assert.equal(v.breakdown.summary, 'Correct');
+  assert.equal(S.epQueue[0].breakdown, undefined);
+});
+
+test('source-focused review excludes candidates from the other video and next-source returns to its workspace', () => {
+  const t = setup(),
+    S = t.run('S');
+  S.epQueue = [
+    {
+      id: 'tokyo',
+      title: 'Tokyo',
+      transcript: 'Tokyo',
+      breakdown: { food: [{ dish: 'Tokyo dish' }] },
+    },
+    {
+      id: 'osaka',
+      title: 'Osaka',
+      transcript: 'Osaka',
+      breakdown: { food: [{ dish: 'Osaka dish' }] },
+    },
+  ];
+  S.epSelected = new Set([0, 1]);
+  t.run('reviewSourceMaterial(0)');
+  assert.equal(t.run("poolFor('food','prep').length"), 1);
+  assert.equal(t.run("poolFor('food','prep')[0].dish"), 'Tokyo dish');
+  t.run('movePrepSource(1)');
+  assert.equal(S.prepFocusId, 'osaka');
+  assert.equal(t.element('res-tab-prep').dataset.step, '2');
+  assert.match(t.element('ep-prep-list').innerHTML, /Source 2 of 2/);
+});
+
+test('explicit saved-fallback retry reuses completed extraction parts', async () => {
+  const t = setup();
+  const routes = [];
+  let calls = 0;
+  t.c.transcript = 'A'.repeat(4000) + 'B'.repeat(100);
+  t.c.runExtractChunk = async (text, shape, guard, task, route) => {
+    routes.push(route);
+    calls++;
+    if (calls === 2) throw new Error('Primary failed');
+    return { research: [{ statement: text[0] }] };
+  };
+  await assert.rejects(
+    t.run("runExtractCall(transcript,'schema','guard',{key:'same-source'})"),
+    /Primary failed/
+  );
+  const result = await t.run(
+    "runExtractCall(transcript,'schema','guard',{key:'same-source',routeChoice:'fallback'})"
+  );
+  assert.deepEqual(routes, ['primary', 'primary', 'fallback']);
+  assert.equal(result.research.length, 2);
+});
+
+test('material save receipts are separate for each reviewed source', () => {
+  const t = setup();
+  t.run(
+    "S.reviewSourceId='tokyo';REVIEW.receipts[reviewReceiptKey('prep')]={saved:1};S.reviewSourceId='osaka'"
+  );
+  assert.equal(t.run("REVIEW.receipts[reviewReceiptKey('prep')]"), undefined);
+  assert.equal(t.run("REVIEW.receipts['prep:tokyo'].saved"), 1);
+});

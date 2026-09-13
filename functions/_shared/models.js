@@ -117,8 +117,6 @@ async function callModel(req, deps = {}) {
         if (Date.now() >= deadline)
           throw taxonomyError('network', 'Model request deadline reached');
         const res = await adapter({ ...req, model: mdl }, { fetch: timedFetch, env });
-        if (!res.text || !res.text.trim())
-          throw taxonomyError('provider_error', 'Model returned no text');
         const stop =
           res.raw?.stop_reason ||
           res.raw?.choices?.[0]?.finish_reason ||
@@ -127,6 +125,13 @@ async function callModel(req, deps = {}) {
           throw taxonomyError(
             'invalid_request',
             'Model output was truncated. Shorten the section or increase its output limit.'
+          );
+        if (!res.text || !res.text.trim())
+          throw taxonomyError(
+            'invalid_request',
+            res.raw?.choices?.[0]?.message?.reasoning_content
+              ? 'The provider returned reasoning without a final answer. No result was saved. Use non-thinking extraction or select another model.'
+              : 'The provider returned no final text. No result was saved. Retry explicitly or use another chat.'
           );
         return { ...res, costUsd: cost(mdl, res.usage) };
       } catch (err) {
@@ -276,6 +281,12 @@ async function openaiCompatibleAdapter(provider, req, { fetch, env }) {
     ? [{ role: 'system', content: req.system }, ...req.messages]
     : req.messages;
   const body = { model: req.model, messages };
+  // Bounded extraction needs final JSON, not a reasoning-only response.
+  // https://api-docs.deepseek.com/guides/thinking_mode/
+  if (provider === 'deepseek' && req.structuredOutput && /^deepseek-(?:v4|chat)/.test(req.model)) {
+    body.thinking = { type: 'disabled' };
+    body.response_format = { type: 'json_object' };
+  }
   // ponytail: OpenAI o-series and *-reasoner models reject max_tokens and
   // temperature; they want max_completion_tokens and no temperature.
   const reasoning = /(^|\/)o\d/.test(req.model) || /reason/i.test(req.model);

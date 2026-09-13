@@ -315,3 +315,52 @@ test('single-attempt extraction does not repeat a failed request or charge throu
   );
   assert.equal(fetch.calls.length, 1);
 });
+
+test('DeepSeek structured extraction disables thinking and requests final JSON without switching providers', async () => {
+  const fetch = mockFetch(() =>
+    ok({
+      choices: [{ message: { content: '{"food":[]}' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+    })
+  );
+  const result = await callModel(
+    {
+      provider: 'deepseek',
+      model: 'deepseek-v4-pro',
+      task: 'outline',
+      structuredOutput: true,
+      singleAttempt: true,
+      maxTokens: 2400,
+      messages: [{ role: 'user', content: 'Return JSON' }],
+    },
+    { fetch, env: { DEEPSEEK_API_KEY: 'fixture' } }
+  );
+  assert.equal(result.text, '{"food":[]}');
+  assert.equal(fetch.calls.length, 1);
+  assert.deepEqual(fetch.calls[0].body.thinking, { type: 'disabled' });
+  assert.deepEqual(fetch.calls[0].body.response_format, { type: 'json_object' });
+  assert.equal(fetch.calls[0].body.max_tokens, 2400);
+});
+
+test('reasoning-only truncated replies report the output limit rather than hiding it as empty text', async () => {
+  const fetch = mockFetch(() =>
+    ok({
+      choices: [
+        { message: { content: '', reasoning_content: 'internal' }, finish_reason: 'length' },
+      ],
+    })
+  );
+  await assert.rejects(
+    callModel(
+      {
+        provider: 'deepseek',
+        model: 'deepseek-v4-pro',
+        singleAttempt: true,
+        messages: [{ role: 'user', content: 'Extract' }],
+      },
+      { fetch, env: { DEEPSEEK_API_KEY: 'fixture' } }
+    ),
+    /truncated/
+  );
+  assert.equal(fetch.calls.length, 1);
+});
