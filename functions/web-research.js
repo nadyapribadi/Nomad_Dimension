@@ -83,8 +83,9 @@ function buildVerifyPrompt(body) {
     .join('\n');
   return {
     text: `These ${items.length} "${store}" entries were pulled from Japan travel
-vlogs and are UNVERIFIED. Fact-check each against the web. Be FAST: at most ONE
-web search per entry, skip entries you can judge from general knowledge, and if
+vlogs and are UNVERIFIED. Fact-check each against the web. Use at most ONE
+web search per entry. A supported or contradicted finding requires a retrieved
+source URL; do not claim confirmation from memory alone. If
 an entry is inherently unverifiable (a personal anecdote, a vague claim, no
 proper noun) just return verdict "unsupported" with an empty source_url — do
 not keep searching.

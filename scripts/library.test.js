@@ -511,7 +511,7 @@ test('saving a completed analysis retries Notion without another model call', as
   assert.ok(t.calls.some((c) => c.method === 'PATCH'));
 });
 
-test('fact-check generation makes a review proposal without writing original material', async () => {
+test('fact-check saves a labelled AI finding automatically while leaving original claims intact', async () => {
   const t = setup(),
     item = t.add('research', 'A claim'),
     S = t.run('S');
@@ -537,19 +537,23 @@ test('fact-check generation makes a review proposal without writing original mat
   });
   t.c.confirmIdeaChange = async () => true;
   await t.run('runLibVerify()');
-  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 0);
-  assert.ok(S.vlib[0]._proposal);
-  t.c.key = item.material.id;
-  await t.run("saveVerdictProposal(key,document.getElementById('save'))");
   assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 1);
-  assert.equal(S.vlib[0]._proposal, null);
+  assert.equal(S.vlib[0]._aiPending, null);
+  t.c.fact = S.vlib[0];
+  const record = t.run('checkRecord(fact)');
+  assert.equal(record.ai.verdict, 'confirmed');
+  assert.equal(record.review, undefined);
+  assert.equal(t.text(t.pages.get(item.material.id).properties.Statement), 'A claim');
+  assert.match(t.element('vlib-results').innerHTML, /Supported/);
+  assert.match(t.element('vlib-results').innerHTML, /Read this source/);
+  assert.match(t.element('vlib-results').innerHTML, /Not reviewed · optional/);
 });
 
-test('depleted credits stop later fact-check groups and preserve completed suggestions and pending rows', async () => {
+test('depleted credits stop later fact-check groups and preserve automatically saved results and pending rows', async () => {
   const t = setup(),
     S = t.run('S');
   S.vlib = Array.from({ length: 12 }, (_, i) => ({
-    id: `row-${i}`,
+    id: t.add('research', `Claim ${i}`).material.id,
     name: `Claim ${i}`,
     store: 'research',
     fields: 'Context',
@@ -570,9 +574,9 @@ test('depleted credits stop later fact-check groups and preserve completed sugge
   t.c.confirmIdeaChange = async () => true;
   await t.run('runLibVerify()');
   assert.equal(calls, 2);
-  assert.equal(S.vlib.filter((r) => r._proposal).length, 4);
+  assert.equal(S.vlib.filter((r) => r._newStatus).length, 4);
   assert.equal(S.vlib.filter((r) => !S._vlibSkip.has(r.id)).length, 8);
-  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 0);
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 4);
   assert.match(t.element('verify-save-status').textContent, /Checks stopped/);
   assert.match(t.element('verify-save-status').textContent, /8 rows remain selected/);
 });
@@ -1834,4 +1838,188 @@ test('discarding a fact-check suggestion cannot close a newer review during loca
   await discard;
   assert.equal(t.run("modalVersions['fact-review-modal']"), view);
   assert.equal(t.run('S.vlib[0]._proposal'), null);
+});
+
+function factFixture() {
+  const t = setup(),
+    item = t.add('research', 'A claim'),
+    r = {
+      id: item.material.id,
+      name: 'A claim',
+      store: 'research',
+      fields: 'Context',
+      lastEdited: item.material.lastEdited,
+    };
+  t.c.fact = r;
+  t.run('S.vlib=[fact];S._vlibSkip=new Set()');
+  t.c.confirmIdeaChange = async () => true;
+  t.c._verifyBatch = async () => ({
+    model: 'fixture-model',
+    verified: [
+      {
+        name: 'A claim',
+        verdict: 'confirmed',
+        source_url: 'https://example.org/evidence',
+        note: 'Evidence supports this claim.',
+      },
+    ],
+  });
+  return { ...t, r };
+}
+
+test('automatic checks and optional human overrides remain separate through saving and reload', async () => {
+  const t = factFixture();
+  await t.run('runLibVerify()');
+  await t.run("_writeVerdict(fact,{verdict:'unsupported',note:'My review disagrees.'})");
+  t.run('S._vlibSkip.clear()');
+  t.c._verifyBatch = async () => ({
+    model: 'fixture-model',
+    verified: [
+      {
+        name: 'A claim',
+        verdict: 'confirmed',
+        source_url: 'https://example.org/evidence',
+        note: 'Fresh evidence supports it.',
+      },
+    ],
+  });
+  await t.run('runLibVerify()');
+  const page = t.pages.get(t.r.id);
+  t.c.reloaded = {
+    note: t.text(page.properties['Verify Note']),
+    status: page.properties['Verify Status'].select.name,
+  };
+  const record = t.run('checkRecord(reloaded)');
+  assert.equal(record.ai.verdict, 'confirmed');
+  assert.equal(record.ai.model, 'fixture-model');
+  assert.equal(record.review.note, 'My review disagrees.');
+  assert.equal(t.c.reloaded.status, 'unsupported');
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 3);
+  assert.equal(t.pages.get(t.r.id).properties.Confidence, undefined);
+});
+
+test('a lost automatic save response retains the finding and retry reconciles without AI or duplicate PATCH', async () => {
+  const t = factFixture();
+  let lost = false;
+  t.c.after = async (c) => {
+    if (c.method === 'PATCH' && !lost) {
+      lost = true;
+      throw new Error('Lost response');
+    }
+  };
+  await t.run('runLibVerify()');
+  assert.ok(t.r._aiPending);
+  assert.match(t.r._checkError, /Save failed/);
+  t.c._verifyBatch = () => {
+    throw new Error('Must not call AI on save retry');
+  };
+  await t.run('retryFactSave(fact.id)');
+  assert.equal(t.r._aiPending, null);
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 1);
+  assert.equal(t.run('checkRecord(fact).ai.verdict'), 'confirmed');
+});
+
+test('unsupported findings save without review while invalid or missing evidence never overwrites an earlier check', async () => {
+  const t = factFixture();
+  t.c._verifyBatch = async () => ({
+    verified: [
+      { name: 'A claim', verdict: 'unsupported', note: 'No evidence located.', source_url: '' },
+    ],
+  });
+  await t.run('runLibVerify()');
+  const saved = t.text(t.pages.get(t.r.id).properties['Verify Note']);
+  for (const reply of [
+    { verdict: 'unknown', note: 'Unclear' },
+    { verdict: 'confirmed', note: 'No URL' },
+    { verdict: 'corrected', source_url: 'javascript:alert(1)', note: 'Unsafe URL' },
+  ]) {
+    t.run('S._vlibSkip.clear()');
+    t.c._verifyBatch = async () => ({ verified: [{ name: 'A claim', ...reply }] });
+    await t.run('runLibVerify()');
+    assert.equal(t.text(t.pages.get(t.r.id).properties['Verify Note']), saved);
+    assert.equal(t.r._retry, true);
+    assert.match(t.r._checkError, /Check failed/);
+  }
+  assert.match(t.element('vlib-results').innerHTML, /No evidence found/);
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 1);
+});
+
+test('unchecked selection excludes saved findings and retained save retries without another AI call', async () => {
+  const t = factFixture();
+  await t.run('runLibVerify()');
+  t.run(
+    "S.vlib.push({id:'unchecked',name:'Unchecked',store:'research'},{id:'pending',name:'Pending',store:'research',_aiPending:{verdict:'unsupported',note:'Retained'}});S._vlibSkip=new Set();selectUncheckedFacts()"
+  );
+  assert.equal(t.run('S._vlibSkip.has(fact.id)'), true);
+  assert.equal(t.run("S._vlibSkip.has('pending')"), true);
+  assert.equal(t.run("S._vlibSkip.has('unchecked')"), false);
+});
+
+test('legacy notes are retained and failed model requests do not overwrite saved findings', async () => {
+  const t = factFixture(),
+    page = t.pages.get(t.r.id);
+  page.properties['Verify Status'] = { type: 'select', select: { name: 'confirmed' } };
+  page.properties['Verify Note'] = {
+    type: 'rich_text',
+    rich_text: [
+      { plain_text: 'Earlier evidence note', text: { content: 'Earlier evidence note' } },
+    ],
+  };
+  await t.run('runLibVerify()');
+  assert.equal(t.run('checkRecord(fact).legacy.note'), 'Earlier evidence note');
+  const saved = t.text(page.properties['Verify Note']);
+  t.run('S._vlibSkip.clear()');
+  t.c._verifyBatch = async () => {
+    throw new Error('Fixture timeout');
+  };
+  await t.run('runLibVerify()');
+  assert.equal(t.text(page.properties['Verify Note']), saved);
+  assert.match(t.element('vlib-results').innerHTML, /Fixture timeout/);
+  assert.match(t.element('vlib-results').innerHTML, /Supported/);
+});
+
+test('reloading restores pending AI findings and older suggestions without requiring manual review', async () => {
+  const t = factFixture();
+  await t.run(
+    "localArtifact('verify-proposal:'+fact.id,{name:fact.name,verdict:'unsupported',note:'Older suggestion'})"
+  );
+  await t.run('restoreFactDrafts(fact)');
+  assert.equal(t.r._aiPending.note, 'Older suggestion');
+  assert.equal(t.r._proposal, null);
+  await t.run('retryFactSave(fact.id)');
+  assert.equal(t.run('checkRecord(fact).ai.verdict'), 'unsupported');
+  assert.equal(t.run('checkRecord(fact).review'), undefined);
+});
+
+test('duplicate model entries fail the affected claim rather than arbitrarily saving one', async () => {
+  const t = factFixture();
+  t.c._verifyBatch = async () => ({
+    verified: [
+      { name: 'A claim', verdict: 'unsupported', note: 'One' },
+      { name: 'A claim', verdict: 'confirmed', source_url: 'https://example.org', note: 'Two' },
+    ],
+  });
+  await t.run('runLibVerify()');
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 0);
+  assert.match(t.r._checkError, /duplicated/);
+});
+
+test('same-name records with different context require separate checks to avoid a mismatched result', async () => {
+  const t = factFixture();
+  t.run("S.vlib.push({...fact,id:'different-record',fields:'Different source'})");
+  await t.run('runLibVerify()');
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 0);
+  assert.match(t.r._checkError, /same-name records separately/);
+});
+
+test('unsaved extraction checks persist locally without creating material in Notion', async () => {
+  const t = factFixture();
+  delete t.r.id;
+  t.r._key = 'candidate-source-A';
+  await t.run('runLibVerify()');
+  assert.equal(t.calls.length, 0);
+  t.c.restored = { _key: 'candidate-source-A', name: 'A claim', store: 'research' };
+  await t.run('restoreFactDrafts(restored)');
+  assert.equal(t.run('checkRecord(restored).ai.verdict'), 'confirmed');
+  assert.equal(t.run('hasCheck(restored)'), true);
 });

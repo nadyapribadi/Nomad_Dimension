@@ -1576,7 +1576,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
   </div>
 
   <!-- WEB TAB -->
-  <div id="res-tab-web" style="display:none"><div class="library-section-head"><div><span class="studio-eyebrow">REVIEW</span><h2>Check the evidence</h2><p>Bring selected material, inspect a source and record your judgement. AI can suggest evidence; you decide what is supported.</p></div><div class="action-service"><span data-action-route="factcheck"></span><button class="btn btn-sm btn-ghost" onclick="showStage(0);settingsSection('models')">AI choices ↗</button></div></div>
+  <div id="res-tab-web" style="display:none"><div class="library-section-head"><div><span class="studio-eyebrow">REVIEW</span><h2>Check the evidence</h2><p>Run AI checks and see findings, sources and notes together. Findings save automatically; add your own review only when useful.</p></div><div class="action-service"><span data-action-route="factcheck"></span><button class="btn btn-sm btn-ghost" onclick="showStage(0);settingsSection('models')">AI choices ↗</button></div></div>
     <p style="font-weight:600;font-size:13px;margin-bottom:10px">Review source claims or research a new question. You can check sources yourself, or request AI suggestions and review them before saving.</p>
     <div class="tabs" style="margin-bottom:12px">
       <button class="tab active" id="web-mode-ask" onclick="webMode('ask')">Research a question</button>
@@ -1599,7 +1599,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
       <div id="web-status" style="font-size:12px;color:var(--text3);margin-top:10px"></div>
     </div>
     <div class="card" id="web-verify-panel" style="display:none"><p id="verify-save-status" role="status" class="library-message"></p><details id="fact-material-picker" open><summary>1. Choose material <span id="fact-material-count"></span></summary><button class="btn" onclick="verifyLibrarySelection()">Use selected Library material</button>
-      <p style="color:var(--text2);font-size:13px;margin-bottom:10px">Bring your Library selection or load a table below. You can review each claim manually, or select rows for AI suggestions.</p>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:10px">Bring your Library selection or load a table below. Select unchecked claims for AI checks, or add your own review when useful.</p>
       <div class="tabs" style="margin-bottom:10px">
         <button class="tab active" id="vsrc-saved" onclick="setVerifySource('saved')">Rows already saved in Notion</button>
         <button class="tab" id="vsrc-session" onclick="setVerifySource('session')">Rows found this session (not saved yet)</button>
@@ -1613,7 +1613,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
         <button class="btn btn-sm btn-primary" onclick="searchLibrary(this)">Load / search →</button>
         <button class="btn btn-sm btn-ghost" id="vlib-dedupe-btn" onclick="findDuplicates(this)" title="Load the ticked tables and group near-duplicate + thin rows so you can archive them">🧹 Find duplicates in these tables</button>
       </div>
-      </details><h3 class="review-step-heading">2. Review evidence and save your judgement</h3><div id="vlib-results"></div>
+      </details><h3 class="review-step-heading">2. Check claims and see the evidence</h3><div id="vlib-results"></div>
     </div>
     <div class="card" id="web-new-rows">
       <div class="card-title"><span class="icon">📤</span> New rows found on the web — save to tables</div>
@@ -4521,6 +4521,7 @@ function webMode(m) {
 }
 
 function setVerifySource(src) {
+  if(_libVerifying || (S.vlib || []).some(r=>r._saving)){toast('Wait for the current checks or saves to finish.');return;}
   S._vlibSource = src;
   document.getElementById('vsrc-saved').classList.toggle('active', src === 'saved');
   document.getElementById('vsrc-session').classList.toggle('active', src === 'session');
@@ -4571,7 +4572,7 @@ function _srcLinks(sources) {
 // One grounded verify call. Returns { verified:[], sources:[] } or throws.
 async function _verifyBatch(store, items) {
   const d = await _postJSON('/.netlify/functions/web-research', { mode: 'verify', store, items });
-  return { verified: d.verified || [], sources: d.sources || [] };
+  return { verified: d.verified || [], sources: d.sources || [], model:d.model };
 }
 
 // ─── Web · "Verify from library" — keyword search across Notion stores ───────
@@ -4603,6 +4604,7 @@ function renderVlibPicker() {
 }
 
 async function searchLibrary(btn) {
+  if(_libVerifying || (S.vlib || []).some(r=>r._saving)){toast('Wait for the current checks or saves to finish.');return;}
   const stores = LIB_STORES.filter(k => document.getElementById(`vlib-pick-${k}`)?.checked);
   if (!stores.length) { toast('Tick at least one table', 'error'); return; }
   const el = document.getElementById('vlib-results');
@@ -4618,6 +4620,7 @@ async function searchLibrary(btn) {
       }
     }
     S.vlib = out; S._vlibSkip = new Set(); S._vlibTidy = false; S._vlibArch = new Set();
+    for(const r of out){await restoreFactDrafts(r);if(hasCheck(r))S._vlibSkip.add(r.id || r._key);}
     renderVlibResults();
     toast(out.length ? `${out.length} unsaved row${out.length === 1 ? '' : 's'}` : 'Nothing found this session — analyse some videos first', out.length ? 'success' : 'error');
     return;
@@ -4640,7 +4643,7 @@ async function searchLibrary(btn) {
             .filter(([k]) => k !== cfg.titleProp && !k.startsWith('Verify') && !['Source Video', 'Date Added', 'Retrieved Date', 'Last Verified'].includes(k))
             .map(([k, v]) => { const t = _readProp(v); return t ? `${k}: ${t}` : ''; })
             .filter(Boolean).join(' · ');
-          return { store, id: row.id, lastEdited:row.last_edited_time, name, fields, status: _readProp(props['Verify Status']), note: _readProp(props['Verify Note']) };
+          return { store, id: row.id, lastEdited:row.last_edited_time, name, fields, status: _readProp(props['Verify Status']), note: richText(props['Verify Note']) };
         }).filter(r => r.name);
       }
       for (const r of S._vlibRaw[store]) {
@@ -4649,7 +4652,7 @@ async function searchLibrary(btn) {
     }
     S.vlib = out;
     S._vlibSkip = new Set(out.map(r=>r.id || r._key));
-    for(const r of out){r._proposal=await localArtifact(`verify-proposal:${r.id || r._key}`);}
+    for(const r of out){await restoreFactDrafts(r);if(!hasCheck(r))S._vlibSkip.delete(r.id || r._key);}
     S._vlibTidy = false; S._vlibArch = new Set();
     renderVlibResults();
     toast(`${out.length} ${q ? 'match' : 'row'}${out.length === 1 ? '' : q ? 'es' : 's'} across ${stores.length} table${stores.length === 1 ? '' : 's'}`, out.length ? 'success' : 'error');
@@ -4695,45 +4698,41 @@ function _clusterRows(rows, thr = 0.5) {
   return clusters;
 }
 
+const CHECK_MARKER = '\n[Nomad check v1]\n';
+function checkRecord(r) {
+  const note=r._newNote || r.note || '';
+  if(!note.includes(CHECK_MARKER))return {legacy:note || ['confirmed','corrected','unsupported'].includes(r._newStatus || r.status) ? {verdict:r._newStatus || r.status,note} : null};
+  try {const data=JSON.parse(note.split(CHECK_MARKER)[1]);if(data.version!==1 || [data.ai,data.review].filter(Boolean).some(v=>!['confirmed','corrected','unsupported'].includes(v.verdict)))throw new Error();return data;}catch{return {legacy:{verdict:r.status,note},invalid:true};}
+}
+function checkSummary(v) {return [v.corrected_value && `Correction: ${v.corrected_value}`,v.note,v.source_url,v.as_of_date && `As of ${v.as_of_date}`,v.checkedAt && `Checked ${v.checkedAt}`,v.model && `Model: ${v.model}`].filter(Boolean).join(' · ');}
+function checkLabel(v) {return {confirmed:'Supported',corrected:'Contradicted',unsupported:'No evidence found'}[v] || 'Not checked';}
+function checkBadge(v) {return `<span class="badge ${v==='confirmed'?'badge-green':v==='corrected'?'badge-amber':''}">${checkLabel(v)}</span>`;}
+function checkEvidence(v) {if(!v)return '—';const url=safeURL(v.source_url);return `<p>${_esc(v.note || 'No explanation supplied.')}</p>${v.corrected_value?`<p>Correction: ${_esc(v.corrected_value)}</p>`:''}${url!=='#'?`<a href="${_esc(url)}" target="_blank" rel="noopener noreferrer">Open evidence ↗</a>`:''}<small style="display:block">${_esc([v.as_of_date && `As of ${v.as_of_date}`,v.checkedAt && `Checked ${v.checkedAt.slice(0,10)}`,v.model].filter(Boolean).join(' · '))}</small>`;}
+function hasCheck(r) {const data=checkRecord(r);return !!(r._aiPending || data.ai || data.review || ['confirmed','corrected','unsupported'].includes(r._newStatus || r.status));}
+function selectUncheckedFacts() {S._vlibSkip ||= new Set();const visible=visibleTableKeys('fact-review-table');for(const r of S.vlib || []){const key=r.id || r._key;if(visible && !visible.has(key))continue;if(hasCheck(r))S._vlibSkip.add(key);else S._vlibSkip.delete(key);}renderVlibResults();}
 function renderVlibResults() {
-  const el = document.getElementById('vlib-results');
-  const rows = S.vlib || [];
-  if (!rows.length) {
-    el.innerHTML = `<div class="empty-state" style="padding:20px"><p>${S._vlibSource === 'session' ? 'No unsaved rows this session — analyse some videos first.' : 'Nothing loaded — type a keyword and Load, or leave it blank to load a whole table.'}</p></div>`;
-    return;
-  }
+  const el=document.getElementById('vlib-results'),rows=S.vlib || [];
+  if(!rows.length){el.innerHTML='<div class="empty-state"><p>Load material or use your Library selection to check claims.</p></div>';return;}
   const picker=document.getElementById('fact-material-picker');if(picker)picker.open=false;
   document.getElementById('fact-material-count').textContent=`· ${rows.length} loaded`;
-  if (S._vlibTidy) return renderVlibTidy(el, rows);
-  const skip = (S._vlibSkip ||= new Set());
-  const rk = (r) => r.id || r._key;          // saved rows key by page id, session rows by _key
-  const n = rows.filter(r => !skip.has(rk(r))).length;
-  el.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-      <button class="btn btn-sm btn-primary" style="padding:2px 10px" onclick="runLibVerify(this)">Suggest checks (${n}) · API</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(true)">Select shown</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="vlibAll(false)">Clear shown</button>
-      ${S._vlibSource === 'session' ? '' : '<button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">🧹 Find duplicates</button>'}
-      <span style="font-size:11px;color:var(--text3)">${rows.length} row${rows.length === 1 ? '' : 's'}</span>
-    </div>
-    <div class="library-message">Suggestions are not saved until you review them and choose Save reviewed check. Existing status: <span class="badge badge-green" style="font-size:9px">confirmed</span> web backs it · <span class="badge badge-amber" style="font-size:9px">corrected</span> web says otherwise (fix in the note) · <span class="badge" style="font-size:9px">unsupported</span> no web evidence found · <span class="badge badge-amber" style="font-size:9px">unfinished</span> run again to retry · <em>— not checked</em> not run yet. Rows fill in live as the run works through them.</div>
-    <div style="overflow:auto;max-height:55vh;border:1px solid var(--border);border-radius:var(--radius)">
-    <table id="fact-review-table" class="data-table" style="font-size:12px">
-      <thead><tr><th style="width:24px"></th><th data-filter-kind="select">Table</th><th>Name</th><th>Fields</th><th data-filter-kind="select">Review status</th></tr></thead>
-      <tbody>
-      ${rows.map(r => {
-        const k = rk(r);
-        const off = skip.has(k);
-        return `<tr id="vlrow-${_esc(k)}" data-row-key="${_esc(k)}">
-          <td><input type="checkbox" aria-label="Select claim ${_esc(r.name)}" ${off ? '' : 'checked'} onchange="toggleVlib(${_esc(JSON.stringify(k))})" style="width:14px;flex:none"></td>
-          <td style="white-space:nowrap;color:var(--text3)">${RESEARCH_STORES[r.store].label}</td>
-          <td data-filter-value="${_esc(r.name)}" style="max-width:200px;white-space:normal;font-weight:500">${_esc(r.name)}<button class="btn btn-sm" data-key="${_esc(k)}" onclick="startManualVerdict(this.dataset.key)">Review manually</button></td>
-          <td style="max-width:320px;white-space:normal;color:var(--text2)">${_esc(r.fields)}</td>
-          <td data-filter-value="${r._proposal?'Ready to review':_esc(r._newStatus || r.status || (r._retry?'Unfinished':'Not checked'))}" id="vlver-${_esc(k)}" style="max-width:200px;white-space:normal">${_vlibVerifyCell(r)}${r._proposal?`<button class="btn btn-sm" data-key="${_esc(k)}" onclick="openFactReview(this.dataset.key)">Review suggestion</button>`:''}</td>
-        </tr>`;
-      }).join('')}
-      </tbody>
-    </table></div>`;
+  if(S._vlibTidy)return renderVlibTidy(el,rows);
+  const skip=S._vlibSkip ||= new Set(),n=rows.filter(r=>!skip.has(r.id || r._key)).length;
+  const failed=rows.filter(r=>r._retry && !r._aiPending).length;
+  el.innerHTML=`<div class="btn-row" style="flex-wrap:wrap">
+    <button class="btn btn-primary" ${_libVerifying || !n?'disabled':''} onclick="runLibVerify(this)">${_libVerifying?'Checking…':`Check selected (${n}) · API`}</button>
+    <button class="btn" onclick="selectUncheckedFacts()">Select unchecked</button>
+    <button class="btn btn-ghost" onclick="vlibAll(true)">Select shown</button><button class="btn btn-ghost" onclick="vlibAll(false)">Clear selection</button>
+    ${failed?`<button class="btn" ${_libVerifying?'disabled':''} onclick="runLibVerify(this,'failed')">Retry failed (${failed}) · API</button>`:''}
+    ${S._vlibSource==='session'?'':'<button class="btn btn-ghost" onclick="tidyVlib()">Find duplicates</button>'}</div>
+    <p class="library-message">AI findings save automatically. Human review is optional. “No evidence found” does not mean false. Checkboxes choose the next AI check; existing checks are skipped by default.</p>
+    <div style="overflow:auto;max-height:65vh;border:1px solid var(--border);border-radius:var(--radius)"><table id="fact-review-table" class="data-table" style="font-size:12px;min-width:850px"><thead><tr><th></th><th data-filter-kind="select">Table</th><th>Claim</th><th data-filter-kind="select">AI check</th><th>Evidence &amp; notes</th><th data-filter-kind="select">Your review</th></tr></thead><tbody>${rows.map(r=>{
+      const k=r.id || r._key,data=checkRecord(r),ai=r._aiPending || data.ai,legacy=data.legacy;
+      return `<tr id="vlrow-${_esc(k)}" data-row-key="${_esc(k)}"><td><input type="checkbox" aria-label="Select claim ${_esc(r.name)}" ${skip.has(k)?'':'checked'} onchange="toggleVlib(${_esc(JSON.stringify(k))})"></td><td>${RESEARCH_STORES[r.store].label}</td>
+      <td style="min-width:200px;max-width:310px;white-space:normal" data-filter-value="${_esc(r.name)}"><strong>${_esc(r.name)}</strong><details><summary>Source context</summary><p>${_esc(r.fields || '')}</p></details></td>
+      <td style="white-space:normal;min-width:130px" data-filter-value="${r._retry?'Check failed':checkLabel(ai?.verdict)}">${ai?checkBadge(ai.verdict):'Not checked'}<small style="display:block">${r._aiPending?'Not saved':data.ai?(r.id?'Saved AI finding':'Saved on this device'):''}</small>${r._checking?'<p role="status">Checking…</p>':''}${r._checkError?`<p role="status" style="color:var(--accent)">${_esc(r._checkError)}</p>`:''}${r._aiPending?`<button class="btn btn-sm" ${r._saving || r._checking?'disabled':''} data-key="${_esc(k)}" onclick="retryFactSave(this.dataset.key)">Retry save · no AI</button>`:''}</td>
+      <td style="min-width:200px;max-width:320px;white-space:normal">${checkEvidence(ai)}${legacy?`<details><summary>Previous saved check · reviewer unknown</summary>${checkBadge(legacy.verdict)}<p>${_esc(legacy.note)}</p></details>`:''}${r._proposal?'<small>Unfinished review retained</small>':''}</td>
+      <td style="white-space:normal;min-width:130px" data-filter-value="${data.review?'Reviewed':'Not reviewed'}">${data.review?`Reviewed · ${checkLabel(data.review.verdict)}<details><summary>Your note</summary>${checkEvidence(data.review)}</details>`:'Not reviewed · optional'}<button class="btn btn-sm" ${r._saving || r._checking?'disabled':''} data-key="${_esc(k)}" onclick="startManualVerdict(this.dataset.key)">${data.review || r._proposal?'Edit review':'Review / override'}</button></td></tr>`;
+    }).join('')}</tbody></table></div>`;
   enhanceTable('fact-review-table');
 }
 
@@ -4741,8 +4740,8 @@ function renderVlibResults() {
 
 function openManualResearch() { const q=document.getElementById('web-query').value.trim();if(!q){toast('Enter a research question first');return;}window.open('https://www.google.com/search?q='+encodeURIComponent(q),'_blank','noopener,noreferrer'); }
 async function startManualVerdict(key) {
-  const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r)return;
-  if(!r._proposal){r._proposal={verdict:'',source_url:'',note:'',baseEdited:r.lastEdited || null};await localArtifact(`verify-proposal:${key}`,r._proposal);}
+  const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r || r._saving || r._checking)return;
+  if(!r._proposal){const data=checkRecord(r);r._proposal={...(data.review || data.ai || {verdict:'',source_url:'',note:''}),baseEdited:r.lastEdited || null};await localArtifact(`verify-proposal:${key}`,r._proposal);}
   renderVlibResults();openFactReview(key);
 }
 function openFactReview(key) {
@@ -4751,11 +4750,12 @@ function openFactReview(key) {
   document.getElementById('fact-review-error').textContent='';openModal('fact-review-modal');
 }
 async function verifyLibrarySelection(explicitRows=null) {
+  if(_libVerifying || (S.vlib || []).some(r=>r._saving)){toast('Wait for the current checks or saves to finish.');return;}
   const selected=explicitRows || Object.values(LIB.selected);if(!selected.length){document.getElementById('verify-save-status').textContent='Select material in Saved material first.';return;}
   S._vlibSource='saved';S._vlibTidy=false;S._vlibSkip=new Set();
-  S.vlib=selected.map(m=>({id:m.id,store:m.category,name:m.name,lastEdited:m.lastEdited,fields:Object.entries(m.properties).map(([k,v])=>`${k}: ${libProperty(v)}`).join(' · '),status:libVerification(m)}));
-  for(const r of S.vlib)r._proposal=await localArtifact(`verify-proposal:${r.id}`);
-  renderVlibResults();document.getElementById('verify-save-status').textContent=`${selected.length} Library rows selected for checking. Suggest checks uses API credits; saving is a separate action.`;
+  S.vlib=selected.map(m=>({id:m.id,store:m.category,name:m.name,lastEdited:m.lastEdited,fields:Object.entries(m.properties).map(([k,v])=>`${k}: ${libProperty(v)}`).join(' · '),status:libVerification(m),note:richText(m.properties['Verify Note'])}));
+  for(const r of S.vlib){await restoreFactDrafts(r);if(hasCheck(r))S._vlibSkip.add(r.id);}
+  renderVlibResults();document.getElementById('verify-save-status').textContent=`${selected.length} Library rows selected for checking. AI checks use API credits and save automatically. Human review is optional.`;
 }
 function renderVerdictProposal(r) {
   if(!r._proposal)return '';
@@ -4763,14 +4763,14 @@ function renderVerdictProposal(r) {
   return `<details open class="verdict-proposal"><summary>Your review · not saved</summary><label>Verdict<select aria-label="Verdict" data-key="${_esc(k)}" onchange="editVerdictProposal(this.dataset.key,'verdict',this.value)"><option value="">Choose a judgement</option>${['confirmed','corrected','unsupported'].map(x=>`<option ${v.verdict===x?'selected':''}>${x}</option>`).join('')}</select></label><label>Source URL<input data-key="${_esc(k)}" value="${_esc(v.source_url || '')}" oninput="editVerdictProposal(this.dataset.key,'source_url',this.value)"></label><a data-review-source href="${_esc(safeURL(v.source_url))}" ${safeURL(v.source_url)==='#'?'hidden':''} target="_blank" rel="noopener">Inspect source ↗</a><label>Correction, if needed<input data-key="${_esc(k)}" value="${_esc(v.corrected_value || '')}" oninput="editVerdictProposal(this.dataset.key,'corrected_value',this.value)"></label><label>Review note<textarea aria-label="Review note" rows="4" data-key="${_esc(k)}" oninput="editVerdictProposal(this.dataset.key,'note',this.value)">${_esc(v.note || '')}</textarea></label><button class="btn btn-sm" data-key="${_esc(k)}" onclick="saveVerdictProposal(this.dataset.key,this)">Save reviewed check</button><button class="btn btn-sm btn-ghost" data-key="${_esc(k)}" onclick="discardVerdictProposal(this.dataset.key)">Discard suggestion</button></details>`;
 }
 function editVerdictProposal(key,field,value) {
-  const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r?._proposal || r._saving)return;r._proposal[field]=value;
+  const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r?._proposal || r._saving || r._checking)return;r._proposal[field]=value;
   if(field==='source_url'){const link=document.querySelector('[data-review-source]');if(link){link.href=safeURL(value);link.hidden=safeURL(value)==='#';}}
   localArtifact(`verify-proposal:${key}`,r._proposal).catch(()=>{document.getElementById('fact-review-error').textContent='Could not retain this edit on this device. Keep the review open until you save it.';});
 }
 async function discardVerdictProposal(key) {const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r || r._saving)return;const view=modalVersions['fact-review-modal'];r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);if(modalVersions['fact-review-modal']===view)closeModal('fact-review-modal');renderVlibResults();}
 async function saveVerdictProposal(key,btn) {
-  const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r?._proposal || r._saving)return;
-  const proposal={...r._proposal},view=modalVersions['fact-review-modal'];r._saving=true;btn.disabled=true;document.querySelectorAll('#fact-review-content input, #fact-review-content select, #fact-review-content textarea').forEach(el=>el.disabled=true);
+  const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r?._proposal || r._saving || r._checking)return;
+  const proposal={...r._proposal,model:'',checkedAt:new Date().toISOString()},view=modalVersions['fact-review-modal'];r._saving=true;btn.disabled=true;document.querySelectorAll('#fact-review-content input, #fact-review-content select, #fact-review-content textarea').forEach(el=>el.disabled=true);
   try {
     if(!['confirmed','corrected','unsupported'].includes(r._proposal.verdict))throw new Error('Choose a judgement before saving.');
     if(['confirmed','corrected'].includes(r._proposal.verdict) && safeURL(r._proposal.source_url)==='#')throw new Error('Add a usable source URL before confirming or correcting this claim.');
@@ -4791,18 +4791,7 @@ function _vlibVerifyCell(r) {
 }
 
 // Repaint one row's Verify cell mid-run (the table only fully re-renders at the end).
-function _vlibPaintRow(r) {
-  const k = r.id || r._key;
-  const cell = document.getElementById(`vlver-${k}`);
-  if (cell) {cell.innerHTML = _vlibVerifyCell(r);cell.dataset.filterValue=r._proposal?'Ready to review':r._newStatus || r.status || (r._retry?'Unfinished':'Not checked');}
-  applyTableFilters('fact-review-table');
-  const tr = document.getElementById(`vlrow-${k}`);
-  if (tr && (r._newStatus || (S._vlibSkip && S._vlibSkip.has(k)))) {
-    tr.style.opacity = 0.4;
-    const cb = tr.querySelector('input[type=checkbox]');
-    if (cb) cb.checked = false;
-  }
-}
+function _vlibPaintRow() { renderVlibResults(); }
 
 function toggleVlib(id) {
   if (S._vlibSkip.has(id)) S._vlibSkip.delete(id); else S._vlibSkip.add(id);
@@ -4873,6 +4862,7 @@ function renderVlibTidy(el, rows) {
 
 let _vlibArchiving = false;
 async function archiveVlib(btn) {
+  if(_libVerifying || (S.vlib || []).some(r=>r._saving)){toast('Wait for the current checks or saves to finish.');return;}
   if (_vlibArchiving) return;
   const ids = [...(S._vlibArch || [])];
   if (!ids.length) return;
@@ -4899,106 +4889,93 @@ async function archiveVlib(btn) {
 }
 
 // write one verdict back — to the Notion page (saved row) or S.verify (session row)
-async function _writeVerdict(r, v) {
-  const verdict = ['confirmed', 'corrected', 'unsupported'].includes(v.verdict) ? v.verdict : 'unsupported';
-  const note = [v.corrected_value && `→ ${v.corrected_value}`, v.source_url, v.as_of_date, v.note]
-    .filter(Boolean).join(' · ').slice(0, 1900);
-  if (r.id) {
-    const current=await notionAPI(`pages/${r.id}`);
-    if(current.archived || current.in_trash || (r.lastEdited && current.last_edited_time!==r.lastEdited))throw new Error('This row changed in Notion. Reload and review before saving the check.');
-    await notionAPI(`pages/${r.id}`, 'PATCH', {
-      properties: {
-        'Verify Status': { select: { name: verdict } },
-        'Verify Note': { rich_text: [{ text: { content: note } }] },
-        ...(r.store === 'research' ? { 'Confidence': { select: { name: verdict === 'confirmed' && /^https?:\/\//.test(v.source_url || '') ? (['medium','high'].includes(v.confidence) ? v.confidence : 'medium') : 'low' } } } : {}),
-      },
-    });
-  } else {
-    S.verify[`${r.store}:${r.name.trim().toLowerCase()}`] = {
-      _verified: true,
-      confidence: ['low', 'medium', 'high'].includes(v.confidence) ? v.confidence : 'medium',
-      source_url: v.source_url || '',
-      as_of_date: /^\d{4}-\d{2}-\d{2}$/.test(v.as_of_date || '') ? v.as_of_date : '',
-      verify_note: `${verdict}${v.corrected_value ? ` → ${v.corrected_value}` : ''}${v.note ? ` ${v.note}` : ''}`,
-    };
-  }
-  r._newStatus = verdict; r._newNote = note; delete LIB.rows[r.store];LIB.loaded=false;delete S._vlibRaw?.[r.store];
-  return verdict;
+function validatedCheck(v) {
+  if(!v || !['confirmed','corrected','unsupported'].includes(v.verdict))throw new Error('Check failed: invalid AI verdict. Previous result retained.');
+  if(['confirmed','corrected'].includes(v.verdict) && safeURL(v.source_url)==='#')throw new Error('Check failed: the finding has no usable evidence URL. Previous result retained.');
+  const out={verdict:v.verdict};for(const key of ['note','source_url','as_of_date','corrected_value','model','checkedAt'])out[key]=String(v[key] || '');
+  if(!out.note.trim())throw new Error('Check failed: no explanation was returned.');
+  if(Object.values(out).some(x=>x.length>2000))throw new Error('Check is too long to save. Shorten its note; no text was truncated.');
+  out.confidence=['low','medium','high'].includes(v.confidence)?v.confidence:'low';
+  return out;
 }
-
-let _libVerifying = false;
-async function runLibVerify(btn) {
-  if (_libVerifying) { toast('Still checking — hang on', 'error'); return; }
-  const rows = (S.vlib || []).filter(r => !S._vlibSkip.has(r.id || r._key));
-  if (!rows.length) { toast('Select claims for AI suggestions first.'); return; }
-  _libVerifying=true;
-  const shown=visibleTableKeys('fact-review-table'),hidden=shown?rows.filter(r=>!shown.has(r.id || r._key)).length:0;
-  if(!await confirmIdeaChange('Request evidence suggestions?',`${rows.length} selected claims${hidden?`, including ${hidden} outside the current filters`:''}. This uses the Fact-check API service shown above. Suggestions remain unsaved until you review them. No automatic paid retry.`, `Check ${rows.length} claims · API`)){_libVerifying=false;return;}
-  if (btn) btn.disabled = true;
-
-  const byStore = {};
-  for (const r of rows) (byStore[r.store] ||= []).push(r);
-  const tally = { confirmed: 0, corrected: 0, unsupported: 0 };
-  let done = 0, unfinished = 0, wErr = 0, stopReason = '';
-  const total = rows.length;
-  const tick = () => { if (btn) btn.textContent = `Checking ${done + unfinished}/${total}…`; };
-  const mark = (r) => { r._retry = true; unfinished++; _vlibPaintRow(r); tick(); };
-
-  // Each group gets one call. Billing failures stop all remaining groups;
-  // completed suggestions stay available and unchecked rows remain selected.
-  async function verifyGroup(store, grp) {
-    let res;
-    try {
-      res = await _verifyBatch(store, grp.map(r => ({ name: r.name, detail: r.fields.slice(0, 300) })));
-    } catch (e) {
-      if (/prepay|billing|credits?.{0,35}(depleted|exhausted|insufficient)|insufficient.{0,20}(credits?|balance)/i.test(e.message)) {
-        stopReason='Google rejected the API request for billing or prepaid credits. Check AI Studio → Billing for the project used by the deployed API key; the monthly spend cap is a separate limit.';
-      } else stopReason=`${RESEARCH_STORES[store].label}: ${e.message}`;
-      grp.forEach(mark);
-      return;
-    }
-    const byName = new Map(grp.map(r => [r.name.trim().toLowerCase(), r]));
-    for (const v of (res.verified || [])) {
-      const r = byName.get(String(v.name || '').trim().toLowerCase());
-      if (!r) continue;
-      try {
-        r._proposal={...v,baseEdited:r.lastEdited || null};
-        await localArtifact(`verify-proposal:${r.id || r._key}`,r._proposal);
-        done++;
-        S._vlibSkip.add(r.id || r._key);   // done — a re-run then targets only the leftovers
-        _vlibPaintRow(r);
-      } catch (e) { wErr++; console.error('verify write failed', r.id || r.name, e); }
-      tick();
-    }
-    // any row the model left out of its reply — leave ticked, flag for retry
-    for (const r of grp) if (!r._newStatus && !S._vlibSkip.has(r.id || r._key)) mark(r);
+async function restoreFactDrafts(r) {
+  const key=r.id || r._key;r._proposal=await localArtifact(`verify-proposal:${key}`);r._aiPending=await localArtifact(`verify-ai-pending:${key}`);
+  if(!r.id){const saved=await localArtifact(`verify-session:${key}`);if(saved){r._newNote=saved.note;r._newStatus=saved.status;}}
+  if(!r._aiPending && r._proposal?.name){try{r._aiPending=validatedCheck(r._proposal);await localArtifact(`verify-ai-pending:${key}`,r._aiPending);r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);}catch(e){r._checkError=e.message;}}
+}
+async function _writeVerdict(r, v, origin='review') {
+  const value=validatedCheck(v),field=origin==='ai'?'ai':'review';
+  let current=null,data=checkRecord(r);
+  if(r.id){
+    current=await notionAPI(`pages/${r.id}`);
+    const stored=checkRecord({note:richText(current.properties?.['Verify Note']),status:current.properties?.['Verify Status']?.select?.name});
+    if(current.archived || current.in_trash)throw new Error('This material was archived. Reload before saving.');
+    // Reconcile a previous PATCH whose response was lost, without another write.
+    if(JSON.stringify(stored[field])===JSON.stringify(value)){r.lastEdited=current.last_edited_time;r._newNote=richText(current.properties['Verify Note']);r._newStatus=current.properties['Verify Status']?.select?.name;delete LIB.rows[r.store];LIB.loaded=false;delete S._vlibRaw?.[r.store];return r._newStatus;}
+    if(r.lastEdited && current.last_edited_time!==r.lastEdited)throw new Error('This row changed in Notion. Reload before retrying the retained result.');
+    data=stored;
   }
-
-  try {
-    verification: for (const [store, srows] of Object.entries(byStore)) {
-      for (let i = 0; i < srows.length; i += 4) {
-        await verifyGroup(store, srows.slice(i, i + 4));
-        if(stopReason)break verification;
+  if(data.invalid)throw new Error('Saved verification metadata is unreadable. Keep the existing note and resolve it in Notion before saving.');
+  const record={...data,version:1,[field]:value};
+  const effective=record.review || record.ai;
+  const summary=[record.ai && `AI check: ${checkLabel(record.ai.verdict)} · ${checkSummary(record.ai)}`,record.review && `Human review: ${checkLabel(record.review.verdict)} · ${checkSummary(record.review)}`,record.legacy && `Previous saved check (reviewer unknown): ${record.legacy.note}`].filter(Boolean).join('\n');
+  const note=summary+CHECK_MARKER+JSON.stringify(record);
+  if(note.length>16000)throw new Error('Verification history exceeds the save limit. Existing notes were not truncated.');
+  if(r.id){
+    const saved=await notionAPI(`pages/${r.id}`,'PATCH',{properties:{'Verify Status':{select:{name:effective.verdict}},'Verify Note':{rich_text:codeBlockRichText(note)}}});
+    r.lastEdited=saved.last_edited_time;
+  }else{
+    S.verify[`${r.store}:${r.name.trim().toLowerCase()}`]={_verified:true,confidence:effective.confidence,source_url:effective.source_url,as_of_date:effective.as_of_date,verify_note:summary};
+    await localArtifact(`verify-session:${r._key}`,{note,status:effective.verdict});
+  }
+  r._newStatus=effective.verdict;r._newNote=note;delete LIB.rows[r.store];LIB.loaded=false;delete S._vlibRaw?.[r.store];
+  return effective.verdict;
+}
+async function saveAutomaticCheck(r) {
+  if(!r._aiPending || r._saving)return;
+  r._saving=true;
+  try{await _writeVerdict(r,r._aiPending,'ai');await localArtifact(`verify-ai-pending:${r.id || r._key}`,null);r._aiPending=null;r._checkError='';r._retry=false;S._vlibSkip.add(r.id || r._key);}
+  catch(e){r._checkError=`Save failed: ${e.message}`;throw e;}
+  finally{r._saving=false;}
+}
+async function retryFactSave(key) {
+  const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r || r._saving || r._checking)return;
+  try{await saveAutomaticCheck(r);}catch(e){document.getElementById('verify-save-status').textContent=e.message;}renderVlibResults();
+}
+let _libVerifying = false;
+async function runLibVerify(btn, mode='selected') {
+  if(_libVerifying)return;
+  const rows=(S.vlib || []).filter(r=>!r._saving && !r._aiPending && (mode==='failed'?r._retry:!S._vlibSkip.has(r.id || r._key)));
+  if(!rows.length){toast('Select unchecked claims, or use Retry save for findings already generated.');return;}
+  _libVerifying=true;
+  let done=0,failed=0,saveFailed=0,stopReason='';
+  try{
+    const visible=visibleTableKeys('fact-review-table'),hidden=visible?rows.filter(r=>!visible.has(r.id || r._key)).length:0;
+    if(!await confirmIdeaChange('Check these claims?',`${rows.length} claims${hidden?`, including ${hidden} outside the current filters,`:''} will use the Fact-check API. Completed findings save automatically as AI checks. Existing human reviews are preserved. No automatic paid retry.`,`Check ${rows.length} claims · API`))return;
+    const byStore={};for(const r of rows){(byStore[r.store] ||= []).push(r);r._checking=true;}
+    const status=document.getElementById('verify-save-status');
+    renderVlibResults();
+    checks:for(const [store,items] of Object.entries(byStore)){
+      for(let i=0;i<items.length;i+=4){
+        const group=items.slice(i,i+4);let result;
+        try{result=await _verifyBatch(store,group.map(r=>({name:r.name,detail:(r.fields || '').slice(0,300)})));}
+        catch(e){stopReason=e.message;for(const r of group){r._retry=true;r._checkError=`Check failed: ${e.message}`;failed++;}break checks;}
+        for(const r of group){
+          const matches=(result.verified || []).filter(v=>String(v.name || '').trim().toLowerCase()===r.name.trim().toLowerCase());
+          try{
+            if(matches.length!==1 || group.filter(x=>x.name.trim().toLowerCase()===r.name.trim().toLowerCase()).length!==1)throw new Error('Check failed: the reply omitted or duplicated this claim. Check same-name records separately.');
+            r._aiPending=validatedCheck({...matches[0],model:result.model || '',checkedAt:new Date().toISOString()});
+            await localArtifact(`verify-ai-pending:${r.id || r._key}`,r._aiPending);
+            S._vlibSkip.add(r.id || r._key);
+            await saveAutomaticCheck(r);done++;
+          }catch(e){if(r._aiPending){saveFailed++;r._checkError=`Save failed: ${e.message}`;}else{failed++;r._retry=true;r._checkError=e.message;}}
+          r._checking=false;renderVlibResults();status.textContent=`${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry`;
+        }
       }
     }
-    if (S.vlib.some(r => !r.id)) renderExtractReview();
-    renderVlibResults();
-    if(stopReason) {
-      document.getElementById('verify-save-status').textContent=`Checks stopped. ${stopReason} ${done} suggestions retained; ${total-done} rows remain selected. No automatic retry or provider switch was made. You can review manually.`;
-      toast('Checks stopped. See the error below the table; completed suggestions are retained.','error');
-      return;
-    }
-    toast([
-      `${done} suggestions ready for review`,
-      tally.corrected && `${tally.corrected} corrected`,
-      tally.unsupported && `${tally.unsupported} unsupported`,
-      unfinished && `${unfinished} unfinished — still ticked, run again to retry`,
-      wErr && `${wErr} write errors`,
-    ].filter(Boolean).join(' · '), unfinished || wErr ? 'error' : 'success');
-  } finally {
-    _libVerifying = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Suggest checks · API'; }
-  }
+    status.textContent=`${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry.${stopReason?` Checks stopped: ${stopReason}. ${rows.filter(r=>!S._vlibSkip.has(r.id || r._key)).length} rows remain selected. Previous findings are retained; no automatic paid retry.`:' Human review is optional.'}`;
+    if(S.vlib.some(r=>!r.id))renderExtractReview();
+  }finally{for(const r of rows)r._checking=false;_libVerifying=false;if(btn)btn.disabled=false;renderVlibResults();}
 }
 
 // One short "key: value" line per row, so the model knows what it's checking.
@@ -7161,7 +7138,7 @@ function libNotionURL(id) { return /^[0-9a-f-]{32,36}$/i.test(String(id)) ? `htt
 function libSafeURL(value) { try { const u = new URL(value); return ['https:','http:'].includes(u.protocol) ? u.href : ''; } catch { return ''; } }
 function libProperty(p) {
   if (!p) return '';
-  if (p.title || p.rich_text) return richText(p);
+  if (p.title || p.rich_text) return richText(p).split(CHECK_MARKER)[0];
   if (p.relation) return p.relation.map(r => LIB.sources[r.id] || `Notion ${r.id}`).join(', ');
   if (p.type === 'checkbox') return p.checkbox ? 'Yes' : 'No';
   if (p.type === 'date') return [p.date?.start, p.date?.end].filter(Boolean).join(' – ');
@@ -7530,7 +7507,7 @@ async function openMaterialEdit() {
   const row=currentMaterial();if(!row)return;closeLibraryDetail();const ctx=materialEdit={row,fields:{}};
   const recovered=await localArtifact(`material-edit:${row.id}`);
   if(materialEdit!==ctx || LIB.detailKey!==row.key)return;
-  const editable=Object.entries(row.properties).filter(([,p])=>['title','rich_text','url','number','date'].includes(p.type));
+  const editable=Object.entries(row.properties).filter(([name,p])=>name!=='Verify Note' && ['title','rich_text','url','number','date'].includes(p.type));
   document.getElementById('material-edit-fields').innerHTML=editable.map(([name,p])=>{const value=recovered?.fields&&name in recovered.fields?recovered.fields[name]:p.type==='number'?p.number??'':p.type==='date'?p.date?.start||'':libProperty(p);materialEdit.fields[name]=value;return `<label>${_esc(name)}${recovered && recovered.baseEdited!==row.lastEdited?`<small>Current saved value: ${_esc(libProperty(p)||'Empty')}</small>`:''}${['title','rich_text'].includes(p.type)?`<textarea aria-label="${_esc(name)}" rows="${p.type==='title'?2:4}" data-property="${_esc(name)}" oninput="retainMaterialEdit(this)">${_esc(value)}</textarea>`:`<input aria-label="${_esc(name)}" type="${p.type==='number'?'number':p.type==='date'?'text':'url'}" data-property="${_esc(name)}" value="${_esc(value)}" oninput="retainMaterialEdit(this)">`}</label>`;}).join('');
   document.getElementById('material-edit-status').textContent=(recovered && recovered.baseEdited!==row.lastEdited?'Recovered edits are based on an older record. Compare the latest fields before saving. ':'')+'Text, links, numbers and dates are editable here. Categories, relations and computed fields remain in Notion. Empty values explicitly clear a field.';openModal('material-edit-modal');
 }
