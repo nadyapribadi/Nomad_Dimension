@@ -4716,15 +4716,16 @@ function renderVlibResults() {
   const picker=document.getElementById('fact-material-picker');if(picker)picker.open=false;
   document.getElementById('fact-material-count').textContent=`· ${rows.length} loaded`;
   if(S._vlibTidy)return renderVlibTidy(el,rows);
-  const skip=S._vlibSkip ||= new Set(),n=rows.filter(r=>!skip.has(r.id || r._key)).length;
+  const skip=S._vlibSkip ||= new Set(),n=rows.filter(r=>!r._aiPending && !r._saving && !skip.has(r.id || r._key)).length;
   const failed=rows.filter(r=>r._retry && !r._aiPending).length;
   el.innerHTML=`<div class="btn-row" style="flex-wrap:wrap">
-    <button class="btn btn-primary" ${_libVerifying || !n?'disabled':''} onclick="runLibVerify(this)">${_libVerifying?'Checking…':`Check selected (${n}) · API`}</button>
+    <button class="btn btn-primary" ${_libVerifying || !n?'disabled':''} onclick="runLibVerify(this)">${_libVerifying?'Checking…':n>FACT_RUN_LIMIT?`Check next ${FACT_RUN_LIMIT} (${n} selected) · API`:`Check selected (${n}) · API`}</button>
+    ${_libVerifying?`<button class="btn" ${_stopFactCheck?'disabled':''} onclick="_stopFactCheck=true;renderVlibResults()">${_stopFactCheck?'Stopping after current request…':'Stop after current request'}</button>`:''}
     <button class="btn" onclick="selectUncheckedFacts()">Select unchecked</button>
     <button class="btn btn-ghost" onclick="vlibAll(true)">Select shown</button><button class="btn btn-ghost" onclick="vlibAll(false)">Clear selection</button>
     ${failed?`<button class="btn" ${_libVerifying?'disabled':''} onclick="runLibVerify(this,'failed')">Retry failed (${failed}) · API</button>`:''}
     ${S._vlibSource==='session'?'':'<button class="btn btn-ghost" onclick="tidyVlib()">Find duplicates</button>'}</div>
-    <p class="library-message">AI findings save automatically. Human review is optional. “No evidence found” does not mean false. Checkboxes choose the next AI check; existing checks are skipped by default.</p>
+    <p class="library-message">AI findings save automatically. Human review is optional. “No evidence found” does not mean false. Checkboxes choose the next AI check; existing checks are skipped by default. Each confirmed run checks at most 20 claims.</p>
     <div style="overflow:auto;max-height:65vh;border:1px solid var(--border);border-radius:var(--radius)"><table id="fact-review-table" class="data-table" style="font-size:12px;min-width:850px"><thead><tr><th></th><th data-filter-kind="select">Table</th><th>Claim</th><th data-filter-kind="select">AI check</th><th>Evidence &amp; notes</th><th data-filter-kind="select">Your review</th></tr></thead><tbody>${rows.map(r=>{
       const k=r.id || r._key,data=checkRecord(r),ai=r._aiPending || data.ai,legacy=data.legacy;
       return `<tr id="vlrow-${_esc(k)}" data-row-key="${_esc(k)}"><td><input type="checkbox" aria-label="Select claim ${_esc(r.name)}" ${skip.has(k)?'':'checked'} onchange="toggleVlib(${_esc(JSON.stringify(k))})"></td><td>${RESEARCH_STORES[r.store].label}</td>
@@ -4942,23 +4943,26 @@ async function retryFactSave(key) {
   const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r || r._saving || r._checking)return;
   try{await saveAutomaticCheck(r);}catch(e){document.getElementById('verify-save-status').textContent=e.message;}renderVlibResults();
 }
-let _libVerifying = false;
+const FACT_RUN_LIMIT=20;
+let _libVerifying = false, _stopFactCheck = false;
 async function runLibVerify(btn, mode='selected') {
   if(_libVerifying)return;
-  const rows=(S.vlib || []).filter(r=>!r._saving && !r._aiPending && (mode==='failed'?r._retry:!S._vlibSkip.has(r.id || r._key)));
+  const eligible=(S.vlib || []).filter(r=>!r._saving && !r._aiPending && (mode==='failed'?r._retry:!S._vlibSkip.has(r.id || r._key)));
+  const rows=eligible.slice(0,FACT_RUN_LIMIT),groupSize=mode==='failed'?1:4;
   if(!rows.length){toast('Select unchecked claims, or use Retry save for findings already generated.');return;}
   _libVerifying=true;
-  let done=0,failed=0,saveFailed=0,stopReason='';
+  let done=0,failed=0,saveFailed=0,attempted=0,stopReason='';_stopFactCheck=false;
   try{
     const visible=visibleTableKeys('fact-review-table'),hidden=visible?rows.filter(r=>!visible.has(r.id || r._key)).length:0;
-    if(!await confirmIdeaChange('Check these claims?',`${rows.length} claims${hidden?`, including ${hidden} outside the current filters,`:''} will use the Fact-check API. Completed findings save automatically as AI checks. Existing human reviews are preserved. No automatic paid retry.`,`Check ${rows.length} claims · API`))return;
+    if(!await confirmIdeaChange('Check these claims?',`${rows.length} claims${hidden?`, including ${hidden} outside the current filters,`:''} will use the Fact-check API in at most ${Math.ceil(rows.length/groupSize)} requests${mode==='failed'?', one claim per request':''}. ${eligible.length>rows.length?`${eligible.length-rows.length} other selected claims will wait for another confirmed run. `:''}Completed findings save automatically as AI checks. Existing human reviews are preserved. No automatic paid retry.`,`Check ${rows.length} claims · API`))return;
     const byStore={};for(const r of rows){(byStore[r.store] ||= []).push(r);r._checking=true;}
     const status=document.getElementById('verify-save-status');
     renderVlibResults();
     checks:for(const [store,items] of Object.entries(byStore)){
-      for(let i=0;i<items.length;i+=4){
-        const group=items.slice(i,i+4);let result;
-        try{result=await _verifyBatch(store,group.map(r=>({name:r.name,detail:(r.fields || '').slice(0,300)})));}
+      for(let i=0;i<items.length;i+=groupSize){
+        if(_stopFactCheck){stopReason='Stopped by you after the previous request';break checks;}
+        const group=items.slice(i,i+groupSize);let result;attempted+=group.length;
+        try{result=await _verifyBatch(store,group.map(r=>({name:r.name,detail:(r.fields || '').slice(0,300)})));if(!Array.isArray(result?.verified))throw new Error('The model returned an invalid findings list. Previous results are unchanged.');}
         catch(e){stopReason=e.message;for(const r of group){r._retry=true;r._checkError=`Check failed: ${e.message}`;failed++;}break checks;}
         for(const r of group){
           const matches=(result.verified || []).filter(v=>String(v.name || '').trim().toLowerCase()===r.name.trim().toLowerCase());
@@ -4973,7 +4977,9 @@ async function runLibVerify(btn, mode='selected') {
         }
       }
     }
-    status.textContent=`${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry.${stopReason?` Checks stopped: ${stopReason}. ${rows.filter(r=>!S._vlibSkip.has(r.id || r._key)).length} rows remain selected. Previous findings are retained; no automatic paid retry.`:' Human review is optional.'}`;
+    const nextSelected=(S.vlib || []).filter(r=>!r._aiPending && !S._vlibSkip.has(r.id || r._key)).length;
+    status.textContent=`Last run: ${rows.length} claims · ${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry · ${rows.length-attempted} not attempted.${stopReason?` Checks stopped: ${stopReason}. Previous findings retained; no automatic paid retry.`:' Human review is optional.'} Next run: ${nextSelected} claims currently selected (maximum ${FACT_RUN_LIMIT} per run).`;
+
     if(S.vlib.some(r=>!r.id))renderExtractReview();
   }finally{for(const r of rows)r._checking=false;_libVerifying=false;if(btn)btn.disabled=false;renderVlibResults();}
 }

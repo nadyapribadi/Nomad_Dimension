@@ -578,7 +578,10 @@ test('depleted credits stop later fact-check groups and preserve automatically s
   assert.equal(S.vlib.filter((r) => !S._vlibSkip.has(r.id)).length, 8);
   assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 4);
   assert.match(t.element('verify-save-status').textContent, /Checks stopped/);
-  assert.match(t.element('verify-save-status').textContent, /8 rows remain selected/);
+  assert.match(
+    t.element('verify-save-status').textContent,
+    /Next run: 8 claims currently selected/
+  );
 });
 
 test('reviewed checks reject newer source versions and retain the proposal', async () => {
@@ -1219,7 +1222,10 @@ test('configuration failures stop fact-check groups and retain unfinished select
   assert.equal(calls, 1);
   assert.equal(S._vlibSkip.size, 0);
   assert.match(t.element('verify-save-status').textContent, /Configuration missing/);
-  assert.match(t.element('verify-save-status').textContent, /9 rows remain selected/);
+  assert.match(
+    t.element('verify-save-status').textContent,
+    /Next run: 9 claims currently selected/
+  );
 });
 
 test('transcript save failure retains text and retries saving without fetching again', async () => {
@@ -2022,4 +2028,117 @@ test('unsaved extraction checks persist locally without creating material in Not
   await t.run('restoreFactDrafts(restored)');
   assert.equal(t.run('checkRecord(restored).ai.verdict'), 'confirmed');
   assert.equal(t.run('hasCheck(restored)'), true);
+});
+
+test('large fact-check selections are bounded to 20 claims per explicitly confirmed run', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 1092 }, (_, i) => ({
+    id: `claim-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  let scope;
+  const batches = [],
+    writes = [];
+  t.c.confirmIdeaChange = async (_title, message) => {
+    scope = message;
+    return true;
+  };
+  t.c._verifyBatch = async (_store, items) => {
+    batches.push(items.length);
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  t.c._writeVerdict = async (r) => {
+    writes.push(r.id);
+  };
+  await t.run('runLibVerify()');
+  assert.deepEqual(batches, [4, 4, 4, 4, 4]);
+  assert.equal(writes.length, 20);
+  assert.match(scope, /1072 other selected claims/);
+  assert.match(t.element('verify-save-status').textContent, /Last run: 20 claims/);
+  assert.match(
+    t.element('verify-save-status').textContent,
+    /Next run: 1072 claims currently selected/
+  );
+  assert.match(t.element('vlib-results').innerHTML, /Check next 20 \(1072 selected\)/);
+});
+
+test('retrying failed checks uses single-claim requests and separates run scope from selection', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 10 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+    _retry: i < 2,
+  }));
+  S._vlibSkip = new Set();
+  const batches = [];
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => {
+    batches.push(items.length);
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence.',
+      })),
+    };
+  };
+  await t.run("runLibVerify(null,'failed')");
+  assert.deepEqual(batches, [1, 1]);
+  assert.match(t.element('verify-save-status').textContent, /Last run: 2 claims/);
+  assert.match(
+    t.element('verify-save-status').textContent,
+    /Next run: 8 claims currently selected/
+  );
+});
+
+test('stopping fact-checks finishes only the in-flight group and retains unattempted work', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 9 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  let calls = 0;
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => {
+    calls++;
+    t.run('_stopFactCheck=true');
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence.',
+      })),
+    };
+  };
+  await t.run('runLibVerify()');
+  assert.equal(calls, 1);
+  assert.equal(S._vlibSkip.size, 4);
+  assert.match(t.element('verify-save-status').textContent, /5 not attempted/);
+  assert.match(t.element('verify-save-status').textContent, /Stopped by you/);
+  assert.equal(t.run('_libVerifying'), false);
+});
+
+test('malformed findings lists stop the batch cleanly without overwriting saved records', async () => {
+  const t = factFixture();
+  t.c._verifyBatch = async () => ({ verified: 'not an array' });
+  await t.run('runLibVerify()');
+  assert.match(t.r._checkError, /invalid findings list/);
+  assert.equal(t.calls.length, 0);
+  assert.equal(t.run('_libVerifying'), false);
 });
