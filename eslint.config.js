@@ -25,7 +25,9 @@ module.exports = [
       globals: { ...globals.node },
     },
     rules: {
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      // ignoreRestSiblings: `({ b64, key, ...rest }) => rest` omits fields on
+      // purpose; the omitted names are meant to be unused.
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', ignoreRestSiblings: true }],
     },
   },
   {

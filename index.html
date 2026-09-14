@@ -3814,8 +3814,6 @@ const EXTRACT_SHAPE_2 = `{
   "data": [ { "metric": "what is counted", "value": 0, "unit": "e.g. people, metres, °C", "year": 0, "place_or_region": "" } ],
   "glossary": [ { "term": "Japanese word worth explaining on screen", "reading": "kana", "romaji": "", "english": "plain-English meaning" } ]
 }`;
-// Kept for back-compat (legacy rows / renderBreakdownText).
-const BREAKDOWN_SHAPE = EXTRACT_SHAPE_1;
 
 // Stored breakdown JSON (or a legacy prose outline) -> { breakdown, outline }.
 function parseStoredBreakdown(raw) {
@@ -4240,7 +4238,6 @@ const RESEARCH_STORES = {
 // Flatten one array from a source (Prep breakdowns or the Web result), dedup by name.
 S._pushed = S._pushed || new Set();
 S.verify = S.verify || {};   // "<store>:<name>" -> { confidence, source_url, as_of_date, verify_note, _verified }
-S._existing = S._existing || {};   // store key -> Set of lowercased titles already in that Notion DB
 // Identity describes an observation, not its display title. Full canonical content
 // is retained so hashing is never treated as proof of equality.
 function materialIdentity(it) {
@@ -4283,9 +4280,6 @@ function resetResearchSession() {
   S._extractSkip = new Set();
   S._webSkip = new Set();
   S.verify = {};
-  S._existing = {};
-  S._existingVid = {};
-  S._existingBusy = {};
   S._vlibRaw = {};
   S.vlib = [];
   S._vlibSkip = new Set();
@@ -4339,34 +4333,6 @@ async function saveCandidateReview(decision,next=false) {
   }catch(e){document.getElementById('candidate-error').textContent=e.message;}
 }
 
-// Fetch every title already in a store's Notion DB (paginated), cache it, then
-// re-render with duplicates flagged + unticked so a blind push can't re-send them.
-async function ensureExisting(key, src) {
-  if (S._existing[key] || S._existingBusy?.[key]) return;
-  (S._existingBusy ||= {})[key] = true;          // in-flight guard that DOESN'T poison the cache
-  S._existingVid = S._existingVid || {};
-  try {
-    const cfg = RESEARCH_STORES[key];
-    const titles = new Set();
-    const byVid = new Map();             // lc title -> Set(source-video page ids on the existing row)
-    for (const row of await notionQueryAll(cfg.db())) {
-      const t = (row.properties?.[cfg.titleProp]?.title?.[0]?.plain_text || '').trim().toLowerCase();
-      if (!t) continue;
-      titles.add(t);
-      const vids = (row.properties?.['Source Video']?.relation || []).map(x => x.id);
-      if (vids.length) byVid.set(t, new Set([...(byVid.get(t) || []), ...vids]));
-    }
-    S._existing[key] = titles;
-    S._existingVid[key] = byVid;
-    renderReviewInto(src === 'web' ? 'web-review' : 'extract-review', src);
-  } catch (e) {
-    console.warn('existing-rows check failed for', key, e.message);
-    toast(`Couldn't check ${RESEARCH_STORES[key].label} for duplicates — will retry`, 'error');
-    // leave S._existing[key] undefined so the next render retries
-  } finally {
-    S._existingBusy[key] = false;
-  }
-}
 function switchReviewTab(src, key) {
   _reviewTab[src] = key;
   if (S._lastPush) delete S._lastPush[`${reviewReceiptKey(src)}:${key}`];   // clear the "saved" banner when you leave/return
@@ -4757,7 +4723,7 @@ async function retryAllFactSaves(btn) {
   const status=document.getElementById('verify-save-status');
   let stuck=0;
   for(const r of (S.vlib || []).filter(r=>r._aiPending && !r._saving && !r._checking)){
-    try{await saveAutomaticCheck(r);}catch(e){stuck++;}
+    try{await saveAutomaticCheck(r);}catch{stuck++;}
     if(status)status.textContent=stuck?`${stuck} saves still need retry`:'Saves are up to date.';
   }
   if(stuck)toast(`${stuck} saves still failing`,'error');
@@ -4845,9 +4811,6 @@ function _vlibVerifyCell(r) {
   if (r._retry) return '<span class="badge badge-amber" style="font-size:9px">unfinished</span> <span style="font-size:10px;color:var(--text3)">run again to retry</span>';
   return '<span style="font-size:10px;color:var(--text3)">— not checked</span>';
 }
-
-// Repaint one row's Verify cell mid-run (the table only fully re-renders at the end).
-function _vlibPaintRow() { renderVlibResults(); }
 
 function toggleVlib(id) {
   if (S._vlibSkip.has(id)) S._vlibSkip.delete(id); else S._vlibSkip.add(id);
@@ -5463,7 +5426,7 @@ const SECTION_MATCH = {
   research: /cultural|note|history|context/i,
   transport: /travel|drive|road|segment|transit/i,
 };
-function autoDistribute(btn) {
+function autoDistribute(_btn) {
   if (S.ep.pendingName) { toast('Finish saving this episode before changing its plan.'); return; }
   const cat = document.getElementById('ep-mat-cat').value;
   const pool = S.ep.pool[cat] || [];
@@ -6217,14 +6180,6 @@ function placesPick(mode) {
   const visible=visibleTableKeys('places-review-table');S.placeSkip ||= new Set();
   S.extractedPlaces.forEach((p,i)=>{if(p._saved || (visible && !visible.has(String(i))))return;const key=p.name.toLowerCase();if(mode==='none' || (mode==='new' && p.is_existing))S.placeSkip.add(key);else S.placeSkip.delete(key);});
   _preserveScroll(renderPlacesReview);
-}
-
-function queuePlaces() {
-  S.confirmedPlaces = S.extractedPlaces.filter(p => !S.placeSkip.has(p.name.toLowerCase()));
-  if (!S.confirmedPlaces.length) { toast('Accept material before saving.', 'error'); return; }
-  S._placesSaved = null;
-  renderConfirmedList();
-  toast(`${S.confirmedPlaces.length} place${S.confirmedPlaces.length === 1 ? '' : 's'} ready to save`, 'success');
 }
 
 function renderConfirmedList() {
@@ -7115,7 +7070,7 @@ async function exportAudio() {
     const files = await currentAudio();
     const encoder = new TextEncoder();
     const entries = files.map(f => ({ name:f.filename, data:Uint8Array.from(atob(f.b64), c=>c.charCodeAt(0)) }));
-    entries.push({ name:'manifest.json', data:encoder.encode(JSON.stringify({ episode, exportedAt:new Date().toISOString(), files:files.map(({b64,key,...f})=>f) },null,2)) });
+    entries.push({ name:'manifest.json', data:encoder.encode(JSON.stringify({ episode, exportedAt:new Date().toISOString(), files:files.map(({b64:_b64,key:_key,...f})=>f) },null,2)) });
     entries.push({ name:'script.txt', data:encoder.encode(script) });
     downloadBlob(zipBytes(entries), `nomad-${(episodeId || 'episode').slice(0,8)}-audio.zip`);
     toast('Audio ZIP prepared with ordered MP3s, script, and manifest', 'success');
