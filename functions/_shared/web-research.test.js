@@ -53,6 +53,18 @@ test('buildVerifyPrompt: validates the bounded request and provides valid JSON',
 
 const { runGemini, VERIFY_SCHEMA } = require('../web-research')._internal;
 
+test('a rate-limited provider is reported as throttled, not as a claim failure', async (t) => {
+  t.mock.method(global, 'fetch', async () => ({
+    ok: false,
+    status: 429,
+    json: async () => ({ error: { message: 'Resource has been exhausted' } }),
+  }));
+  const result = await runGemini('fake-key', 'Prompt', true);
+  assert.equal(result.status, 502);
+  assert.equal(result.code, 'provider_throttled');
+  assert.match(result.error, /exhausted/);
+});
+
 test('grounded verification uses the Interactions API with search and a response schema', async (t) => {
   let url,
     body,

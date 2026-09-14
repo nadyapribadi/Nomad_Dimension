@@ -2426,6 +2426,38 @@ test('a reply that echoes the labelled entry still resolves the claim', async ()
   assert.equal(S.vlib.filter((r) => r._retry).length, 0);
 });
 
+test('a rate-limited provider stops the run instead of splitting into more requests', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 8 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  const batches = [];
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => {
+    batches.push(items.length);
+    throw Object.assign(new Error('Resource has been exhausted'), {
+      status: 502,
+      code: 'provider_throttled',
+    });
+  };
+  await t.run('runLibVerify()');
+  // No split halves: asking a throttled provider for more requests is the wrong
+  // response, and the claims stay retryable for when the limit clears.
+  assert.ok(
+    batches.every((n) => n === 4),
+    `expected no split requests, saw ${batches}`
+  );
+  assert.match(t.element('verify-save-status').textContent, /rate-limiting/);
+  assert.equal(S._vlibSkip.size, 0);
+  assert.ok(S.vlib.filter((r) => r._retry).length > 0);
+  assert.equal(t.run('_libVerifying'), false);
+});
+
 test('a timeout shrinks the working batch for the rest of the run', async () => {
   const t = setup(),
     S = t.run('S'),

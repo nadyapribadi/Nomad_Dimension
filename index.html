@@ -5063,6 +5063,14 @@ async function runLibVerify(btn, mode='selected') {
         if(!Array.isArray(result?.verified))throw new Error('The model returned an invalid findings list. Previous results are unchanged.');
         noteBatchResult(true);providerStreak=0;
       }catch(e){
+        // Rate limiting is not this claim's fault, and splitting would ask a
+        // throttled provider for more requests. Stop, and say why.
+        if(e && e.code==='provider_throttled'){
+          providerStop=true;stopReason='The provider is rate-limiting requests';
+          for(const r of group){r._checking=false;r._retry=true;r._checkError='Not checked: the provider is rate-limiting requests. Wait a moment, then run again.';}
+          failed+=group.length;renderVlibResults();noteProgress();
+          return;
+        }
         noteBatchResult(false);
         if(providerWide(e)){if(++providerStreak>=FACT_BREAKER_LIMIT){providerStop=true;stopReason=`Stopped after ${providerStreak} provider failures in a row`;}}
         else providerStreak=0;

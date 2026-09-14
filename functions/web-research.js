@@ -229,7 +229,15 @@ async function runGemini(key, prompt, verify = false) {
     );
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return { status: 502, error: (data.error && data.error.message) || `HTTP ${res.status}` };
+      // Keep a throttle distinguishable from a real failure. Rate limiting is
+      // transient: the browser stops and the operator retries, rather than
+      // counting it as a claim-level fault or splitting into more requests.
+      const throttled = res.status === 429 || res.status === 503;
+      return {
+        status: 502,
+        code: throttled ? 'provider_throttled' : 'provider_error',
+        error: (data.error && data.error.message) || `HTTP ${res.status}`,
+      };
     }
     if (data.status !== 'completed')
       return {
