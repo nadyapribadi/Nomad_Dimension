@@ -38,7 +38,12 @@ test('buildVerifyPrompt: validates the bounded request and provides valid JSON',
     items: [{ name: 'A claim', detail: 'Context' }],
   }).text;
   assert.match(prompt, /1 "research" entries/);
-  assert.match(prompt, /1\. A claim — Context/);
+  assert.match(prompt, /1\. claim: A claim/);
+  assert.match(prompt, /\n {3}detail: Context/);
+  assert.match(prompt, /Never include the list number/);
+  // The claim and its context must not share a line: gluing them together made
+  // the model echo "number. claim — detail" back as the name.
+  assert.doesNotMatch(prompt, /A claim — Context/);
   assert.deepEqual(
     JSON.parse(prompt.split('Return ONLY this JSON, no markdown:\n')[1]),
     require('../web-research')._internal.VERIFY_EXAMPLE

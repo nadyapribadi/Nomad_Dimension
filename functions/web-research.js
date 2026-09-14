@@ -168,10 +168,13 @@ function buildVerifyPrompt(body) {
     return { error: 'Each claim needs a name of at most 2,000 characters.' };
   if (!items.length) return { error: 'Missing items' };
   const list = items
-    .map(
-      (it, i) =>
-        `${i + 1}. ${String(it.name || '').trim()}${it.detail ? ` — ${String(it.detail).slice(0, 300)}` : ''}`
-    )
+    .map((it, i) => {
+      // Keep the claim text and its context on separate labelled lines. Gluing
+      // them together made the model echo the whole rendered entry back as
+      // `name`, which no longer matched the submitted claim.
+      const detail = it.detail ? `\n   detail: ${String(it.detail).slice(0, 300)}` : '';
+      return `${i + 1}. claim: ${String(it.name || '').trim()}${detail}`;
+    })
     .join('\n');
   return {
     text: `These ${items.length} "${store}" entries were pulled from Japan travel
@@ -184,7 +187,9 @@ proper noun) just return verdict "unsupported" with an empty source_url — do
 not keep searching.
 
 For each entry return:
-- name: copy the entry name back EXACTLY so it can be matched
+- name: the claim text only — exactly what follows "claim:" for that entry.
+  Never include the list number or the "detail:" line; it is matched back to
+  the submitted claim character for character.
 - verdict: "confirmed" | "corrected" | "unsupported"
 - confidence: "high" | "medium" | "low"
 - source_url: the single best URL ("" if none / unverifiable)

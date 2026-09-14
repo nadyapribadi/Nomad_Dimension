@@ -5007,7 +5007,15 @@ async function runLibVerify(btn, mode='selected') {
   if(!rows.length){toast('Select unchecked claims, or use Retry save for findings already generated.');return;}
   _libVerifying=true;
   let done=0,failed=0,saveFailed=0,attempted=0,stopReason='';_stopFactCheck=false;
-  const keyOf=r=>r.id || r._key,normName=x=>String(x || '').trim().toLowerCase();
+  const keyOf=r=>r.id || r._key,normName=x=>String(x || '').replace(/\s+/g,' ').trim().toLowerCase().replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"');
+  // The provider is told to copy the claim text back, but it also echoes the
+  // whole rendered entry sometimes — a list number, the claim, then the detail
+  // we sent. Recognise exactly those shapes so a finding we already paid for is
+  // not thrown away, and so a claim is never reported failed while its reply
+  // sits in the same response. Each accepted form is compared in full, so a
+  // different claim still cannot match by accident.
+  const replyNames=r=>{const name=normName(r.name),detail=normName((r.fields || '').slice(0,300)),forms=new Set([name]);if(detail)for(const sep of ['\u2014','\u2013','-'])forms.add(`${name} ${sep} ${detail}`);return forms;};
+  const matchesRow=(v,r)=>{const raw=normName(v && v.name);if(!raw)return false;const forms=replyNames(r);return forms.has(raw) || forms.has(raw.replace(/^\d+\s*[.)]\s*/,''));};
   const attemptedKeys=new Set();
   try{
     const visible=visibleTableKeys('fact-review-table'),hidden=visible?rows.filter(r=>!visible.has(r.id || r._key)).length:0;
@@ -5019,10 +5027,10 @@ async function runLibVerify(btn, mode='selected') {
     // Match one claim's finding from a reply, then save it. Anything that goes
     // wrong here is attributed to this claim only, never to the whole batch.
     const applyReply=async(group,r,result)=>{
-      const matches=(result.verified || []).filter(v=>normName(v.name)===normName(r.name));
+      const matches=(result.verified || []).filter(v=>matchesRow(v,r));
       const sameName=group.filter(x=>normName(x.name)===normName(r.name)).length;
       try{
-        if(matches.length!==1 || sameName!==1)throw new Error('Check failed: the reply omitted or duplicated this claim. Check same-name records separately.');
+        if(matches.length!==1 || sameName!==1)throw new Error('Check failed: the reply did not name this claim exactly once — it may have been omitted, renamed or duplicated. Check same-name records separately.');
         r._aiPending=validatedCheck({...matches[0],model:result.model || '',checkedAt:new Date().toISOString()});
         await localArtifact(`verify-ai-pending:${keyOf(r)}`,r._aiPending);
         S._vlibSkip.add(keyOf(r));
@@ -5054,7 +5062,7 @@ async function runLibVerify(btn, mode='selected') {
         return;
       }
       for(const r of group){
-        const matches=(result.verified || []).filter(v=>normName(v.name)===normName(r.name));
+        const matches=(result.verified || []).filter(v=>matchesRow(v,r));
         // A multi-claim reply that omitted or duplicated this claim is retried
         // with this claim alone before its failure is reported.
         if(group.length>1 && (matches.length!==1 || group.filter(x=>normName(x.name)===normName(r.name)).length!==1)){await verifyGroup(store,[r]);continue;}

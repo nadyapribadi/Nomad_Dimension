@@ -2165,6 +2165,114 @@ test('large fact-check selections are bounded to 20 claims per explicitly confir
   assert.match(t.element('vlib-results').innerHTML, /Check next 20 \(1072 selected\)/);
 });
 
+test('a reply that echoes the rendered entry resolves instead of costing another request', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [
+    { id: 'a', name: 'Claim A', store: 'research', fields: 'Category: X · Source: vlog' },
+    { id: 'b', name: 'Claim B', store: 'research', fields: 'Category: X · Source: vlog' },
+    { id: 'c', name: 'Claim C', store: 'research', fields: 'Category: X · Source: vlog' },
+    { id: 'd', name: 'Claim D', store: 'research', fields: '' },
+  ];
+  S._vlibSkip = new Set();
+  const batches = [];
+  t.c.confirmIdeaChange = async () => true;
+  t.c._verifyBatch = async (_store, items) => {
+    batches.push(items.length);
+    return {
+      verified: items.map((it, i) => ({
+        // Exactly what the provider returned live: list number, claim, then the
+        // detail we sent — with the dash variant it happened to choose.
+        name: it.detail
+          ? `${i + 1}. ${it.name} ${['\u2014', '\u2013', '-'][i % 3]} ${it.detail}`
+          : `${i + 1}. ${it.name}`,
+        verdict: 'confirmed',
+        source_url: 'https://example.org/evidence',
+        note: 'Evidence supports this claim.',
+      })),
+    };
+  };
+  const saved = [];
+  t.c._writeVerdict = async (r, finding) => {
+    saved.push({ id: r.id, verdict: finding && finding.verdict });
+  };
+  await t.run('runLibVerify()');
+  assert.deepEqual(batches, [4]);
+  assert.equal(S.vlib.filter((r) => r._retry).length, 0);
+  assert.equal(saved.length, 4);
+  assert.deepEqual(
+    saved.map((s) => s.verdict),
+    ['confirmed', 'confirmed', 'confirmed', 'confirmed']
+  );
+});
+
+test('a reply that genuinely omits a claim still fails only that claim', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 4 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  const batches = [];
+  t.c.confirmIdeaChange = async () => true;
+  t.c._verifyBatch = async (_store, items) => {
+    batches.push(items.length);
+    return {
+      verified: items.slice(0, items.length - 1).map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  const saved = [];
+  t.c._writeVerdict = async (r, finding) => {
+    saved.push({ id: r.id, verdict: finding && finding.verdict });
+  };
+  await t.run('runLibVerify()');
+  assert.deepEqual(batches, [4, 1]);
+  const failed = S.vlib.filter((r) => r._retry);
+  assert.equal(failed.length, 1);
+  assert.match(failed[0]._checkError, /Check failed/);
+  assert.equal(saved.length, 3);
+  assert.equal(saved.filter((s) => s.verdict === 'unsupported').length, 3);
+});
+
+test('a reply that renames the claim is still rejected rather than matched by accident', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 2 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+    fields: 'Category: X · Source: vlog',
+  }));
+  S._vlibSkip = new Set();
+  const batches = [];
+  t.c.confirmIdeaChange = async () => true;
+  t.c._verifyBatch = async (_store, items) => {
+    batches.push(items.length);
+    return {
+      verified: items.map(() => ({
+        name: 'An entirely different statement',
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  const saved = [];
+  t.c._writeVerdict = async (r, finding) => {
+    saved.push({ id: r.id, verdict: finding && finding.verdict });
+  };
+  await t.run('runLibVerify()');
+  // One batch, then each claim alone: a genuine mismatch must not be accepted.
+  assert.deepEqual(batches, [2, 1, 1]);
+  assert.equal(S.vlib.filter((r) => r._retry).length, 2);
+  assert.equal(saved.length, 0);
+});
+
 test('retrying failed checks uses single-claim requests and separates run scope from selection', async () => {
   const t = setup(),
     S = t.run('S');
