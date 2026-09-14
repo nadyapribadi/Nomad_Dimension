@@ -2479,6 +2479,41 @@ test('a rate-limited provider stops the run instead of splitting into more reque
   assert.equal(t.run('_libVerifying'), false);
 });
 
+test('a large selection gives the recommended action the only primary button', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 25 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  t.run('renderVlibResults()');
+  const html = t.element('vlib-results').innerHTML;
+  assert.equal((html.match(/btn-primary/g) || []).length, 1, 'exactly one primary action');
+  assert.match(html, /Check all 25 selected/);
+  assert.match(html, /onclick="runLibVerify\(this,'all'\)"/);
+  assert.match(html, /Check next 20 \(25 selected\)/);
+});
+
+test('a selection within the run limit does not offer the same action twice', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 5 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  t.run('renderVlibResults()');
+  const html = t.element('vlib-results').innerHTML;
+  assert.equal((html.match(/btn-primary/g) || []).length, 1, 'exactly one primary action');
+  // Below the limit the guide's action is the standing button's action, so the
+  // guide reads as a sentence instead of rendering a second button for it.
+  assert.match(html, /Next:<\/strong> Check 5 selected claims/);
+  assert.doesNotMatch(html, /onclick="runLibVerify\(this,'all'\)"/);
+});
+
 test('a timeout shrinks the working batch for the rest of the run', async () => {
   const t = setup(),
     S = t.run('S'),

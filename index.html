@@ -4718,8 +4718,17 @@ function renderVlibResults() {
   const skip=S._vlibSkip ||= new Set(),n=rows.filter(r=>!r._aiPending && !r._saving && !skip.has(r.id || r._key)).length;
   const failed=rows.filter(r=>r._retry && !r._aiPending).length;
   const step=factNextStep();
-  el.innerHTML=`${step?`<p class="library-message" id="fact-next-step" style="border-left:3px solid var(--accent);padding-left:10px"><strong>Next:</strong> ${step.action?`<button class="btn btn-sm btn-primary" ${_libVerifying?'disabled':''} onclick="${step.action}">${_esc(step.label)}</button>`:_esc(step.label)}${step.hint?`<br>${_esc(step.hint)}`:''}</p>`:''}<div class="btn-row" style="flex-wrap:wrap">
-    <button class="btn btn-primary" ${_libVerifying || !n?'disabled':''} onclick="runLibVerify(this)">${_libVerifying?'Checking…':n>FACT_RUN_LIMIT?`Check next ${FACT_RUN_LIMIT} (${n} selected) · API`:`Check selected (${n}) · API`}</button>
+  // One primary action per decision. The guide names the single recommended next
+  // action, so it owns the primary button and the standing button drops to
+  // plain. When the guide recommends what the standing button already does — the
+  // whole-run mode and the default mode cover the same claims below the run
+  // limit — the guide reads as a sentence rather than offering it twice.
+  const wholeRunAction="runLibVerify(this,'all')";
+  const guideIsDistinct=!!(step && step.action && step.action!=='runLibVerify(this)'
+    && !(step.action===wholeRunAction && n<=FACT_RUN_LIMIT));
+  const guide=step?`<p class="library-message" id="fact-next-step" style="border-left:3px solid var(--accent);padding-left:10px"><strong>Next:</strong> ${guideIsDistinct?`<button class="btn btn-sm btn-primary" ${_libVerifying?'disabled':''} onclick="${step.action}">${_esc(step.label)}</button>`:_esc(step.label)}${step.hint?`<br>${_esc(step.hint)}`:''}</p>`:'';
+  el.innerHTML=`${guide}<div class="btn-row" style="flex-wrap:wrap">
+    <button class="${guideIsDistinct?'btn':'btn btn-primary'}" ${_libVerifying || !n?'disabled':''} onclick="runLibVerify(this)">${_libVerifying?'Checking…':n>FACT_RUN_LIMIT?`Check next ${FACT_RUN_LIMIT} (${n} selected) · API`:`Check selected (${n}) · API`}</button>
     ${_libVerifying?`<button class="btn" ${_stopFactCheck?'disabled':''} onclick="_stopFactCheck=true;renderVlibResults()">${_stopFactCheck?'Stopping after current request…':'Stop after current request'}</button>`:''}
     <button class="btn" onclick="selectUncheckedFacts()">Select unchecked</button>
     <button class="btn btn-ghost" onclick="vlibAll(true)">Select shown</button><button class="btn btn-ghost" onclick="vlibAll(false)">Clear selection</button>
