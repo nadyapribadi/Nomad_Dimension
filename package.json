@@ -13,7 +13,7 @@
     "graph:index": "npx gitnexus@latest analyze --max-file-size 1024 --skip-agents-md",
     "deploy:stage": "node scripts/build-deploy.mjs",
     "deploy:preview": "npm run deploy:stage && netlify deploy --dir=_deploy --functions=functions --context production",
-    "lint": "eslint .",
+    "lint": "eslint . && node scripts/lint-inline.mjs",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

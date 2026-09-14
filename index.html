@@ -4031,7 +4031,7 @@ function parseExtractionImport(text) {
       if(!inside)inside=true;
       else{
         const tail=input.slice(i+1).trimStart();
-        const close=!tail || /^[}:\]]/.test(tail) || /^,\s*(?:["{\[}\]]|-?\d|true\b|false\b|null\b)/.test(tail);
+        const close=!tail || /^[}:\]]/.test(tail) || /^,\s*(?:["{[}\]]|-?\d|true\b|false\b|null\b)/.test(tail);
         if(close)inside=false;else{out+='\\';repairs++;}
       }
     }
@@ -6616,7 +6616,7 @@ function runScriptCheck() {
   }
 
   const withDialogue = S.sections.filter(s => s.dialogue && s.dialogue.trim());
-  const wordCount = t => (t.match(/[A-Za-z0-9'’\-]+/g) || []).length;
+  const wordCount = t => (t.match(/[A-Za-z0-9'’-]+/g) || []).length;
   const findings = [];
 
   // 1 — Missing dialogue
