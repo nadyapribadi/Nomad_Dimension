@@ -575,14 +575,19 @@ test('one failed batch is split into smaller batches so only the claim that keep
   };
   t.c.confirmIdeaChange = async () => true;
   await t.run('runLibVerify()');
-  assert.deepEqual(batches, [
-    'Claim 0 + Claim 1 + Claim 2 + Claim 3',
-    'Claim 0 + Claim 1',
-    'Claim 2 + Claim 3',
-    'Claim 2',
-    'Claim 3',
-    'Claim 4 + Claim 5',
-  ]);
+  // Batches run in parallel now, so the order of one batch's split retries
+  // relative to another batch is not fixed. The set of requests is.
+  assert.deepEqual(
+    [...batches].sort(),
+    [
+      'Claim 0 + Claim 1 + Claim 2 + Claim 3',
+      'Claim 0 + Claim 1',
+      'Claim 2 + Claim 3',
+      'Claim 2',
+      'Claim 3',
+      'Claim 4 + Claim 5',
+    ].sort()
+  );
   assert.equal(S.vlib.filter((r) => r._newStatus).length, 5);
   assert.deepEqual(
     S.vlib.filter((r) => r._retry).map((r) => r.name),
@@ -2271,6 +2276,115 @@ test('a reply that renames the claim is still rejected rather than matched by ac
   assert.deepEqual(batches, [2, 1, 1]);
   assert.equal(S.vlib.filter((r) => r._retry).length, 2);
   assert.equal(saved.length, 0);
+});
+
+test('provider requests run in parallel up to the limit and every claim still resolves', async () => {
+  const t = setup(),
+    S = t.run('S'),
+    limit = t.run('FACT_CONCURRENCY');
+  S.vlib = Array.from({ length: 12 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  let inFlight = 0,
+    maxInFlight = 0,
+    batches = 0;
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => {
+    batches++;
+    inFlight++;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((r) => setTimeout(r, 2));
+    inFlight--;
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  await t.run('runLibVerify()');
+  assert.equal(batches, 3);
+  assert.equal(maxInFlight, limit);
+  assert.equal(S.vlib.filter((r) => r._retry).length, 0);
+  assert.equal(S._vlibSkip.size, 12);
+});
+
+test('a failing batch splits without ever exceeding the request ceiling', async () => {
+  const t = setup(),
+    S = t.run('S'),
+    limit = t.run('FACT_CONCURRENCY');
+  S.vlib = Array.from({ length: 8 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  let inFlight = 0,
+    maxInFlight = 0;
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => {
+    inFlight++;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((r) => setTimeout(r, 2));
+    inFlight--;
+    if (items.length > 1) throw new Error('Batch too slow');
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  await t.run('runLibVerify()');
+  assert.ok(maxInFlight <= limit, `expected <= ${limit} in flight, saw ${maxInFlight}`);
+  assert.equal(S.vlib.filter((r) => r._retry).length, 0);
+  assert.equal(S._vlibSkip.size, 8);
+});
+
+test('findings save one at a time even while provider requests run in parallel', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 8 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  let inFlight = 0,
+    maxInFlight = 0,
+    saving = 0,
+    maxSaving = 0;
+  t.c.confirmIdeaChange = async () => true;
+  t.c._verifyBatch = async (_store, items) => {
+    inFlight++;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((r) => setTimeout(r, 3));
+    inFlight--;
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  t.c._writeVerdict = async () => {
+    saving++;
+    maxSaving = Math.max(maxSaving, saving);
+    await new Promise((r) => setTimeout(r, 1));
+    saving--;
+  };
+  await t.run('runLibVerify()');
+  assert.equal(maxSaving, 1);
+  assert.ok(maxInFlight > 1, `expected parallel provider calls, saw ${maxInFlight}`);
+  assert.equal(S._vlibSkip.size, 8);
 });
 
 test('retrying failed checks uses single-claim requests and separates run scope from selection', async () => {

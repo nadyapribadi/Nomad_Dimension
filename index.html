@@ -4999,6 +4999,11 @@ async function retryFactSave(key) {
   try{await saveAutomaticCheck(r);}catch(e){document.getElementById('verify-save-status').textContent=e.message;}renderVlibResults();
 }
 const FACT_RUN_LIMIT=20;
+// Provider requests in flight at once. Each job below issues one request at a
+// time — the smaller batches a failure splits into run in sequence — so this
+// pool is the ceiling for requests, not just for jobs. A test asserts that a
+// splitting batch never exceeds it.
+const FACT_CONCURRENCY=3;
 let _libVerifying = false, _stopFactCheck = false;
 async function runLibVerify(btn, mode='selected') {
   if(_libVerifying)return;
@@ -5017,6 +5022,10 @@ async function runLibVerify(btn, mode='selected') {
   const replyNames=r=>{const name=normName(r.name),detail=normName((r.fields || '').slice(0,300)),forms=new Set([name]);if(detail)for(const sep of ['\u2014','\u2013','-'])forms.add(`${name} ${sep} ${detail}`);return forms;};
   const matchesRow=(v,r)=>{const raw=normName(v && v.name);if(!raw)return false;const forms=replyNames(r);return forms.has(raw) || forms.has(raw.replace(/^\d+\s*[.)]\s*/,''));};
   const attemptedKeys=new Set();
+  // The provider tolerates parallel calls; Notion and its write path do not.
+  // Findings are saved one at a time, in the order their replies arrive.
+  let saveChain=Promise.resolve();
+  const queueSave=r=>{const run=saveChain.then(()=>saveAutomaticCheck(r));saveChain=run.catch(()=>{});return run;};
   try{
     const visible=visibleTableKeys('fact-review-table'),hidden=visible?rows.filter(r=>!visible.has(r.id || r._key)).length:0;
     if(!await confirmIdeaChange('Check these claims?',`${rows.length} claims${hidden?`, including ${hidden} outside the current filters,`:''} will use the Fact-check API in about ${Math.ceil(rows.length/groupSize)} requests${mode==='failed'?', one claim per request':''}; a request that fails is retried as smaller batches or single claims, so a bad reply cannot fail the rest. ${eligible.length>rows.length?`${eligible.length-rows.length} other selected claims will wait for another confirmed run. `:''}Completed findings save automatically as AI checks. Existing human reviews are preserved. No automatic paid retry.`,`Check ${rows.length} claims · API`))return;
@@ -5034,7 +5043,7 @@ async function runLibVerify(btn, mode='selected') {
         r._aiPending=validatedCheck({...matches[0],model:result.model || '',checkedAt:new Date().toISOString()});
         await localArtifact(`verify-ai-pending:${keyOf(r)}`,r._aiPending);
         S._vlibSkip.add(keyOf(r));
-        await saveAutomaticCheck(r);done++;
+        await queueSave(r);done++;
       }catch(e){if(r._aiPending){saveFailed++;r._checkError=`Save failed: ${e.message}`;}else{failed++;r._retry=true;r._checkError=e.message;}}
       r._checking=false;renderVlibResults();noteProgress();
     };
@@ -5069,13 +5078,13 @@ async function runLibVerify(btn, mode='selected') {
         await applyReply(group,r,result);
       }
     };
-    for(const [store,items] of Object.entries(byStore)){
-      for(let i=0;i<items.length;i+=groupSize){
-        if(_stopFactCheck){stopReason='Stopped by you after the previous request';break;}
-        await verifyGroup(store,items.slice(i,i+groupSize));
-      }
-      if(stopReason)break;
-    }
+    // Every batch is a job, so stores drain together instead of one at a time.
+    // verifyGroup re-checks the stop flag before it issues anything, so stopping
+    // still leaves every later claim untouched.
+    const jobs=[];
+    for(const [store,items] of Object.entries(byStore))
+      for(let i=0;i<items.length;i+=groupSize)jobs.push([store,items.slice(i,i+groupSize)]);
+    await mapPool(jobs,FACT_CONCURRENCY,async([store,group])=>{await verifyGroup(store,group);});
     const nextSelected=(S.vlib || []).filter(r=>!r._aiPending && !S._vlibSkip.has(r.id || r._key)).length;
     status.textContent=`Last run: ${rows.length} claims · ${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry · ${rows.length-attempted} not attempted.${stopReason?` Checks stopped: ${stopReason}. Previous findings retained; no automatic paid retry.`:' Human review is optional.'} Next run: ${nextSelected} claims currently selected${nextSelected>FACT_RUN_LIMIT?` — check all at once, or ${FACT_RUN_LIMIT} at a time`:''}.`;
 
