@@ -869,12 +869,12 @@ function candidateSetup() {
 
 test('pending candidates never create records; accepted candidates retain receipt and original wording', async () => {
   const t = candidateSetup();
-  await t.run("pushStore('glossary',null,'web')");
+  await t.run("saveAcceptedMaterial('web',null,'glossary')");
   assert.equal(t.calls.length, 0);
   t.run(
     "REVIEW.edits[candidate._key]={meaning:'Reviewed meaning'};REVIEW.decisions[candidate._key]='accepted'"
   );
-  await t.run("pushStore('glossary',null,'web')");
+  await t.run("saveAcceptedMaterial('web',null,'glossary')");
   assert.equal(t.calls.filter((c) => c.endpoint === 'pages').length, 1);
   t.c.saved = [...t.pages.values()][0];
   const evidence = t.run('materialEvidence(saved.children)');
@@ -896,10 +896,10 @@ test('a lost create response is reconciled by evidence on retry without a duplic
       throw new Error('Response lost');
     }
   };
-  await t.run("pushStore('glossary',null,'web')");
+  await t.run("saveAcceptedMaterial('web',null,'glossary')");
   assert.equal(t.pages.size, 1);
   assert.equal(t.run("poolFor('glossary','web').length"), 1);
-  await t.run("pushStore('glossary',null,'web')");
+  await t.run("saveAcceptedMaterial('web',null,'glossary')");
   assert.equal(t.pages.size, 1);
   assert.equal(t.calls.filter((c) => c.endpoint === 'pages').length, 1);
   assert.equal(t.run("poolFor('glossary','web').length"), 0);
@@ -916,14 +916,14 @@ test('read-back 404 after creation retains the uncertain-save marker', async () 
       throw e;
     }
   };
-  await t.run("pushStore('glossary',null,'web')");
+  await t.run("saveAcceptedMaterial('web',null,'glossary')");
   assert.equal(t.pages.size, 1);
   assert.equal(
     [...t.local.entries()].some(([k, v]) => k.startsWith('material-create-v2:') && !!v),
     true
   );
   t.c.before = null;
-  await t.run("pushStore('glossary',null,'web')");
+  await t.run("saveAcceptedMaterial('web',null,'glossary')");
   assert.equal(t.calls.filter((c) => c.endpoint === 'pages').length, 1);
 });
 
@@ -940,9 +940,9 @@ test('a rejected create can be retried and a legacy same-title record is preserv
       throw e;
     }
   };
-  await t.run("pushStore('glossary',null,'web')");
+  await t.run("saveAcceptedMaterial('web',null,'glossary')");
   assert.equal(t.pages.size, 1);
-  await t.run("pushStore('glossary',null,'web')");
+  await t.run("saveAcceptedMaterial('web',null,'glossary')");
   assert.equal(t.pages.size, 2);
   assert.ok(t.pages.has(legacy.material.id));
 });
@@ -1362,9 +1362,9 @@ test('material and Places HTTP 408 creates retain their replay protection', asyn
     if (call.endpoint === 'pages')
       throw Object.assign(new Error('Request timeout'), { status: 408 });
   };
-  await t.run("pushStore('glossary',null,'web')");
+  await t.run("saveAcceptedMaterial('web',null,'glossary')");
   assert.ok([...t.local.entries()].some(([k, v]) => k.startsWith('material-create-v2:') && v));
-  await t.run("pushStore('glossary',null,'web')");
+  await t.run("saveAcceptedMaterial('web',null,'glossary')");
   assert.equal(t.calls.filter((c) => c.endpoint === 'pages').length, 1);
   const h = setup(),
     S = h.run('S');
@@ -2424,6 +2424,27 @@ test('a reply that echoes the labelled entry still resolves the claim', async ()
   assert.deepEqual(batches, [2]);
   assert.equal(saved.length, 2);
   assert.equal(S.vlib.filter((r) => r._retry).length, 0);
+});
+
+test('the rendered Verify column shows a verdict badge, a failure, and never-checked', async () => {
+  // Replaces three tests against an extracted _vlibVerifyCell helper: the app
+  // renders this cell through renderVlibResults, so assert what users see.
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [
+    { id: 'a', name: 'Claim A', store: 'research', _newStatus: 'confirmed' },
+    { id: 'b', name: 'Claim B', store: 'research', status: 'corrected' },
+    { id: 'c', name: 'Claim C', store: 'research', status: 'unsupported' },
+    { id: 'd', name: 'Claim D', store: 'research', _retry: true },
+    { id: 'e', name: 'Claim E', store: 'research' },
+  ];
+  t.run('renderVlibResults()');
+  const html = t.element('vlib-results').innerHTML;
+  assert.match(html, /badge-green[^]*Supported/);
+  assert.match(html, /badge-amber[^]*Contradicted/);
+  assert.match(html, /No evidence found/);
+  assert.match(html, /Check failed/);
+  assert.match(html, /Not checked/);
 });
 
 test('a rate-limited provider stops the run instead of splitting into more requests', async () => {

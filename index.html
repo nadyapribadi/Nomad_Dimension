@@ -2320,25 +2320,6 @@ async function ttsAPI(text, voice, speed) {
   return data.audioContent; // base64 MP3
 }
 
-// ─── NOTION PAGE PARSER ─────────────────────────────────────────────────────
-// Reads a Notion page's plain_text blocks and extracts key=value tables
-function parseSettingsPage(pageData) {
-  // pageData is the raw Notion blocks response
-  // We look for table rows with Key/Value columns
-  const out = {};
-  if (!pageData.results) return out;
-  for (const block of pageData.results) {
-    if (block.type === 'table_row') {
-      const cells = block.table_row?.cells || [];
-      if (cells.length >= 2) {
-        const key = cells[0].map(r => r.plain_text).join('').trim();
-        const val = cells[1].map(r => r.plain_text).join('').trim();
-        if (key) out[key] = val;
-      }
-    }
-  }
-  return out;
-}
 
 // Recursively get all blocks from a page
 async function getPageBlocks(pageId) {
@@ -4287,7 +4268,6 @@ function resetResearchSession() {
   S._vlibTidy = false;
   S._lastPush = {};
 }
-const _skipSet = (src) => (S[src === 'web' ? '_webSkip' : '_extractSkip'] ||= new Set());
 
 const _reviewTab = { prep: '', web: '' };
 function renderReviewInto(elId, src) {
@@ -4402,7 +4382,6 @@ async function saveAcceptedMaterial(src,btn,onlyCategory=null) {
   const promise=(REVIEW.saveTail || Promise.resolve()).catch(()=>{}).then(run);
   REVIEW.saveTail=promise.catch(()=>{});refreshMaterialSaves();return promise;
 }
-function pushStore(key,btn,src) {return saveAcceptedMaterial(src,btn,key);}
 
 async function writeMaterialStore(key, job) {
   const cfg = RESEARCH_STORES[key], items=job.items[key], db=job.databases[key];
@@ -4801,16 +4780,6 @@ async function saveVerdictProposal(key,btn) {
   }catch(e){document.getElementById('verify-save-status').textContent=e.message;if(modalVersions['fact-review-modal']===view)document.getElementById('fact-review-error').textContent=e.message;}finally{r._saving=false;btn.disabled=false;if(modalVersions['fact-review-modal']===view)document.querySelectorAll('#fact-review-content input, #fact-review-content select, #fact-review-content textarea').forEach(el=>el.disabled=false);renderVlibResults();}
 }
 
-function _vlibVerifyCell(r) {
-  const st = r._newStatus || r.status;
-  if (st) {
-    const cls = st === 'confirmed' ? 'badge-green' : st === 'corrected' ? 'badge-amber' : 'badge';
-    const note = (r._newNote || r.note) ? ` <span style="font-size:10px;color:var(--text3)">${_esc(r._newNote || r.note)}</span>` : '';
-    return `<span class="badge ${cls}" style="font-size:9px">${st}</span>${note}`;
-  }
-  if (r._retry) return '<span class="badge badge-amber" style="font-size:9px">unfinished</span> <span style="font-size:10px;color:var(--text3)">run again to retry</span>';
-  return '<span style="font-size:10px;color:var(--text3)">— not checked</span>';
-}
 
 function toggleVlib(id) {
   if (S._vlibSkip.has(id)) S._vlibSkip.delete(id); else S._vlibSkip.add(id);
@@ -5600,7 +5569,6 @@ document.getElementById('ep-title-custom').addEventListener('input', updateEpiso
 const _rt = (s) => [{ type: 'text', text: { content: String(s || '').slice(0, 1900) } }];
 const _p = (s) => ({ object: 'block', type: 'paragraph', paragraph: { rich_text: _rt(s) } });
 const _h2 = (s) => ({ object: 'block', type: 'heading_2', heading_2: { rich_text: _rt(s) } });
-const _li = (s) => ({ object: 'block', type: 'bulleted_list_item', bulleted_list_item: { rich_text: _rt(s) } });
 
 let creatingEpisode = false;
 async function createEpisode() {
@@ -5952,7 +5920,6 @@ async function saveOutlineToNotion() {
 const PLACE_TYPES = ['Restaurant', 'Food Stall', 'Attraction', 'Nature / Landscape',
   'Onsen / Wellness', 'Michi-no-eki', 'Shop', 'Accommodation', 'Cultural / Historic',
   'Viewpoint', 'Other'];
-const FOOD_TYPES = new Set(['Restaurant', 'Food Stall']);
 const PREFECTURES = ['Unknown', 'Hokkaido', 'Aomori', 'Iwate', 'Miyagi', 'Akita', 'Yamagata',
   'Fukushima', 'Ibaraki', 'Tochigi', 'Gunma', 'Saitama', 'Chiba', 'Tokyo', 'Kanagawa', 'Niigata',
   'Toyama', 'Ishikawa', 'Fukui', 'Yamanashi', 'Nagano', 'Gifu', 'Shizuoka', 'Aichi', 'Mie', 'Shiga',
@@ -6146,7 +6113,6 @@ function acceptMapsMatch(i) {
   renderPlacesReview();
 }
 
-const hasCJK = (s) => /[぀-ヿ㐀-鿿ｦ-ﾟ]/.test(s || '');
 const shortFrom = (arr) => (arr || [])
   .map(t => t.length > 34 ? t.slice(0, 33) + '…' : t).join(' · ');
 
@@ -6552,11 +6518,6 @@ function renderSectionCard(sec, i) {
       </div></div>`;
 }
 
-function toggleSection(i) {
-  const body = document.getElementById(`sec-body-${i}`);
-  S.sections[i].expanded = !S.sections[i].expanded;
-  body.style.display = S.sections[i].expanded ? '' : 'none';
-}
 
 function parseDialogue(raw) {
   return String(raw || '').split('\n').map(x => x.trim()).filter(Boolean).map(line => {
@@ -7267,7 +7228,6 @@ const LIB_FILTERS = ['search','category','source','verification','sort','field',
 const libClone = value => JSON.parse(JSON.stringify(value));
 const libID = () => crypto.randomUUID();
 const libNormalID = value => String(value || '').replace(/-/g, '').toLowerCase();
-function libNotionURL(id) { return /^[0-9a-f-]{32,36}$/i.test(String(id)) ? `https://www.notion.so/${libNormalID(id)}` : ''; }
 function libSafeURL(value) { try { const u = new URL(value); return ['https:','http:'].includes(u.protocol) ? u.href : ''; } catch { return ''; } }
 function libProperty(p) {
   if (!p) return '';
@@ -7717,14 +7677,6 @@ async function newLibraryIdea() {
   await restoreLibrary(); if (!await ideaMaySwitch()) { if (LIB.idea?.pending) toast('Resolve the pending save before starting another idea.'); return; }
   if(LIB.busy || LIB.destinationSaving)return;
   LIB.idea = blankLibraryIdea(); renderLibraryIdea(); persistLibrarySoon(); document.getElementById('idea-name').focus();
-}
-async function libraryCollect() {
-  await restoreLibrary(); if (LIB.busy || LIB.idea.pending || LIB.idea.incomplete) { toast('Resolve the current idea save before changing its material.'); return; }
-  const selected = Object.values(LIB.selected); if (!selected.length) { toast('Select some material first.'); return; }
-  // Add to the current idea; its title and count are visible immediately, never an implicit new episode.
-  for (const row of selected) if (!LIB.idea.items.some(item => item.material.key === row.key)) LIB.idea.items.push({ placementId:libID(), snapshotRevision:libID(), material:libClone(row), purpose:'', pageId:null, lastEdited:null });
-  LIB.idea.dirty = true; showStage(8); renderLibraryIdea(); persistLibrarySoon();
-  document.getElementById('idea-save-status').textContent = `Added to ${LIB.idea.name || 'a new idea'}. Review and save when ready.`;
 }
 function editLibraryIdea() {
   if (LIB.busy || LIB.idea?.pending || LIB.idea?.incomplete) return;
