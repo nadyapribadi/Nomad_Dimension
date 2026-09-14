@@ -4999,11 +4999,20 @@ async function retryFactSave(key) {
   try{await saveAutomaticCheck(r);}catch(e){document.getElementById('verify-save-status').textContent=e.message;}renderVlibResults();
 }
 const FACT_RUN_LIMIT=20;
+// Working batch size. It starts at the provider's hard cap of four claims per
+// request and shrinks after a failure, because a failure is what turns one
+// request into a cascade of smaller ones. Clean requests walk it back up.
+const FACT_BATCH_MAX=4,FACT_BATCH_MIN=2,FACT_BATCH_GROW_AFTER=3;
 // Provider requests in flight at once. Each job below issues one request at a
 // time — the smaller batches a failure splits into run in sequence — so this
 // pool is the ceiling for requests, not just for jobs. A test asserts that a
 // splitting batch never exceeds it.
 const FACT_CONCURRENCY=3;
+// Consecutive provider-wide failures before a run stops instead of grinding
+// through the rest. Stopping is the safe direction: nothing is lost and every
+// later claim stays available for another run.
+const FACT_BREAKER_LIMIT=4;
+let _factBatch=FACT_BATCH_MAX,_factClean=0;
 let _libVerifying = false, _stopFactCheck = false;
 async function runLibVerify(btn, mode='selected') {
   if(_libVerifying)return;
@@ -5019,9 +5028,29 @@ async function runLibVerify(btn, mode='selected') {
   // not thrown away, and so a claim is never reported failed while its reply
   // sits in the same response. Each accepted form is compared in full, so a
   // different claim still cannot match by accident.
-  const replyNames=r=>{const name=normName(r.name),detail=normName((r.fields || '').slice(0,300)),forms=new Set([name]);if(detail)for(const sep of ['\u2014','\u2013','-'])forms.add(`${name} ${sep} ${detail}`);return forms;};
-  const matchesRow=(v,r)=>{const raw=normName(v && v.name);if(!raw)return false;const forms=replyNames(r);return forms.has(raw) || forms.has(raw.replace(/^\d+\s*[.)]\s*/,''));};
+  const stripDecoration=(raw,r)=>{
+    let t=raw.replace(/^\d+\s*[.)]\s*/,'').replace(/^claim:\s*/,'');
+    const detail=normName((r.fields || '').slice(0,300));
+    if(detail){
+      for(const sep of ['\u2014','\u2013','-'])if(t.endsWith(` ${sep} ${detail}`)){t=t.slice(0,-(` ${sep} ${detail}`).length);break;}
+      if(t.endsWith(` detail: ${detail}`))t=t.slice(0,-(` detail: ${detail}`).length);
+    }
+    return t;
+  };
+  const matchesRow=(v,r)=>{const raw=normName(v && v.name);return !!raw && normName(r.name)===stripDecoration(raw,r);};
   const attemptedKeys=new Set();
+  let providerStreak=0,providerStop=false;
+  const noteBatchResult=ok=>{
+    if(!ok){_factClean=0;_factBatch=Math.max(FACT_BATCH_MIN,_factBatch-1);return;}
+    if(_factBatch>=FACT_BATCH_MAX){_factClean=0;return;}
+    if(++_factClean>=FACT_BATCH_GROW_AFTER){_factBatch=Math.min(FACT_BATCH_MAX,_factBatch+1);_factClean=0;}
+  };
+  // What the provider reported itself (5xx/504), or a request that never
+  // reached it, is global: splitting the batch and trying every remaining claim
+  // would repeat the same failure. A request-level error is not global.
+  const providerWide=e=>!!e && (typeof e.status==='number'
+    ? e.status>=500
+    : /fetch failed|network|timed out|ENOTFOUND|ECONNRESET/i.test(String(e.message || '')));
   // The provider tolerates parallel calls; Notion and its write path do not.
   // Findings are saved one at a time, in the order their replies arrive.
   let saveChain=Promise.resolve();
@@ -5029,7 +5058,10 @@ async function runLibVerify(btn, mode='selected') {
   try{
     const visible=visibleTableKeys('fact-review-table'),hidden=visible?rows.filter(r=>!visible.has(r.id || r._key)).length:0;
     if(!await confirmIdeaChange('Check these claims?',`${rows.length} claims${hidden?`, including ${hidden} outside the current filters,`:''} will use the Fact-check API in about ${Math.ceil(rows.length/groupSize)} requests${mode==='failed'?', one claim per request':''}; a request that fails is retried as smaller batches or single claims, so a bad reply cannot fail the rest. ${eligible.length>rows.length?`${eligible.length-rows.length} other selected claims will wait for another confirmed run. `:''}Completed findings save automatically as AI checks. Existing human reviews are preserved. No automatic paid retry.`,`Check ${rows.length} claims · API`))return;
-    const byStore={};for(const r of rows){(byStore[r.store] ||= []).push(r);r._checking=true;}
+    // Rows are not marked busy up front: with three requests in flight, showing
+    // a thousand rows as "Checking…" would be a lie. verifyGroup marks the group
+    // it is about to send.
+    const byStore={};for(const r of rows)(byStore[r.store] ||= []).push(r);
     const status=document.getElementById('verify-save-status');
     renderVlibResults();
     const noteProgress=()=>{status.textContent=`${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry`;};
@@ -5052,6 +5084,7 @@ async function runLibVerify(btn, mode='selected') {
     // that ultimately fails carries the error and later claims are still run.
     const verifyGroup=async(store,group)=>{
       if(_stopFactCheck){stopReason='Stopped by you after the previous request';return;}
+      if(providerStop)return;
       for(const r of group){if(!attemptedKeys.has(keyOf(r))){attemptedKeys.add(keyOf(r));attempted++;}r._checking=true;}
       renderVlibResults();
       const splitAndRetry=async()=>{
@@ -5065,7 +5098,16 @@ async function runLibVerify(btn, mode='selected') {
       try{
         result=await _verifyBatch(store,group.map(r=>({name:r.name,detail:(r.fields || '').slice(0,300)})));
         if(!Array.isArray(result?.verified))throw new Error('The model returned an invalid findings list. Previous results are unchanged.');
+        noteBatchResult(true);providerStreak=0;
       }catch(e){
+        noteBatchResult(false);
+        if(providerWide(e)){if(++providerStreak>=FACT_BREAKER_LIMIT){providerStop=true;stopReason=`Stopped after ${providerStreak} provider failures in a row`;}}
+        else providerStreak=0;
+        if(providerStop){
+          for(const r of group){r._checking=false;r._retry=true;r._checkError=`Not checked: the provider failed repeatedly (${e.message}). Previous findings are unchanged.`;}
+          failed+=group.length;renderVlibResults();noteProgress();
+          return;
+        }
         if(group.length>1){await splitAndRetry();return;}
         const r=group[0];r._retry=true;r._checkError=`Check failed: ${e.message}`;failed++;r._checking=false;renderVlibResults();noteProgress();
         return;
@@ -5078,13 +5120,27 @@ async function runLibVerify(btn, mode='selected') {
         await applyReply(group,r,result);
       }
     };
-    // Every batch is a job, so stores drain together instead of one at a time.
-    // verifyGroup re-checks the stop flag before it issues anything, so stopping
-    // still leaves every later claim untouched.
-    const jobs=[];
-    for(const [store,items] of Object.entries(byStore))
-      for(let i=0;i<items.length;i+=groupSize)jobs.push([store,items.slice(i,i+groupSize)]);
-    await mapPool(jobs,FACT_CONCURRENCY,async([store,group])=>{await verifyGroup(store,group);});
+    // Jobs are pulled when a worker frees up rather than queued up front, so the
+    // working batch can shrink mid-run. Stores drain together instead of one at
+    // a time, and verifyGroup re-checks the stop flag before it sends, so
+    // stopping still leaves every later claim untouched.
+    const queues=Object.entries(byStore).map(([store,items])=>({store,items,at:0}));
+    const nextJob=()=>{
+      while(queues.length){
+        const q=queues.shift(),size=mode==='failed'?1:_factBatch,group=q.items.slice(q.at,q.at+size);
+        if(!group.length)continue;
+        q.at+=group.length;
+        if(q.at<q.items.length)queues.push(q);
+        return [q.store,group];
+      }
+      return null;
+    };
+    await mapPool(Array.from({length:FACT_CONCURRENCY}),FACT_CONCURRENCY,async()=>{
+      for(let job=nextJob();job&&!providerStop;job=nextJob()){
+        if(_stopFactCheck){stopReason='Stopped by you after the previous request';return;}
+        await verifyGroup(job[0],job[1]);
+      }
+    });
     const nextSelected=(S.vlib || []).filter(r=>!r._aiPending && !S._vlibSkip.has(r.id || r._key)).length;
     status.textContent=`Last run: ${rows.length} claims · ${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry · ${rows.length-attempted} not attempted.${stopReason?` Checks stopped: ${stopReason}. Previous findings retained; no automatic paid retry.`:' Human review is optional.'} Next run: ${nextSelected} claims currently selected${nextSelected>FACT_RUN_LIMIT?` — check all at once, or ${FACT_RUN_LIMIT} at a time`:''}.`;
 

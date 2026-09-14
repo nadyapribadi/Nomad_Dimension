@@ -1221,7 +1221,7 @@ test('YouTube errors cannot be reported as successful empty discovery results', 
   assert.equal(t.element('yt-fetch-btn').disabled, false);
 });
 
-test('a configuration failure is attributed claim by claim instead of stopping later groups', async () => {
+test('a provider-wide failure stops the run instead of repeating it for every claim', async () => {
   const t = setup(),
     S = t.run('S');
   S.vlib = Array.from({ length: 9 }, (_, i) => ({
@@ -1238,21 +1238,28 @@ test('a configuration failure is attributed claim by claim instead of stopping l
     throw Object.assign(new Error('Configuration missing'), { status: 503 });
   };
   await t.run('runLibVerify()');
-  // Three groups of four, three and one: every failed batch is retried as
-  // pairs and then singles, so the whole selection is attempted.
-  assert.equal(calls, 15);
+  // This used to retry every claim as pairs and then singles, so the whole
+  // selection was attempted. A provider-wide failure now stops the run: the
+  // same global error would just repeat, and the operator learns nothing new
+  // from seeing it once per claim.
+  assert.ok(calls < 15, `expected an early stop, saw ${calls} requests`);
   assert.equal(S._vlibSkip.size, 0);
-  assert.equal(
-    S.vlib.every((r) => r._retry && /Configuration missing/.test(r._checkError)),
-    true
+  assert.match(t.element('verify-save-status').textContent, /Stopped after/);
+  assert.ok(
+    S.vlib.some((r) => r._retry && /provider failed repeatedly/.test(r._checkError)),
+    'the claims sent while the provider was failing carry the reason'
   );
+  assert.ok(
+    S.vlib.some((r) => !r._retry),
+    'later claims stay available for another run'
+  );
+  assert.equal(t.run('_libVerifying'), false);
   assert.equal(t.calls.length, 0);
   assert.match(t.element('vlib-results').innerHTML, /Configuration missing/);
   const status = t.element('verify-save-status').textContent;
-  assert.match(status, /0 findings saved · 9 checks failed/);
-  assert.match(status, /0 not attempted/);
+  assert.match(status, /0 findings saved/);
+  assert.match(status, /Checks stopped: Stopped after/);
   assert.match(status, /Next run: 9 claims currently selected/);
-  assert.doesNotMatch(status, /Checks stopped/);
 });
 
 test('transcript save failure retains text and retries saving without fetching again', async () => {
@@ -2385,6 +2392,76 @@ test('findings save one at a time even while provider requests run in parallel',
   assert.equal(maxSaving, 1);
   assert.ok(maxInFlight > 1, `expected parallel provider calls, saw ${maxInFlight}`);
   assert.equal(S._vlibSkip.size, 8);
+});
+
+test('a reply that echoes the labelled entry still resolves the claim', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [
+    { id: 'a', name: 'Claim A', store: 'research', fields: 'Category: X · Source: vlog' },
+    { id: 'b', name: 'Claim B', store: 'research', fields: 'Category: X · Source: vlog' },
+  ];
+  S._vlibSkip = new Set();
+  const batches = [];
+  t.c.confirmIdeaChange = async () => true;
+  t.c._verifyBatch = async (_store, items) => {
+    batches.push(items.length);
+    return {
+      verified: items.map((it, i) => ({
+        // The entry as the prompt now renders it: a numbered claim line and a
+        // separate labelled detail line.
+        name: `${i + 1}. claim: ${it.name}\n   detail: ${it.detail}`,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  const saved = [];
+  t.c._writeVerdict = async (r, finding) => {
+    saved.push({ id: r.id, verdict: finding && finding.verdict });
+  };
+  await t.run('runLibVerify()');
+  assert.deepEqual(batches, [2]);
+  assert.equal(saved.length, 2);
+  assert.equal(S.vlib.filter((r) => r._retry).length, 0);
+});
+
+test('a timeout shrinks the working batch for the rest of the run', async () => {
+  const t = setup(),
+    S = t.run('S'),
+    max = t.run('FACT_BATCH_MAX');
+  S.vlib = Array.from({ length: 40 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  const sizes = [];
+  let calls = 0;
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => {
+    calls++;
+    sizes.push(items.length);
+    if (calls <= 3) throw Object.assign(new Error('Search took too long'), { status: 504 });
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  // mode 'all' so the run is not capped by FACT_RUN_LIMIT: this test needs
+  // enough batches for a mid-run adjustment to be visible.
+  await t.run("runLibVerify(null,'all')");
+  assert.ok(sizes.includes(max), `expected a run that starts at the cap, saw ${sizes}`);
+  assert.ok(
+    sizes.some((s) => s < max),
+    `expected a smaller batch after the timeout, saw ${sizes}`
+  );
+  assert.equal(S.vlib.filter((r) => r._retry).length, 0);
+  assert.equal(S._vlibSkip.size, 40);
 });
 
 test('retrying failed checks uses single-claim requests and separates run scope from selection', async () => {
