@@ -33,6 +33,7 @@ resource ancestry checks. The integration's permissions remain the data scope.
 | `yt-transcript.js`              | `TRANSCRIPT_API_KEY` optional fallback                                 |
 | `maps-proxy.js`                 | `GOOGLE_MAPS_API_KEY` optional                                         |
 | `web-research.js`               | `GEMINI_API_KEY`                                                       |
+| `cost-log.js`                   | `NOTION_TOKEN` (writes one Production Costs row per fact-check run)    |
 
 Set these in Netlify environment variables and, for local development, a
 gitignored `.env` (see `.env.example`). Model adapters, key names, and routing

@@ -1,5 +1,7 @@
 'use strict';
 
+const { usageFromInteractions } = require('./_shared/cost');
+
 // Web research for Step 1 (Research → Web tab). Gemini 3.6 Flash + Google
 // Search grounding through the Interactions API — on generateContent,
 // structured output with the search tool hangs and grounding metadata is no
@@ -135,6 +137,9 @@ exports.handler = async (event) => {
       verified: enforced,
       sources: citedSources(enforced),
       model: MODEL,
+      // Reported so the browser can log one cost entry for the whole run
+      // instead of one write per request inside this deadline-bound function.
+      usage: usageFromInteractions(call.usage),
     });
   }
   return respond(200, { extract: parsed, sources: extractSources(parsed), model: MODEL });

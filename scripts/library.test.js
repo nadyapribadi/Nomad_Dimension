@@ -2585,6 +2585,45 @@ test('a rate-limited provider stops the run instead of splitting into more reque
   assert.equal(t.run('_libVerifying'), false);
 });
 
+test('a run records one cost entry for all of its requests', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 8 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  const posts = [];
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  t.c._postJSON = async (url, body) => {
+    posts.push({ url, body });
+    if (url.includes('cost-log')) return { logged: true };
+    return {
+      verified: body.items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+      model: 'fixture-model',
+      usage: { inputTokens: 100, outputTokens: 20 },
+    };
+  };
+  await t.run('runLibVerify()');
+  const verify = posts.filter((p) => p.url.includes('web-research'));
+  const cost = posts.filter((p) => p.url.includes('cost-log'));
+  assert.equal(verify.length, 2, 'eight claims is two requests');
+  assert.equal(cost.length, 1, 'one cost entry per run, not per request');
+  // The body was built inside the vm realm, so compare by value, not prototype.
+  assert.deepEqual(JSON.parse(JSON.stringify(cost[0].body)), {
+    task: 'fact-check',
+    requests: 2,
+    model: 'fixture-model',
+    usage: { inputTokens: 200, outputTokens: 40 },
+  });
+});
+
 test('a transient save failure is retried without paying the provider again', async () => {
   const t = setup(),
     S = t.run('S');

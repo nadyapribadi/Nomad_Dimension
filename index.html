@@ -4517,7 +4517,7 @@ function _srcLinks(sources) {
 // One grounded verify call. Returns { verified:[], sources:[] } or throws.
 async function _verifyBatch(store, items) {
   const d = await _postJSON('/.netlify/functions/web-research', { mode: 'verify', store, items });
-  return { verified: d.verified || [], sources: d.sources || [], model:d.model };
+  return { verified: d.verified || [], sources: d.sources || [], model:d.model, usage:d.usage || null };
 }
 
 // ─── Web · "Verify from library" — keyword search across Notion stores ───────
@@ -4987,6 +4987,17 @@ async function runLibVerify(btn, mode='selected') {
   const matchesRow=(v,r)=>{const raw=normName(v && v.name);return !!raw && normName(r.name)===stripDecoration(raw,r);};
   const attemptedKeys=new Set();
   let providerStreak=0,providerStop=false;
+  // One cost entry per run, not per request: the browser sums what the provider
+  // reported and posts it once, so the verify deadline never carries a Notion
+  // write and the Costs DB gets one readable row.
+  let runRequests=0,runUsage={inputTokens:0,outputTokens:0},runModel='';
+  const logRun=async()=>{
+    if(!runRequests)return;
+    try{
+      const d=await _postJSON('/.netlify/functions/cost-log',{task:'fact-check',requests:runRequests,model:runModel,usage:runUsage});
+      if(d && d.logged===false)toast('Findings saved, but the cost entry was not recorded.','error');
+    }catch(e){toast(`Findings saved, but the cost entry was not recorded (${e.message}).`,'error');}
+  };
   const noteBatchResult=ok=>{
     if(!ok){_factClean=0;_factBatch=Math.max(FACT_BATCH_MIN,_factBatch-1);return;}
     if(_factBatch>=FACT_BATCH_MAX){_factClean=0;return;}
@@ -5061,6 +5072,9 @@ async function runLibVerify(btn, mode='selected') {
         result=await _verifyBatch(store,group.map(r=>({name:r.name,detail:(r.fields || '').slice(0,300)})));
         if(!Array.isArray(result?.verified))throw new Error('The model returned an invalid findings list. Previous results are unchanged.');
         noteBatchResult(true);providerStreak=0;
+        runRequests++;
+        if(result.usage){runUsage.inputTokens+=result.usage.inputTokens || 0;runUsage.outputTokens+=result.usage.outputTokens || 0;}
+        if(result.model)runModel=result.model;
       }catch(e){
         // Rate limiting is not this claim's fault, and splitting would ask a
         // throttled provider for more requests. Stop, and say why.
@@ -5113,6 +5127,7 @@ async function runLibVerify(btn, mode='selected') {
     });
     const nextSelected=(S.vlib || []).filter(r=>!r._aiPending && !S._vlibSkip.has(r.id || r._key)).length;
     status.textContent=`Last run: ${rows.length} claims · ${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry · ${rows.length-attempted} not attempted.${stopReason?` Checks stopped: ${stopReason}. Previous findings retained; no automatic paid retry.`:' Human review is optional.'} Next run: ${nextSelected} claims currently selected.`;
+    await logRun();
 
     if(S.vlib.some(r=>!r.id))renderExtractReview();
   }finally{for(const r of rows)r._checking=false;_libVerifying=false;if(btn)btn.disabled=false;renderVlibResults();}

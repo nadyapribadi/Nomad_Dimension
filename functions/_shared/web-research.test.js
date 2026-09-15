@@ -238,6 +238,12 @@ test('truncation needs agreement: unparseable output at the cap, not a valid rep
   );
   assert.equal(complete.statusCode, 200);
   assert.equal(JSON.parse(complete.body).verified[0].name, 'A claim');
+  // The browser cannot sum what it is never told: usage rides back with the
+  // findings so one cost entry can be logged for the whole run.
+  assert.deepEqual(JSON.parse(complete.body).usage, {
+    inputTokens: 0,
+    outputTokens: 4096,
+  });
 });
 
 const { enforceGrounding } = require('../web-research')._internal;
