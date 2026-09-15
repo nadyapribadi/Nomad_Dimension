@@ -4690,8 +4690,7 @@ function factNextStep() {
   const skip=S._vlibSkip || new Set();
   const selected=rows.filter(r=>!r._saving && !skip.has(r.id || r._key)).length;
   const tidyHint=!S._vlibTidied && rows.length>50?'“Find duplicates” first avoids paying to check the same claim twice.':'';
-  if(selected>FACT_RUN_LIMIT)return {label:`Check all ${selected} selected · API`,action:`runLibVerify(this,'all')`,hint:[`About ${Math.ceil(selected/4)} paid requests after one confirmation; stop any time. The button below checks only the next ${FACT_RUN_LIMIT}.`,tidyHint].filter(Boolean).join(' ')};
-  if(selected)return {label:`Check ${selected} selected claim${selected>1?'s':''} · API`,action:`runLibVerify(this,'all')`,hint:tidyHint};
+  if(selected)return {label:`Check ${selected} selected claim${selected>1?'s':''} · API`,action:'runLibVerify(this)',hint:[`About ${Math.ceil(selected/4)} paid requests after one confirmation; stop any time.`,tidyHint].filter(Boolean).join(' ')};
   const unchecked=rows.filter(r=>!hasCheck(r)).length;
   if(unchecked)return {label:`Select ${unchecked} unchecked claim${unchecked>1?'s':''}`,action:'selectUncheckedFacts()',hint:tidyHint};
   return {label:'Everything here is checked.',hint:'Filter the AI check column to “Contradicted” and review those first. Review is optional; unticking is never needed.'};
@@ -4720,15 +4719,12 @@ function renderVlibResults() {
   const step=factNextStep();
   // One primary action per decision. The guide names the single recommended next
   // action, so it owns the primary button and the standing button drops to
-  // plain. When the guide recommends what the standing button already does — the
-  // whole-run mode and the default mode cover the same claims below the run
-  // limit — the guide reads as a sentence rather than offering it twice.
-  const wholeRunAction="runLibVerify(this,'all')";
-  const guideIsDistinct=!!(step && step.action && step.action!=='runLibVerify(this)'
-    && !(step.action===wholeRunAction && n<=FACT_RUN_LIMIT));
+  // plain. When the guide recommends what the standing button already does, the
+  // guide reads as a sentence rather than offering the same action twice.
+  const guideIsDistinct=!!(step && step.action && step.action!=='runLibVerify(this)');
   const guide=step?`<p class="library-message" id="fact-next-step" style="border-left:3px solid var(--accent);padding-left:10px"><strong>Next:</strong> ${guideIsDistinct?`<button class="btn btn-sm btn-primary" ${_libVerifying?'disabled':''} onclick="${step.action}">${_esc(step.label)}</button>`:_esc(step.label)}${step.hint?`<br>${_esc(step.hint)}`:''}</p>`:'';
   el.innerHTML=`${guide}<div class="btn-row" style="flex-wrap:wrap">
-    <button class="${guideIsDistinct?'btn':'btn btn-primary'}" ${_libVerifying || !n?'disabled':''} onclick="runLibVerify(this)">${_libVerifying?'Checking…':n>FACT_RUN_LIMIT?`Check next ${FACT_RUN_LIMIT} (${n} selected) · API`:`Check selected (${n}) · API`}</button>
+    <button class="${guideIsDistinct?'btn':'btn btn-primary'}" ${_libVerifying || !n?'disabled':''} onclick="runLibVerify(this)">${_libVerifying?'Checking…':`Check selected (${n}) · API`}</button>
     ${_libVerifying?`<button class="btn" ${_stopFactCheck?'disabled':''} onclick="_stopFactCheck=true;renderVlibResults()">${_stopFactCheck?'Stopping after current request…':'Stop after current request'}</button>`:''}
     <button class="btn" onclick="selectUncheckedFacts()">Select unchecked</button>
     <button class="btn btn-ghost" onclick="vlibAll(true)">Select shown</button><button class="btn btn-ghost" onclick="vlibAll(false)">Clear selection</button>
@@ -4939,7 +4935,6 @@ async function retryFactSave(key) {
   const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r || r._saving || r._checking)return;
   try{await saveAutomaticCheck(r);}catch(e){document.getElementById('verify-save-status').textContent=e.message;}renderVlibResults();
 }
-const FACT_RUN_LIMIT=20;
 // Working batch size. It starts at the provider's hard cap of four claims per
 // request and shrinks after a failure, because a failure is what turns one
 // request into a cascade of smaller ones. Clean requests walk it back up.
@@ -4958,7 +4953,9 @@ let _libVerifying = false, _stopFactCheck = false;
 async function runLibVerify(btn, mode='selected') {
   if(_libVerifying)return;
   const eligible=(S.vlib || []).filter(r=>!r._saving && !r._aiPending && (mode==='failed'?r._retry:!S._vlibSkip.has(r.id || r._key)));
-  const rows=mode==='all'?eligible:eligible.slice(0,FACT_RUN_LIMIT),groupSize=mode==='failed'?1:4;
+  // Every ticked claim is attempted in this run. Only 'failed' narrows the set,
+  // to the claims whose request failed and to one claim per request.
+  const rows=eligible,groupSize=mode==='failed'?1:4;
   if(!rows.length){toast('Select unchecked claims, or use Retry save for findings already generated.');return;}
   _libVerifying=true;
   let done=0,failed=0,saveFailed=0,attempted=0,stopReason='';_stopFactCheck=false;
@@ -5091,7 +5088,7 @@ async function runLibVerify(btn, mode='selected') {
       }
     });
     const nextSelected=(S.vlib || []).filter(r=>!r._aiPending && !S._vlibSkip.has(r.id || r._key)).length;
-    status.textContent=`Last run: ${rows.length} claims · ${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry · ${rows.length-attempted} not attempted.${stopReason?` Checks stopped: ${stopReason}. Previous findings retained; no automatic paid retry.`:' Human review is optional.'} Next run: ${nextSelected} claims currently selected${nextSelected>FACT_RUN_LIMIT?` — check all at once, or ${FACT_RUN_LIMIT} at a time`:''}.`;
+    status.textContent=`Last run: ${rows.length} claims · ${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry · ${rows.length-attempted} not attempted.${stopReason?` Checks stopped: ${stopReason}. Previous findings retained; no automatic paid retry.`:' Human review is optional.'} Next run: ${nextSelected} claims currently selected.`;
 
     if(S.vlib.some(r=>!r.id))renderExtractReview();
   }finally{for(const r of rows)r._checking=false;_libVerifying=false;if(btn)btn.disabled=false;renderVlibResults();}

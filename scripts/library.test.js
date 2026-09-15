@@ -2136,7 +2136,109 @@ test('unsaved extraction checks persist locally without creating material in Not
   assert.equal(t.run('hasCheck(restored)'), true);
 });
 
-test('large fact-check selections are bounded to 20 claims per explicitly confirmed run', async () => {
+// Contract: every claim ticked when the run starts is attempted exactly once
+// during that run, unless the operator stops. These tests are the witness —
+// they must fail before the cap is removed and pass after.
+test('every ticked claim is attempted in one run, not only the first batch', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 60 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  const batches = [];
+  let scope = '';
+  t.c.confirmIdeaChange = async (_title, message) => {
+    scope = message;
+    return true;
+  };
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => {
+    batches.push(items.length);
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  await t.run('runLibVerify()');
+  assert.deepEqual(
+    batches,
+    Array.from({ length: 15 }, () => 4),
+    'sixty ticked claims means fifteen four-claim requests, not five'
+  );
+  assert.equal(S._vlibSkip.size, 60, 'every ticked claim ends up checked');
+  assert.match(scope, /60 claims/);
+  assert.match(scope, /15 requests/);
+});
+
+test('a ticked claim hidden by the table filter is still checked', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [
+    { id: 'a', name: 'Claim A', store: 'research' },
+    { id: 'b', name: 'Claim B', store: 'research' },
+  ];
+  S._vlibSkip = new Set();
+  const asked = [];
+  let scope = '';
+  // The table filter shows one row; the other is still ticked.
+  t.c.visibleTableKeys = () => new Set(['a']);
+  t.c.confirmIdeaChange = async (_title, message) => {
+    scope = message;
+    return true;
+  };
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => {
+    asked.push(...items.map((it) => it.name));
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  await t.run('runLibVerify()');
+  assert.deepEqual(asked.sort(), ['Claim A', 'Claim B']);
+  assert.match(scope, /outside the current filters/);
+});
+
+test('a claim whose finding is still pending save is not checked again', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [
+    {
+      id: 'a',
+      name: 'Claim A',
+      store: 'research',
+      _aiPending: { verdict: 'unsupported', note: 'Retained' },
+    },
+    { id: 'b', name: 'Claim B', store: 'research' },
+  ];
+  S._vlibSkip = new Set();
+  const asked = [];
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => {
+    asked.push(...items.map((it) => it.name));
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  await t.run('runLibVerify()');
+  assert.deepEqual(asked, ['Claim B'], 'a retained finding must not be paid for twice');
+});
+
+test('a whole-library selection is attempted in one confirmed run', async () => {
   const t = setup(),
     S = t.run('S');
   S.vlib = Array.from({ length: 1092 }, (_, i) => ({
@@ -2166,15 +2268,21 @@ test('large fact-check selections are bounded to 20 claims per explicitly confir
     writes.push(r.id);
   };
   await t.run('runLibVerify()');
-  assert.deepEqual(batches, [4, 4, 4, 4, 4]);
-  assert.equal(writes.length, 20);
-  assert.match(scope, /1072 other selected claims/);
-  assert.match(t.element('verify-save-status').textContent, /Last run: 20 claims/);
+  assert.equal(batches.length, 273, '1092 claims is 273 four-claim requests');
+  assert.ok(
+    batches.every((n) => n === 4),
+    'every request carries the provider maximum'
+  );
+  assert.equal(writes.length, 1092, 'nothing is left waiting for another run');
+  assert.doesNotMatch(scope, /wait for another confirmed run/);
+  assert.match(scope, /1092 claims/);
+  assert.match(scope, /273 requests/);
+  assert.match(t.element('verify-save-status').textContent, /Last run: 1092 claims/);
   assert.match(
     t.element('verify-save-status').textContent,
-    /Next run: 1072 claims currently selected/
+    /Next run: 0 claims currently selected/
   );
-  assert.match(t.element('vlib-results').innerHTML, /Check next 20 \(1072 selected\)/);
+  assert.doesNotMatch(t.element('vlib-results').innerHTML, /Check next 20/);
 });
 
 test('a reply that echoes the rendered entry resolves instead of costing another request', async () => {
@@ -2479,9 +2587,11 @@ test('a rate-limited provider stops the run instead of splitting into more reque
   assert.equal(t.run('_libVerifying'), false);
 });
 
-test('a large selection gives the recommended action the only primary button', async () => {
+test('the recommended action owns the only primary button, whoever it is', async () => {
   const t = setup(),
     S = t.run('S');
+  // No failures: the guide recommends the standing button's own action, so it
+  // reads as a sentence and the standing button stays primary.
   S.vlib = Array.from({ length: 25 }, (_, i) => ({
     id: `row-${i}`,
     name: `Claim ${i}`,
@@ -2489,11 +2599,20 @@ test('a large selection gives the recommended action the only primary button', a
   }));
   S._vlibSkip = new Set();
   t.run('renderVlibResults()');
-  const html = t.element('vlib-results').innerHTML;
+  let html = t.element('vlib-results').innerHTML;
   assert.equal((html.match(/btn-primary/g) || []).length, 1, 'exactly one primary action');
-  assert.match(html, /Check all 25 selected/);
-  assert.match(html, /onclick="runLibVerify\(this,'all'\)"/);
-  assert.match(html, /Check next 20 \(25 selected\)/);
+  assert.match(html, /Next:<\/strong> Check 25 selected claims/);
+  assert.match(html, /Check selected \(25\) · API/);
+  assert.doesNotMatch(html, /onclick="runLibVerify\(this,'all'\)"/);
+
+  // A failed check is a different action, so the guide owns the primary button
+  // and the standing button drops to plain — still exactly one primary.
+  S.vlib[0]._retry = true;
+  t.run('renderVlibResults()');
+  html = t.element('vlib-results').innerHTML;
+  assert.equal((html.match(/btn-primary/g) || []).length, 1, 'exactly one primary action');
+  assert.match(html, /onclick="runLibVerify\(this,'failed'\)"/);
+  assert.match(html, /Check selected \(25\) · API/);
 });
 
 test('a selection within the run limit does not offer the same action twice', async () => {
@@ -2657,7 +2776,7 @@ test('next-step guide prioritises saves, failures, checks, selection, then revie
   S._vlibSkip = new Set();
   assert.match(t.run('factNextStep().label'), /Check 1 selected claim/);
   S.vlib = Array.from({ length: 25 }, (_, i) => row(`r${i}`));
-  assert.match(t.run('factNextStep().label'), /Check all 25 selected/);
+  assert.match(t.run('factNextStep().label'), /Check 25 selected claims/);
   S.vlib[0]._retry = true;
   assert.match(t.run('factNextStep().label'), /Retry 1 failed check/);
   S.vlib[1]._aiPending = { verdict: 'unsupported', note: 'x' };
