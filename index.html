@@ -4517,7 +4517,7 @@ function _srcLinks(sources) {
 // One grounded verify call. Returns { verified:[], sources:[] } or throws.
 async function _verifyBatch(store, items) {
   const d = await _postJSON('/.netlify/functions/web-research', { mode: 'verify', store, items });
-  return { verified: d.verified || [], sources: d.sources || [], model:d.model, usage:d.usage || null };
+  return { verified: d.verified || [], sources: d.sources || [], model:d.model, usage:d.usage || null, costUsd:typeof d.costUsd==='number'?d.costUsd:null };
 }
 
 // ─── Web · "Verify from library" — keyword search across Notion stores ───────
@@ -4689,7 +4689,7 @@ function factNextStep() {
   if(failed)return {label:`Retry ${failed} failed check${failed>1?'s':''} · API`,action:`runLibVerify(this,'failed')`,hint:'One claim per request, so a bad reply cannot fail the rest.'};
   const skip=S._vlibSkip || new Set();
   const selected=rows.filter(r=>!r._saving && !skip.has(r.id || r._key)).length;
-  const tidyHint=!S._vlibTidied && rows.length>50?'“Find duplicates” first avoids paying to check the same claim twice.':'';
+  const tidyHint=!S._vlibTidied && rows.length>50?'"Find duplicates" in the Library groups near-identical claims before you pay for both.':'';
   if(selected)return {label:`Check ${selected} ticked claim${selected>1?'s':''} · API`,action:'runLibVerify(this)',hint:[`About ${Math.ceil(selected/4)} paid requests after one confirmation; stop any time.`,tidyHint].filter(Boolean).join(' ')};
   const unchecked=rows.filter(r=>!hasCheck(r)).length;
   if(unchecked)return {label:`Select ${unchecked} unchecked claim${unchecked>1?'s':''}`,action:'selectUncheckedFacts()',hint:tidyHint};
@@ -4731,7 +4731,6 @@ function renderVlibResults() {
       <div class="btn-row" style="flex-wrap:wrap;margin-top:8px">
         <button class="btn btn-ghost" onclick="selectUncheckedFacts()">Tick unchecked</button>
         <button class="btn btn-ghost" onclick="vlibAll(true)">Tick shown</button><button class="btn btn-ghost" onclick="vlibAll(false)">Untick all</button>
-        ${S._vlibSource==='session'?'':'<button class="btn btn-ghost" onclick="tidyVlib()">Find duplicates</button>'}
       </div>
       <p class="library-message">Ticking chooses what the next run checks. Findings save to Notion as they are found; human review and unticking are never required, and “No evidence found” does not mean false.</p>
     </details></div>
@@ -4990,11 +4989,16 @@ async function runLibVerify(btn, mode='selected') {
   // One cost entry per run, not per request: the browser sums what the provider
   // reported and posts it once, so the verify deadline never carries a Notion
   // write and the Costs DB gets one readable row.
-  let runRequests=0,runUsage={inputTokens:0,outputTokens:0},runModel='';
+  let runRequests=0,runUsage={inputTokens:0,outputTokens:0},runModel='',runCostUsd=0,runCostKnown=false;
+  // Fact-check runs before an episode exists, so the row is labelled by what was
+  // checked rather than attributed to an episode that is not there.
+  const runScope=S._vlibSource==='session'
+    ?String((S.epQueue || []).find(v=>v.id===S.reviewSourceId)?.title || 'Selected sources')
+    :'Library';
   const logRun=async()=>{
     if(!runRequests)return;
     try{
-      const d=await _postJSON('/.netlify/functions/cost-log',{task:'fact-check',requests:runRequests,model:runModel,usage:runUsage});
+      const d=await _postJSON('/.netlify/functions/cost-log',{task:'fact-check',requests:runRequests,model:runModel,usage:runUsage,scope:runScope,...(runCostKnown?{costUsd:Math.round(runCostUsd*1e6)/1e6}:{})});
       if(d && d.logged===false)toast('Findings saved, but the cost entry was not recorded.','error');
     }catch(e){toast(`Findings saved, but the cost entry was not recorded (${e.message}).`,'error');}
   };
@@ -5079,6 +5083,7 @@ async function runLibVerify(btn, mode='selected') {
         runRequests++;
         if(result.usage){runUsage.inputTokens+=result.usage.inputTokens || 0;runUsage.outputTokens+=result.usage.outputTokens || 0;}
         if(result.model)runModel=result.model;
+        if(typeof result.costUsd==='number'){runCostUsd+=result.costUsd;runCostKnown=true;}
       }catch(e){
         // Rate limiting is not this claim's fault, and splitting would ask a
         // throttled provider for more requests. Stop, and say why.

@@ -2609,6 +2609,7 @@ test('a run records one cost entry for all of its requests', async () => {
       })),
       model: 'fixture-model',
       usage: { inputTokens: 100, outputTokens: 20 },
+      costUsd: 0.001,
     };
   };
   await t.run('runLibVerify()');
@@ -2622,6 +2623,8 @@ test('a run records one cost entry for all of its requests', async () => {
     requests: 2,
     model: 'fixture-model',
     usage: { inputTokens: 200, outputTokens: 40 },
+    scope: 'Library',
+    costUsd: 0.002,
   });
 });
 
@@ -2700,10 +2703,24 @@ test('list-editing tools live behind a disclosure, not in the decision row', asy
   const tools = html.slice(open, html.indexOf('</details>', open));
   assert.match(tools, /Tick unchecked/);
   assert.match(tools, /Tick shown/);
-  assert.match(tools, /Find duplicates/);
   assert.match(tools, /Ticking chooses what the next run checks/);
+  // Deduplication belongs to the Library, where the material lives: a
+  // destructive tool does not sit inside the panel that spends money.
+  assert.doesNotMatch(tools, /Find duplicates/);
   // The old all-purpose advice paragraph is gone from the decision row.
   assert.doesNotMatch(html, /Suggested order/);
+});
+
+test('a large untidied selection points at the Library dedupe instead of offering it here', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 60 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  assert.match(t.run('factNextStep().hint'), /in the Library/);
 });
 
 test('the recommended action owns the only primary button, whoever it is', async () => {

@@ -60,6 +60,30 @@ test('logCost keeps the mapped stage label for the router tasks', async (t) => {
   assert.equal(body.properties.Stage.select.name, STAGE_BY_TASK.dialogue);
 });
 
+test('logCost labels a pre-episode scope without claiming an episode', async (t) => {
+  let body;
+  t.mock.method(global, 'fetch', async (_url, options) => {
+    body = JSON.parse(options.body);
+    return { ok: true, status: 200 };
+  });
+  await logCost({
+    task: 'fact-check',
+    scope: 'Library',
+    token: 'secret',
+    requests: 3,
+    result: {
+      model: 'gemini-3.6-flash',
+      provider: 'gemini',
+      usage: { inputTokens: 10, outputTokens: 5 },
+    },
+  });
+  assert.equal(
+    body.properties['Cost Entry'].title[0].text.content,
+    'Library · fact-check · 3 requests'
+  );
+  assert.equal(body.properties.Episode, undefined, 'no episode is invented');
+});
+
 test('logCost fails loudly rather than silently losing the entry', async (t) => {
   await assert.rejects(() => logCost({ task: 'fact-check', result: {}, token: '' }), /unavailable/);
   t.mock.method(global, 'fetch', async () => ({ ok: false, status: 502 }));

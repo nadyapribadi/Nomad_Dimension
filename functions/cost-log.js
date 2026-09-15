@@ -30,6 +30,14 @@ exports.handler = withAuth(async (event) => {
   const outputTokens = num(usage.outputTokens);
   if (inputTokens === null || outputTokens === null)
     return json(400, { error: 'usage must be non-negative token counts' });
+  const costUsd =
+    payload.costUsd === undefined || payload.costUsd === null ? undefined : Number(payload.costUsd);
+  if (costUsd !== undefined && (!Number.isFinite(costUsd) || costUsd < 0))
+    return json(400, { error: 'costUsd must be a non-negative number' });
+  const scope =
+    payload.scope === undefined || payload.scope === null
+      ? ''
+      : String(payload.scope).slice(0, 120);
   const token = process.env.NOTION_TOKEN;
   if (!token) return json(503, { logged: false, error: 'NOTION_TOKEN not set' });
   try {
@@ -38,10 +46,12 @@ exports.handler = withAuth(async (event) => {
       episode: payload.episode || '',
       token,
       requests,
+      scope,
       result: {
         model: String(payload.model || ''),
         provider: 'gemini',
         usage: { inputTokens, outputTokens },
+        ...(costUsd === undefined ? {} : { costUsd }),
       },
     });
   } catch (e) {

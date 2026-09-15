@@ -44,12 +44,13 @@ function usageFromInteractions(usage) {
 // `requests` is optional: a batch of provider calls reported as one entry says
 // how many it took, so a run's cost stays readable instead of being a row per
 // call.
-async function logCost({ result, task, episode, token, requests }) {
+async function logCost({ result, task, episode, token, requests, scope }) {
   if (!token) throw new Error('Cost logging unavailable');
   const stage = STAGE_BY_TASK[task];
   const usage = (result && result.usage) || {};
   const label = [
-    episode || 'EP?',
+    episode || (scope ? null : 'EP?'),
+    scope || null,
     stage || null,
     task || null,
     requests ? `${requests} requests` : null,

@@ -54,11 +54,29 @@ test('cost-log refuses bad input and unauthenticated calls', async (t) => {
   assert.equal((await handler(request(good, { auth: false }))).statusCode, 401);
   assert.equal((await handler(request({ ...good, task: 'guess' }))).statusCode, 400);
   assert.equal((await handler(request({ ...good, requests: 0 }))).statusCode, 400);
+  assert.equal((await handler(request({ ...good, costUsd: 'lots' }))).statusCode, 400);
   assert.equal(
     (await handler(request({ ...good, usage: { inputTokens: -1, outputTokens: 0 } }))).statusCode,
     400
   );
   assert.equal(calls.length, 0, 'nothing is written when the request is refused');
+});
+
+test('cost-log carries the run scope and the computed price into the row', async (t) => {
+  let body;
+  t.mock.method(global, 'fetch', async (_url, options) => {
+    body = JSON.parse(options.body);
+    return { ok: true, status: 200 };
+  });
+  const { handler } = require('../cost-log');
+  const res = await handler(request({ ...good, scope: 'Library', costUsd: 0.0123 }));
+  assert.equal(res.statusCode, 200);
+  assert.equal(
+    body.properties['Cost Entry'].title[0].text.content,
+    'Library · fact-check · 12 requests'
+  );
+  assert.equal(body.properties['Cost USD'].number, 0.0123);
+  assert.equal(body.properties.Episode, undefined, 'no episode is invented');
 });
 
 test('cost-log reports a failed Notion write instead of pretending it landed', async (t) => {

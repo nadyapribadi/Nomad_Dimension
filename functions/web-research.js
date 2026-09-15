@@ -1,6 +1,7 @@
 'use strict';
 
 const { usageFromInteractions } = require('./_shared/cost');
+const { cost } = require('./_shared/models');
 
 // Web research for Step 1 (Research → Web tab). Gemini 3.6 Flash + Google
 // Search grounding through the Interactions API — on generateContent,
@@ -133,13 +134,15 @@ exports.handler = async (event) => {
         code: 'invalid_model_shape',
       });
     const enforced = enforceGrounding(parsed.verified, call.grounded);
+    const usage = usageFromInteractions(call.usage);
     return respond(200, {
       verified: enforced,
       sources: citedSources(enforced),
       model: MODEL,
       // Reported so the browser can log one cost entry for the whole run
       // instead of one write per request inside this deadline-bound function.
-      usage: usageFromInteractions(call.usage),
+      usage,
+      costUsd: cost(MODEL, usage),
     });
   }
   return respond(200, { extract: parsed, sources: extractSources(parsed), model: MODEL });

@@ -244,6 +244,9 @@ test('truncation needs agreement: unparseable output at the cap, not a valid rep
     inputTokens: 0,
     outputTokens: 4096,
   });
+  // Priced from the shared table, so the Costs row can carry dollars instead of
+  // making every reader redo the arithmetic.
+  assert.equal(JSON.parse(complete.body).costUsd, 0.001638);
 });
 
 const { enforceGrounding } = require('../web-research')._internal;
