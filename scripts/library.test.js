@@ -2172,9 +2172,10 @@ test('every ticked claim is attempted in one run, not only the first batch', asy
   assert.equal(S._vlibSkip.size, 60, 'every ticked claim ends up checked');
   assert.match(scope, /60 claims/);
   assert.match(scope, /15 requests/);
-  // The count alone does not tell the operator what they are agreeing to.
-  assert.match(scope, /roughly \d+ minutes of checking/);
+  // Four facts, no policy: what, how many requests, how long, and the open tab.
+  assert.match(scope, /roughly \d+ minutes/);
   assert.match(scope, /Keep this tab open/);
+  assert.doesNotMatch(scope, /does not stop the others|nothing is sent after/);
 });
 
 test('a ticked claim hidden by the table filter is still checked', async () => {
