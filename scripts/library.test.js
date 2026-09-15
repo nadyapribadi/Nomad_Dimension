@@ -2205,7 +2205,7 @@ test('a ticked claim hidden by the table filter is still checked', async () => {
   };
   await t.run('runLibVerify()');
   assert.deepEqual(asked.sort(), ['Claim A', 'Claim B']);
-  assert.match(scope, /outside the current filters/);
+  assert.match(scope, /hidden by the current filter/);
 });
 
 test('a claim whose finding is still pending save is not checked again', async () => {
@@ -2587,6 +2587,24 @@ test('a rate-limited provider stops the run instead of splitting into more reque
   assert.equal(t.run('_libVerifying'), false);
 });
 
+test('list-editing tools live behind a disclosure, not in the decision row', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [{ id: 'a', name: 'Claim A', store: 'research' }];
+  S._vlibSkip = new Set();
+  t.run('renderVlibResults()');
+  const html = t.element('vlib-results').innerHTML;
+  const open = html.indexOf('<details class="vlib-tools">');
+  assert.ok(open !== -1, 'the list tools are grouped');
+  const tools = html.slice(open, html.indexOf('</details>', open));
+  assert.match(tools, /Tick unchecked/);
+  assert.match(tools, /Tick shown/);
+  assert.match(tools, /Find duplicates/);
+  assert.match(tools, /Ticking chooses what the next run checks/);
+  // The old all-purpose advice paragraph is gone from the decision row.
+  assert.doesNotMatch(html, /Suggested order/);
+});
+
 test('the recommended action owns the only primary button, whoever it is', async () => {
   const t = setup(),
     S = t.run('S');
@@ -2601,8 +2619,8 @@ test('the recommended action owns the only primary button, whoever it is', async
   t.run('renderVlibResults()');
   let html = t.element('vlib-results').innerHTML;
   assert.equal((html.match(/btn-primary/g) || []).length, 1, 'exactly one primary action');
-  assert.match(html, /Next:<\/strong> Check 25 selected claims/);
-  assert.match(html, /Check selected \(25\) · API/);
+  assert.match(html, /Next:<\/strong> Check 25 ticked claims/);
+  assert.match(html, /Check ticked \(25\) · API/);
   assert.doesNotMatch(html, /onclick="runLibVerify\(this,'all'\)"/);
 
   // A failed check is a different action, so the guide owns the primary button
@@ -2612,10 +2630,10 @@ test('the recommended action owns the only primary button, whoever it is', async
   html = t.element('vlib-results').innerHTML;
   assert.equal((html.match(/btn-primary/g) || []).length, 1, 'exactly one primary action');
   assert.match(html, /onclick="runLibVerify\(this,'failed'\)"/);
-  assert.match(html, /Check selected \(25\) · API/);
+  assert.match(html, /Check ticked \(25\) · API/);
 });
 
-test('a selection within the run limit does not offer the same action twice', async () => {
+test('a selection does not offer the same action twice', async () => {
   const t = setup(),
     S = t.run('S');
   S.vlib = Array.from({ length: 5 }, (_, i) => ({
@@ -2629,7 +2647,7 @@ test('a selection within the run limit does not offer the same action twice', as
   assert.equal((html.match(/btn-primary/g) || []).length, 1, 'exactly one primary action');
   // Below the limit the guide's action is the standing button's action, so the
   // guide reads as a sentence instead of rendering a second button for it.
-  assert.match(html, /Next:<\/strong> Check 5 selected claims/);
+  assert.match(html, /Next:<\/strong> Check 5 ticked claims/);
   assert.doesNotMatch(html, /onclick="runLibVerify\(this,'all'\)"/);
 });
 
@@ -2774,9 +2792,9 @@ test('next-step guide prioritises saves, failures, checks, selection, then revie
   const row = (id, extra = {}) => ({ id, name: `Claim ${id}`, store: 'research', ...extra });
   S.vlib = [row('a')];
   S._vlibSkip = new Set();
-  assert.match(t.run('factNextStep().label'), /Check 1 selected claim/);
+  assert.match(t.run('factNextStep().label'), /Check 1 ticked claim/);
   S.vlib = Array.from({ length: 25 }, (_, i) => row(`r${i}`));
-  assert.match(t.run('factNextStep().label'), /Check 25 selected claims/);
+  assert.match(t.run('factNextStep().label'), /Check 25 ticked claims/);
   S.vlib[0]._retry = true;
   assert.match(t.run('factNextStep().label'), /Retry 1 failed check/);
   S.vlib[1]._aiPending = { verdict: 'unsupported', note: 'x' };

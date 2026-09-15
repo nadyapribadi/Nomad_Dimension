@@ -3534,7 +3534,7 @@ function applyTableFilters(id) {
   for(const row of rows){if(row.cells.length!==headers.length)continue;total++;row.hidden=!headers.every((th,i)=>tableValueMatches(tableCellValue(row.cells[i]),view.filters[th.dataset.label || th.textContent.trim()],th.dataset.filterKind || 'text'));if(!row.hidden)shown++;else if(row.querySelector('input[type=checkbox]:checked'))hiddenSelected++;}
   // Duplicate cluster labels remain with their visible member rows.
   rows.forEach((row,i)=>{if(row.cells.length===headers.length)return;const next=rows.slice(i+1).findIndex(r=>r.cells.length!==headers.length);row.hidden=!rows.slice(i+1,next<0?undefined:i+1+next).some(r=>!r.hidden);});
-  const summary=document.getElementById(`${id}-summary`);if(summary){const active=Object.values(view.filters).filter(v=>typeof v==='object'?v.min||v.max:v).length;summary.querySelector('span').textContent=`${shown} of ${total} shown${hiddenSelected?` · ${hiddenSelected} selected outside filters`:''}`;summary.querySelector('[data-toggle-filters]').textContent=active?`Filters (${active})`:'Filters';summary.querySelector('[data-clear-filters]').hidden=!active;summary.title='Filters do not change your selection.';}
+  const summary=document.getElementById(`${id}-summary`);if(summary){const active=Object.values(view.filters).filter(v=>typeof v==='object'?v.min||v.max:v).length;summary.querySelector('span').textContent=`${shown} of ${total} shown${hiddenSelected?` · ${hiddenSelected} ticked row${hiddenSelected>1?'s':''} hidden by this filter`:''}`;summary.querySelector('[data-toggle-filters]').textContent=active?`Filters (${active})`:'Filters';summary.querySelector('[data-clear-filters]').hidden=!active;summary.title='Filters never change what you ticked.';}
 }
 function visibleTableKeys(id) {const table=document.getElementById(id);if(!table?.tBodies)return null;return new Set([...table.tBodies[0].rows].filter(r=>!r.hidden && r.dataset.rowKey!==undefined).map(r=>r.dataset.rowKey));}
 
@@ -4690,7 +4690,7 @@ function factNextStep() {
   const skip=S._vlibSkip || new Set();
   const selected=rows.filter(r=>!r._saving && !skip.has(r.id || r._key)).length;
   const tidyHint=!S._vlibTidied && rows.length>50?'“Find duplicates” first avoids paying to check the same claim twice.':'';
-  if(selected)return {label:`Check ${selected} selected claim${selected>1?'s':''} · API`,action:'runLibVerify(this)',hint:[`About ${Math.ceil(selected/4)} paid requests after one confirmation; stop any time.`,tidyHint].filter(Boolean).join(' ')};
+  if(selected)return {label:`Check ${selected} ticked claim${selected>1?'s':''} · API`,action:'runLibVerify(this)',hint:[`About ${Math.ceil(selected/4)} paid requests after one confirmation; stop any time.`,tidyHint].filter(Boolean).join(' ')};
   const unchecked=rows.filter(r=>!hasCheck(r)).length;
   if(unchecked)return {label:`Select ${unchecked} unchecked claim${unchecked>1?'s':''}`,action:'selectUncheckedFacts()',hint:tidyHint};
   return {label:'Everything here is checked.',hint:'Filter the AI check column to “Contradicted” and review those first. Review is optional; unticking is never needed.'};
@@ -4724,16 +4724,20 @@ function renderVlibResults() {
   const guideIsDistinct=!!(step && step.action && step.action!=='runLibVerify(this)');
   const guide=step?`<p class="library-message" id="fact-next-step" style="border-left:3px solid var(--accent);padding-left:10px"><strong>Next:</strong> ${guideIsDistinct?`<button class="btn btn-sm btn-primary" ${_libVerifying?'disabled':''} onclick="${step.action}">${_esc(step.label)}</button>`:_esc(step.label)}${step.hint?`<br>${_esc(step.hint)}`:''}</p>`:'';
   el.innerHTML=`${guide}<div class="btn-row" style="flex-wrap:wrap">
-    <button class="${guideIsDistinct?'btn':'btn btn-primary'}" ${_libVerifying || !n?'disabled':''} onclick="runLibVerify(this)">${_libVerifying?'Checking…':`Check selected (${n}) · API`}</button>
+    <button class="${guideIsDistinct?'btn':'btn btn-primary'}" ${_libVerifying || !n?'disabled':''} onclick="runLibVerify(this)">${_libVerifying?'Checking…':`Check ticked (${n}) · API`}</button>
     ${_libVerifying?`<button class="btn" ${_stopFactCheck?'disabled':''} onclick="_stopFactCheck=true;renderVlibResults()">${_stopFactCheck?'Stopping after current request…':'Stop after current request'}</button>`:''}
-    <button class="btn" onclick="selectUncheckedFacts()">Select unchecked</button>
-    <button class="btn btn-ghost" onclick="vlibAll(true)">Select shown</button><button class="btn btn-ghost" onclick="vlibAll(false)">Clear selection</button>
     ${failed?`<button class="btn" ${_libVerifying?'disabled':''} onclick="runLibVerify(this,'failed')">Retry failed (${failed}) · API</button>`:''}
-    ${S._vlibSource==='session'?'':'<button class="btn btn-ghost" onclick="tidyVlib()">Find duplicates</button>'}</div>
-    <p class="library-message">Suggested order: find duplicates, check claims, retry failures, then review only what matters. AI findings save automatically; human review and unticking are never required. “No evidence found” does not mean false. Checkboxes only choose what the next run checks.</p>
+    <details class="vlib-tools"><summary>Choose which claims to check</summary>
+      <div class="btn-row" style="flex-wrap:wrap;margin-top:8px">
+        <button class="btn btn-ghost" onclick="selectUncheckedFacts()">Tick unchecked</button>
+        <button class="btn btn-ghost" onclick="vlibAll(true)">Tick shown</button><button class="btn btn-ghost" onclick="vlibAll(false)">Untick all</button>
+        ${S._vlibSource==='session'?'':'<button class="btn btn-ghost" onclick="tidyVlib()">Find duplicates</button>'}
+      </div>
+      <p class="library-message">Ticking chooses what the next run checks. Findings save to Notion as they are found; human review and unticking are never required, and “No evidence found” does not mean false.</p>
+    </details></div>
     <div style="overflow:auto;max-height:65vh;border:1px solid var(--border);border-radius:var(--radius)"><table id="fact-review-table" class="data-table" style="font-size:12px;min-width:850px"><thead><tr><th></th><th data-filter-kind="select">Table</th><th>Claim</th><th data-filter-kind="select">AI check</th><th>Evidence &amp; notes</th><th data-filter-kind="select">Your review</th></tr></thead><tbody>${rows.map(r=>{
       const k=r.id || r._key,data=checkRecord(r),ai=r._aiPending || data.ai,legacy=data.legacy;
-      return `<tr id="vlrow-${_esc(k)}" data-row-key="${_esc(k)}"><td><input type="checkbox" aria-label="Select claim ${_esc(r.name)}" ${skip.has(k)?'':'checked'} onchange="toggleVlib(${_esc(JSON.stringify(k))})"></td><td>${RESEARCH_STORES[r.store].label}</td>
+      return `<tr id="vlrow-${_esc(k)}" data-row-key="${_esc(k)}"><td><input type="checkbox" aria-label="Check claim ${_esc(r.name)}" ${skip.has(k)?'':'checked'} onchange="toggleVlib(${_esc(JSON.stringify(k))})"></td><td>${RESEARCH_STORES[r.store].label}</td>
       <td style="min-width:200px;max-width:310px;white-space:normal" data-filter-value="${_esc(r.name)}"><strong>${_esc(r.name)}</strong><details><summary>Source context</summary><p>${_esc(r.fields || '')}</p></details></td>
       <td style="white-space:normal;min-width:130px" data-filter-value="${r._retry?'Check failed':checkLabel(ai?.verdict)}">${ai?checkBadge(ai.verdict):'Not checked'}<small style="display:block">${r._aiPending?'Not saved':data.ai?(r.id?'Saved AI finding':'Saved on this device'):''}</small>${r._checking?'<p role="status">Checking…</p>':''}${r._checkError?`<p role="status" style="color:var(--accent)">${_esc(r._checkError)}</p>`:''}${r._aiPending?`<button class="btn btn-sm" ${r._saving || r._checking?'disabled':''} data-key="${_esc(k)}" onclick="retryFactSave(this.dataset.key)">Retry save · no AI</button>`:''}</td>
       <td style="min-width:200px;max-width:320px;white-space:normal">${checkEvidence(ai)}${legacy?`<details><summary>Previous saved check · reviewer unknown</summary>${checkBadge(legacy.verdict)}<p>${_esc(legacy.note)}</p></details>`:''}${r._proposal?'<small>Unfinished review retained</small>':''}</td>
@@ -4761,7 +4765,7 @@ async function verifyLibrarySelection(explicitRows=null) {
   S._vlibSource='saved';S._vlibTidy=false;S._vlibSkip=new Set();
   S.vlib=selected.map(m=>({id:m.id,store:m.category,name:m.name,lastEdited:m.lastEdited,fields:Object.entries(m.properties).map(([k,v])=>`${k}: ${libProperty(v)}`).join(' · '),status:libVerification(m),note:richText(m.properties['Verify Note'])}));
   for(const r of S.vlib){await restoreFactDrafts(r);if(hasCheck(r))S._vlibSkip.add(r.id);}
-  renderVlibResults();document.getElementById('verify-save-status').textContent=`${selected.length} Library rows selected for checking. AI checks use API credits and save automatically. Human review is optional.`;
+  renderVlibResults();document.getElementById('verify-save-status').textContent=`${selected.length} Library rows ticked to check. Checking uses API credits and findings save automatically. Human review is optional.`;
 }
 function renderVerdictProposal(r) {
   if(!r._proposal)return '';
@@ -4995,7 +4999,7 @@ async function runLibVerify(btn, mode='selected') {
   const queueSave=r=>{const run=saveChain.then(()=>saveAutomaticCheck(r));saveChain=run.catch(()=>{});return run;};
   try{
     const visible=visibleTableKeys('fact-review-table'),hidden=visible?rows.filter(r=>!visible.has(r.id || r._key)).length:0;
-    if(!await confirmIdeaChange('Check these claims?',`${rows.length} claims${hidden?`, including ${hidden} outside the current filters,`:''} will use the Fact-check API in about ${Math.ceil(rows.length/groupSize)} requests${mode==='failed'?', one claim per request':''}; a request that fails is retried as smaller batches or single claims, so a bad reply cannot fail the rest. ${eligible.length>rows.length?`${eligible.length-rows.length} other selected claims will wait for another confirmed run. `:''}Completed findings save automatically as AI checks. Existing human reviews are preserved. No automatic paid retry.`,`Check ${rows.length} claims · API`))return;
+    if(!await confirmIdeaChange('Check these claims?',`${rows.length} claims${hidden?` — including ${hidden} hidden by the current filter`:''} will use the Fact-check API in about ${Math.ceil(rows.length/groupSize)} requests${mode==='failed'?', one claim per request':''}. A claim that fails does not stop the others. Findings save to Notion as they are found; existing human reviews are preserved, and nothing is sent after the run ends.`,`Check ${rows.length} claims · API`))return;
     // Rows are not marked busy up front: with three requests in flight, showing
     // a thousand rows as "Checking…" would be a lie. verifyGroup marks the group
     // it is about to send.
