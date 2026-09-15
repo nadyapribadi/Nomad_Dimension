@@ -2564,6 +2564,8 @@ test('a rate-limited provider stops the run instead of splitting into more reque
   }));
   S._vlibSkip = new Set();
   const batches = [];
+  // No retries in this test: it is about what happens once waiting is over.
+  t.run('THROTTLE_WAITS.length=0');
   t.c.confirmIdeaChange = async () => true;
   t.c._writeVerdict = async () => {};
   t.c._verifyBatch = async (_store, items) => {
@@ -2584,6 +2586,61 @@ test('a rate-limited provider stops the run instead of splitting into more reque
   assert.equal(S._vlibSkip.size, 0);
   assert.ok(S.vlib.filter((r) => r._retry).length > 0);
   assert.equal(t.run('_libVerifying'), false);
+});
+
+test('a rate-limited batch is waited out and then finishes the run', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 4 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  let calls = 0;
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  // The real wait is a timer; tests substitute it so no timer ever runs.
+  t.run('_throttleWait=async()=>{}');
+  t.c._verifyBatch = async (_store, items) => {
+    calls++;
+    if (calls === 1)
+      throw Object.assign(new Error('Resource has been exhausted'), {
+        status: 502,
+        code: 'provider_throttled',
+      });
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  await t.run('runLibVerify()');
+  assert.equal(calls, 2, 'the same batch is retried after the wait');
+  assert.equal(S._vlibSkip.size, 4, 'the run completes instead of stopping');
+  const status = t.element('verify-save-status').textContent;
+  assert.match(status, /Checked 4 · saved 4/);
+  assert.doesNotMatch(status, /Stopped:/);
+});
+
+test("giving up on rate limiting keeps the provider's own reason", async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [{ id: 'a', name: 'Claim A', store: 'research' }];
+  S._vlibSkip = new Set();
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  t.run('THROTTLE_WAITS.length=0');
+  t.c._verifyBatch = async () => {
+    throw Object.assign(new Error('Resource has been exhausted (check quota)'), {
+      status: 502,
+      code: 'provider_throttled',
+    });
+  };
+  await t.run('runLibVerify()');
+  assert.match(S.vlib[0]._checkError, /Resource has been exhausted \(check quota\)/);
 });
 
 test('a run records one cost entry for all of its requests', async () => {

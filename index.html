@@ -4956,6 +4956,11 @@ const FACT_BREAKER_LIMIT=4;
 // retrying is safe; after repeated failures we stop trying rather than turn a
 // thousand-claim run into thousands of doomed writes.
 const SAVE_ATTEMPTS=3,SAVE_BREAKER=3;
+// A rate limit is usually a per-minute cap, not a wall. Waiting it out is the
+// difference between a 1000-claim run that finishes and one that stops at claim
+// seven. The wait itself is a seam so tests never touch a timer.
+const THROTTLE_WAITS=[15000,30000,45000];
+let _throttleWait=ms=>new Promise(r=>setTimeout(r,ms));
 let _factBatch=FACT_BATCH_MAX,_factClean=0;
 let _libVerifying = false, _stopFactCheck = false;
 async function runLibVerify(btn, mode='selected') {
@@ -4985,7 +4990,7 @@ async function runLibVerify(btn, mode='selected') {
   };
   const matchesRow=(v,r)=>{const raw=normName(v && v.name);return !!raw && normName(r.name)===stripDecoration(raw,r);};
   const attemptedKeys=new Set();
-  let providerStreak=0,providerStop=false;
+  let providerStreak=0,providerStop=false,throttleTries=0;
   // One cost entry per run, not per request: the browser sums what the provider
   // reported and posts it once, so the verify deadline never carries a Notion
   // write and the Costs DB gets one readable row.
@@ -5088,8 +5093,18 @@ async function runLibVerify(btn, mode='selected') {
         // Rate limiting is not this claim's fault, and splitting would ask a
         // throttled provider for more requests. Stop, and say why.
         if(e && e.code==='provider_throttled'){
+          if(throttleTries<THROTTLE_WAITS.length){
+            const wait=THROTTLE_WAITS[throttleTries++];
+            for(const r of group)r._checking=false;
+            status.textContent=`The provider is rate-limiting requests — waiting ${Math.round(wait/1000)}s, then retrying.`;
+            await _throttleWait(wait);
+            await verifyGroup(store,group);
+            return;
+          }
+          // Out of patience: stop, but keep the provider's own words so the
+          // operator can tell "wait a minute" from "fix your quota".
           providerStop=true;stopReason='The provider is rate-limiting requests';
-          for(const r of group){r._checking=false;r._retry=true;r._checkError='Not checked: the provider is rate-limiting requests. Wait a moment, then run again.';}
+          for(const r of group){r._checking=false;r._retry=true;r._checkError=`Not checked: the provider is rate-limiting requests (${e.message}). Waiting did not clear it — try again later.`;}
           failed+=group.length;renderVlibResults();noteProgress();
           return;
         }
