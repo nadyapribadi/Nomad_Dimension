@@ -5030,7 +5030,10 @@ async function runLibVerify(btn, mode='selected') {
   const queueSave=r=>{const run=saveChain.then(()=>saveWithRetry(r));saveChain=run.catch(()=>{});return run;};
   try{
     const visible=visibleTableKeys('fact-review-table'),hidden=visible?rows.filter(r=>!visible.has(r.id || r._key)).length:0;
-    if(!await confirmIdeaChange('Check these claims?',`${rows.length} claims${hidden?` — including ${hidden} hidden by the current filter`:''} will use the Fact-check API in about ${Math.ceil(rows.length/groupSize)} requests${mode==='failed'?', one claim per request':''}. A claim that fails does not stop the others. Findings save to Notion as they are found; existing human reviews are preserved, and nothing is sent after the run ends.`,`Check ${rows.length} claims · API`))return;
+    // The count alone does not tell the operator what they are agreeing to: the
+    // time and the open tab are the parts they cannot see.
+    const requests=Math.ceil(rows.length/groupSize),minutes=Math.max(1,Math.ceil(requests*7/60));
+    if(!await confirmIdeaChange('Check these claims?',`${rows.length} claims${hidden?` — including ${hidden} hidden by the current filter`:''} will use the Fact-check API in about ${requests} requests${mode==='failed'?', one claim per request':''} — roughly ${minutes} minute${minutes>1?'s':''} of checking. Keep this tab open; if it closes, the run resumes from the findings already saved. A claim that fails does not stop the others, and nothing is sent after the run ends.`,`Check ${rows.length} claims · API`))return;
     // Rows are not marked busy up front: with three requests in flight, showing
     // a thousand rows as "Checking…" would be a lie. verifyGroup marks the group
     // it is about to send.
