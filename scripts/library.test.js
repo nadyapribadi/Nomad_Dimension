@@ -1938,7 +1938,7 @@ test('automatic checks and optional human overrides remain separate through savi
   assert.equal(t.pages.get(t.r.id).properties.Confidence, undefined);
 });
 
-test('a lost automatic save response retains the finding and retry reconciles without AI or duplicate PATCH', async () => {
+test('a lost automatic save response is reconciled without a second PATCH and without the operator', async () => {
   const t = factFixture();
   let lost = false;
   t.c.after = async (c) => {
@@ -1948,13 +1948,11 @@ test('a lost automatic save response retains the finding and retry reconciles wi
     }
   };
   await t.run('runLibVerify()');
-  assert.ok(t.r._aiPending);
-  assert.match(t.r._checkError, /Save failed/);
-  t.c._verifyBatch = () => {
-    throw new Error('Must not call AI on save retry');
-  };
-  await t.run('retryFactSave(fact.id)');
+  // The write landed before the response was lost. The retry reads the row back
+  // and reconciles, so the finding is saved, nothing is written twice, and the
+  // operator has no repair step.
   assert.equal(t.r._aiPending, null);
+  assert.equal(t.r._checkError, '');
   assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 1);
   assert.equal(t.run('checkRecord(fact).ai.verdict'), 'confirmed');
 });
@@ -2585,6 +2583,72 @@ test('a rate-limited provider stops the run instead of splitting into more reque
   assert.equal(S._vlibSkip.size, 0);
   assert.ok(S.vlib.filter((r) => r._retry).length > 0);
   assert.equal(t.run('_libVerifying'), false);
+});
+
+test('a transient save failure is retried without paying the provider again', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [{ id: 'a', name: 'Claim A', store: 'research' }];
+  S._vlibSkip = new Set();
+  let checks = 0,
+    writes = 0;
+  t.c.confirmIdeaChange = async () => true;
+  t.c._verifyBatch = async (_store, items) => {
+    checks++;
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  t.c._writeVerdict = async () => {
+    writes++;
+    if (writes < 3) throw new Error('fetch failed');
+  };
+  await t.run('runLibVerify()');
+  assert.equal(checks, 1, 'the provider is asked once');
+  assert.equal(writes, 3, 'the save is retried until it lands');
+  assert.equal(S.vlib[0]._retry, false);
+  assert.match(
+    t.element('verify-save-status').textContent,
+    /1 findings saved · 0 checks failed · 0 saves need retry/
+  );
+});
+
+test('repeated save failures stop retrying instead of grinding through every claim', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 8 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  let checks = 0,
+    writes = 0;
+  t.c.confirmIdeaChange = async () => true;
+  t.c._verifyBatch = async (_store, items) => {
+    checks++;
+    return {
+      verified: items.map((it) => ({
+        name: it.name,
+        verdict: 'unsupported',
+        note: 'No evidence found.',
+      })),
+    };
+  };
+  t.c._writeVerdict = async () => {
+    writes++;
+    throw new Error('fetch failed');
+  };
+  await t.run('runLibVerify()');
+  assert.equal(checks, 2, 'the provider is asked once per batch');
+  assert.ok(writes >= 3, `expected retries first, saw ${writes} writes`);
+  assert.ok(writes < 8 * 3, `expected the breaker to stop trying, saw ${writes} writes`);
+  assert.match(t.element('vlib-results').innerHTML, /Saving is paused/);
+  assert.equal(S.vlib.filter((r) => r._retry).length, 0, 'a save failure is not a check failure');
 });
 
 test('list-editing tools live behind a disclosure, not in the decision row', async () => {
