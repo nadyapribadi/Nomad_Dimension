@@ -5126,7 +5126,16 @@ async function runLibVerify(btn, mode='selected') {
       }
     });
     const nextSelected=(S.vlib || []).filter(r=>!r._aiPending && !S._vlibSkip.has(r.id || r._key)).length;
-    status.textContent=`Last run: ${rows.length} claims · ${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry · ${rows.length-attempted} not attempted.${stopReason?` Checks stopped: ${stopReason}. Previous findings retained; no automatic paid retry.`:' Human review is optional.'} Next run: ${nextSelected} claims currently selected.`;
+    // The report says what happened and what is left, and nothing else: the
+    // policy lines and the always-on zeroes were what made it unreadable.
+    const notStarted=rows.length-attempted;
+    const summary=[`Checked ${rows.length} · saved ${done}`,
+      failed?`${failed} couldn't be checked`:null,
+      saveFailed?`${saveFailed} couldn't be saved`:null,
+      notStarted?`${notStarted} not started`:null].filter(Boolean).join(' · ');
+    const rest=stopReason?`Stopped: ${stopReason}. Previous findings are retained.`:'';
+    const next=nextSelected?`${nextSelected} claims are still ticked.`:'Every ticked claim has a check.';
+    status.textContent=`${summary}. ${[rest,next].filter(Boolean).join(' ')}`;
     await logRun();
 
     if(S.vlib.some(r=>!r.id))renderExtractReview();

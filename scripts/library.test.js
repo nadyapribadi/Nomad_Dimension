@@ -597,10 +597,10 @@ test('one failed batch is split into smaller batches so only the claim that keep
   assert.match(S.vlib[2]._checkError, /prepayment credits are depleted/);
   assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 5);
   const status = t.element('verify-save-status').textContent;
-  assert.match(status, /5 findings saved · 1 checks failed/);
-  assert.match(status, /0 not attempted/);
-  assert.match(status, /Next run: 1 claims currently selected/);
-  assert.doesNotMatch(status, /Checks stopped/);
+  assert.match(status, /Checked 6 · saved 5 · 1 couldn't be checked/);
+  assert.doesNotMatch(status, /not started/, 'zeroes are not reported');
+  assert.match(status, /1 claims are still ticked/);
+  assert.doesNotMatch(status, /Stopped:/);
 });
 
 test('reviewed checks reject newer source versions and retain the proposal', async () => {
@@ -1257,9 +1257,9 @@ test('a provider-wide failure stops the run instead of repeating it for every cl
   assert.equal(t.calls.length, 0);
   assert.match(t.element('vlib-results').innerHTML, /Configuration missing/);
   const status = t.element('verify-save-status').textContent;
-  assert.match(status, /0 findings saved/);
-  assert.match(status, /Checks stopped: Stopped after/);
-  assert.match(status, /Next run: 9 claims currently selected/);
+  assert.match(status, /saved 0/);
+  assert.match(status, /Stopped: Stopped after/);
+  assert.match(status, /9 claims are still ticked/);
 });
 
 test('transcript save failure retains text and retries saving without fetching again', async () => {
@@ -2119,7 +2119,7 @@ test('a batch reply that omits one claim re-checks that claim alone and keeps th
     S.vlib.some((r) => r._retry),
     false
   );
-  assert.match(t.element('verify-save-status').textContent, /4 findings saved · 0 checks failed/);
+  assert.match(t.element('verify-save-status').textContent, /Checked 4 · saved 4/);
 });
 
 test('unsaved extraction checks persist locally without creating material in Notion', async () => {
@@ -2275,11 +2275,8 @@ test('a whole-library selection is attempted in one confirmed run', async () => 
   assert.doesNotMatch(scope, /wait for another confirmed run/);
   assert.match(scope, /1092 claims/);
   assert.match(scope, /273 requests/);
-  assert.match(t.element('verify-save-status').textContent, /Last run: 1092 claims/);
-  assert.match(
-    t.element('verify-save-status').textContent,
-    /Next run: 0 claims currently selected/
-  );
+  assert.match(t.element('verify-save-status').textContent, /Checked 1092 · saved 1092/);
+  assert.match(t.element('verify-save-status').textContent, /Every ticked claim has a check/);
   assert.doesNotMatch(t.element('vlib-results').innerHTML, /Check next 20/);
 });
 
@@ -2650,10 +2647,7 @@ test('a transient save failure is retried without paying the provider again', as
   assert.equal(checks, 1, 'the provider is asked once');
   assert.equal(writes, 3, 'the save is retried until it lands');
   assert.equal(S.vlib[0]._retry, false);
-  assert.match(
-    t.element('verify-save-status').textContent,
-    /1 findings saved · 0 checks failed · 0 saves need retry/
-  );
+  assert.match(t.element('verify-save-status').textContent, /Checked 1 · saved 1/);
 });
 
 test('repeated save failures stop retrying instead of grinding through every claim', async () => {
@@ -2817,11 +2811,8 @@ test('retrying failed checks uses single-claim requests and separates run scope 
   };
   await t.run("runLibVerify(null,'failed')");
   assert.deepEqual(batches, [1, 1]);
-  assert.match(t.element('verify-save-status').textContent, /Last run: 2 claims/);
-  assert.match(
-    t.element('verify-save-status').textContent,
-    /Next run: 8 claims currently selected/
-  );
+  assert.match(t.element('verify-save-status').textContent, /Checked 2 · saved 2/);
+  assert.match(t.element('verify-save-status').textContent, /8 claims are still ticked/);
 });
 
 test('stopping fact-checks finishes only the in-flight group and retains unattempted work', async () => {
@@ -2850,7 +2841,7 @@ test('stopping fact-checks finishes only the in-flight group and retains unattem
   await t.run('runLibVerify()');
   assert.equal(calls, 1);
   assert.equal(S._vlibSkip.size, 4);
-  assert.match(t.element('verify-save-status').textContent, /5 not attempted/);
+  assert.match(t.element('verify-save-status').textContent, /5 not started/);
   assert.match(t.element('verify-save-status').textContent, /Stopped by you/);
   assert.equal(t.run('_libVerifying'), false);
 });
