@@ -59,6 +59,9 @@ function setup() {
     btoa,
   });
   vm.runInContext(source, c);
+  // Timers are inert in tests: pacing and back-off are exercised through their
+  // seams instead, so no test waits on the clock.
+  vm.runInContext('_minIntervalMs=0;_throttleWait=async()=>{}', c);
   const run = (code) => vm.runInContext(code, c),
     LIB = run('LIB'),
     db = run('DB_IDS');
@@ -2582,10 +2585,40 @@ test('a rate-limited provider stops the run instead of splitting into more reque
     batches.every((n) => n === 4),
     `expected no split requests, saw ${batches}`
   );
-  assert.match(t.element('verify-save-status').textContent, /rate-limiting/);
+  assert.match(t.element('verify-save-status').textContent, /kept refusing after several minutes/);
   assert.equal(S._vlibSkip.size, 0);
   assert.ok(S.vlib.filter((r) => r._retry).length > 0);
   assert.equal(t.run('_libVerifying'), false);
+});
+
+test('request starts are paced so the provider limit is not walked into', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 12 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  // The waits are recorded instead of slept through.
+  t.c.__waits = [];
+  t.run('_minIntervalMs=6000;_lastVerifyAt=0;_throttleWait=async(ms)=>{__waits.push(ms)}');
+  t.c._verifyBatch = async (_store, items) => ({
+    verified: items.map((it) => ({
+      name: it.name,
+      verdict: 'unsupported',
+      note: 'No evidence found.',
+    })),
+  });
+  await t.run('runLibVerify()');
+  const waits = t.run('__waits');
+  assert.ok(waits.length >= 2, `expected the later requests to be spaced, saw ${waits}`);
+  assert.ok(
+    waits.every((ms) => ms > 0 && ms <= 6000),
+    `each gap stays inside the interval, saw ${waits}`
+  );
 });
 
 test('a rate-limited batch is waited out and then finishes the run', async () => {

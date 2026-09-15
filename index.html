@@ -4959,8 +4959,13 @@ const SAVE_ATTEMPTS=3,SAVE_BREAKER=3;
 // A rate limit is usually a per-minute cap, not a wall. Waiting it out is the
 // difference between a 1000-claim run that finishes and one that stops at claim
 // seven. The wait itself is a seam so tests never touch a timer.
-const THROTTLE_WAITS=[15000,30000,45000];
-let _throttleWait=ms=>new Promise(r=>setTimeout(r,ms));
+// Three requests in flight at roughly eighteen seconds each starts about ten a
+// minute — exactly where a free-tier ceiling sits. Pace the starts so the limit
+// is rarely reached, and when it is reached, keep waiting far longer than a
+// per-minute window before giving up on the run.
+const FACT_MIN_INTERVAL_MS=6000;
+const THROTTLE_WAITS=[15000,30000,45000,60000,60000,60000];
+let _minIntervalMs=FACT_MIN_INTERVAL_MS,_throttleWait=ms=>new Promise(r=>setTimeout(r,ms)),_lastVerifyAt=0;
 let _factBatch=FACT_BATCH_MAX,_factClean=0;
 let _libVerifying = false, _stopFactCheck = false;
 async function runLibVerify(btn, mode='selected') {
@@ -5082,6 +5087,9 @@ async function runLibVerify(btn, mode='selected') {
       };
       let result;
       try{
+        const gap=_minIntervalMs-(Date.now()-_lastVerifyAt);
+        if(gap>0)await _throttleWait(gap);
+        _lastVerifyAt=Date.now();
         result=await _verifyBatch(store,group.map(r=>({name:r.name,detail:(r.fields || '').slice(0,300)})));
         if(!Array.isArray(result?.verified))throw new Error('The model returned an invalid findings list. Previous results are unchanged.');
         noteBatchResult(true);providerStreak=0;
@@ -5096,14 +5104,14 @@ async function runLibVerify(btn, mode='selected') {
           if(throttleTries<THROTTLE_WAITS.length){
             const wait=THROTTLE_WAITS[throttleTries++];
             for(const r of group)r._checking=false;
-            status.textContent=`The provider is rate-limiting requests — waiting ${Math.round(wait/1000)}s, then retrying.`;
+            status.textContent=`Waiting ${Math.round(wait/1000)}s for Google to accept more requests, then carrying on.`;
             await _throttleWait(wait);
             await verifyGroup(store,group);
             return;
           }
           // Out of patience: stop, but keep the provider's own words so the
           // operator can tell "wait a minute" from "fix your quota".
-          providerStop=true;stopReason='The provider is rate-limiting requests';
+          providerStop=true;stopReason='Google kept refusing after several minutes of waiting';
           for(const r of group){r._checking=false;r._retry=true;r._checkError=`Not checked: the provider is rate-limiting requests (${e.message}). Waiting did not clear it — try again later.`;}
           failed+=group.length;renderVlibResults();noteProgress();
           return;
