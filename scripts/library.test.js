@@ -2756,6 +2756,141 @@ test('a run records one cost entry for all of its requests', async () => {
   });
 });
 
+test('a merge previews first, unions the links, then archives the duplicates', async () => {
+  const t = setup(),
+    S = t.run('S');
+  const MARKER = '\n[Nomad check v1]\n';
+  const note = `AI check: Supported${MARKER}${JSON.stringify({ version: 1, ai: { verdict: 'confirmed', source_url: 'https://x', note: 'n' } })}`;
+  const pages = {
+    a: {
+      id: 'a',
+      last_edited_time: 't1',
+      properties: {
+        Name: { type: 'title', title: [{ plain_text: 'Cooking in a van' }] },
+        'Source Video': { type: 'relation', relation: [{ id: 'vid1' }] },
+        Category: { type: 'select', select: { name: 'Food' } },
+        'Verify Note': { type: 'rich_text', rich_text: [{ plain_text: note }] },
+        'Verify Status': { type: 'select', select: { name: 'confirmed' } },
+      },
+    },
+    b: {
+      id: 'b',
+      last_edited_time: 't2',
+      properties: {
+        Name: { type: 'title', title: [{ plain_text: 'Cooking in a van on the road' }] },
+        'Source Video': { type: 'relation', relation: [{ id: 'vid2' }] },
+        Category: { type: 'select', select: { name: 'Drink' } },
+        'Verify Note': { type: 'rich_text', rich_text: [] },
+        'Verify Status': { type: 'select', select: null },
+      },
+    },
+  };
+  const writes = [];
+  t.c.notionAPI = async (endpoint, method = 'GET', body) => {
+    const id = endpoint.split('/')[1];
+    if (method === 'PATCH') {
+      writes.push({ id, body });
+      return { ...pages[id], last_edited_time: 't3' };
+    }
+    return pages[id];
+  };
+  S.vlib = [
+    { id: 'a', name: 'Cooking in a van', store: 'activities', fields: 'Category: Food' },
+    { id: 'b', name: 'Cooking in a van on the road', store: 'activities', fields: '' },
+  ];
+  S._dupDismissed = new Set();
+  await t.run('tidyVlib()');
+
+  // First call previews and writes nothing.
+  await t.run("mergeVlib('a',['a','b'])");
+  assert.equal(writes.length, 0, 'nothing is written before confirming');
+  const html = t.element('vlib-results').innerHTML;
+  assert.match(html, /Merge 2 rows\?/);
+  assert.match(html, /Will copy: 2 links in Source Video/);
+  assert.match(html, /Category/);
+  assert.match(html, /not<\/strong> be merged/);
+
+  // Second call merges: the survivor holds both links before the other is archived.
+  await t.run("mergeVlib('a',['a','b'])");
+  assert.deepEqual(JSON.parse(JSON.stringify(writes[0])), {
+    id: 'a',
+    body: { properties: { 'Source Video': { relation: [{ id: 'vid1' }, { id: 'vid2' }] } } },
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(writes[1])), {
+    id: 'b',
+    body: { archived: true },
+  });
+  assert.equal(S.vlib.length, 1, 'the merged row leaves the list');
+  assert.equal(S.vlib[0].id, 'a');
+});
+
+test('merge is offered only for small groups', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 5 }, (_, i) => ({
+    id: `r${i}`,
+    name: `Cooking in a van ${i}`,
+    store: 'activities',
+    fields: '',
+  }));
+  S._dupDismissed = new Set();
+  await t.run('tidyVlib()');
+  const html = t.element('vlib-results').innerHTML;
+  assert.match(html, /similar/, 'the group is still reported');
+  assert.doesNotMatch(
+    html,
+    /Merge into the most detailed/,
+    'a five-row group is archived, not merged'
+  );
+});
+
+test('a merge carries a check onto a survivor that has none', async () => {
+  const t = setup(),
+    S = t.run('S');
+  const MARKER = '\n[Nomad check v1]\n';
+  const note = `AI check: Supported${MARKER}${JSON.stringify({ version: 1, ai: { verdict: 'confirmed', source_url: 'https://x', note: 'n' } })}`;
+  const pages = {
+    a: {
+      id: 'a',
+      last_edited_time: 't1',
+      properties: {
+        Name: { type: 'title', title: [{ plain_text: 'Claim A' }] },
+        'Verify Note': { type: 'rich_text', rich_text: [] },
+        'Verify Status': { type: 'select', select: null },
+      },
+    },
+    b: {
+      id: 'b',
+      last_edited_time: 't2',
+      properties: {
+        Name: { type: 'title', title: [{ plain_text: 'Claim A duplicate' }] },
+        'Verify Note': { type: 'rich_text', rich_text: [{ plain_text: note }] },
+        'Verify Status': { type: 'select', select: { name: 'confirmed' } },
+      },
+    },
+  };
+  const writes = [];
+  t.c.notionAPI = async (endpoint, method = 'GET', body) => {
+    const id = endpoint.split('/')[1];
+    if (method === 'PATCH') {
+      writes.push({ id, body });
+      return { ...pages[id], last_edited_time: 't3' };
+    }
+    return pages[id];
+  };
+  S.vlib = [
+    { id: 'a', name: 'Claim A', store: 'research', fields: '' },
+    { id: 'b', name: 'Claim A duplicate', store: 'research', fields: '' },
+  ];
+  S._dupDismissed = new Set();
+  await t.run('tidyVlib()');
+  await t.run("mergeVlib('a',['a','b'])");
+  await t.run("mergeVlib('a',['a','b'])");
+  const props = JSON.parse(JSON.stringify(writes[0].body.properties));
+  assert.equal(props['Verify Status'].select.name, 'confirmed');
+  assert.match(props['Verify Note'].rich_text[0].text.content, /Nomad check v1/);
+});
+
 // Duplicate review: the mode declares itself, groups say why they are grouped,
 // and a judgement can be recorded instead of only acted on.
 test('the duplicate view names itself, explains each group, and offers bulk and dismiss', async () => {

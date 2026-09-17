@@ -4802,6 +4802,7 @@ function vlibAll(on) {
 // ─── Tidy mode: cluster near-dupes per store, pre-check the redundant/thin ───
 async function tidyVlib() {
   S._vlibTidy=!S._vlibTidy;
+  S._vlibMergePending=null;
   if(S._vlibTidy){
     S._vlibTidied=true;S._vlibArch=new Set();S._vlibConfirm=false;
     // Dismissals are kept on this device: they are a judgement, not data.
@@ -4839,6 +4840,80 @@ function tickCluster(keepId, ids) {
   S._vlibConfirm = false;
   renderVlibResults();
 }
+// Merge: carry what an archive would quietly destroy, then archive the
+// redundant rows. Relations are unioned because that is the dimension a
+// duplicate destroys silently — two rows can point at two different sources.
+// Scalar fields are not guessed: differences are shown instead, and the
+// archived row stays restorable from Notion trash.
+const MERGE_MAX_ROWS=4;
+let _vlibMerging=false;
+async function mergeVlib(keepId, ids) {
+  if(_vlibMerging)return;
+  if(S._vlibMergePending && S._vlibMergePending.keepId===keepId){await runMerge();return;}
+  S._vlibMergePending=null;
+  const losers=ids.filter(id=>id!==keepId);
+  if(!losers.length)return;
+  const pages=new Map();
+  for(const id of [keepId,...losers])pages.set(id,await notionAPI(`pages/${id}`));
+  const keep=pages.get(keepId),keepProps=keep.properties||{};
+  const plan={keepId,losers,relations:{},differing:[],verify:null};
+  for(const prop of Object.keys(keepProps)){
+    const kind=keepProps[prop]?.type;
+    if(kind==='relation'){
+      const seen=new Set(),list=[];
+      for(const id of [keepId,...losers])
+        for(const rel of pages.get(id).properties?.[prop]?.relation || [])
+          if(!seen.has(rel.id)){seen.add(rel.id);list.push({id:rel.id});}
+      if(list.length>(keepProps[prop].relation || []).length)plan.relations[prop]=list;
+      continue;
+    }
+    // Non-relation fields: never overwrite, only disclose what differs.
+    if(['title','rich_text','select','url','number','date'].includes(kind)){
+      const mine=_readProp(keepProps[prop]);
+      for(const id of losers){
+        const theirs=_readProp(pages.get(id).properties?.[prop]);
+        if(mine&&theirs&&mine!==theirs&&plan.differing.length<4)plan.differing.push({prop,mine,theirs});
+      }
+    }
+  }
+  // A check on the survivor is never overwritten; an empty survivor can inherit one.
+  if(!richText(keepProps['Verify Note']) && !keepProps['Verify Status']?.select?.name){
+    for(const id of losers){
+      const p=pages.get(id).properties||{};
+      const note=richText(p['Verify Note']),status=p['Verify Status']?.select?.name;
+      if(note||status){plan.verify={note,status};break;}
+    }
+  }
+  S._vlibMergePending=plan;
+  renderVlibResults();
+}
+async function runMerge() {
+  const plan=S._vlibMergePending;
+  if(!plan)return;
+  _vlibMerging=true;
+  try{
+    // Notion wants each relation property wrapped: { relations: { Prop: { relation: [...] } } }
+    const props={};
+    for(const [prop,list] of Object.entries(plan.relations))props[prop]={relation:list};
+    if(plan.verify){
+      if(plan.verify.note)props['Verify Note']={rich_text:codeBlockRichText(plan.verify.note)};
+      if(plan.verify.status)props['Verify Status']={select:{name:plan.verify.status}};
+    }
+    // The survivor must hold everything before anything is archived.
+    if(Object.keys(props).length)await notionAPI(`pages/${plan.keepId}`,'PATCH',{properties:props});
+    let gone=0,failed=0;
+    for(const id of plan.losers){
+      try{const current=await notionAPI(`pages/${id}`);if(current.archived||current.in_trash)continue;await notionAPI(`pages/${id}`,'PATCH',{archived:true});gone++;}
+      catch(e){failed++;console.error('merge archive failed',id,e);}
+    }
+    S.vlib=(S.vlib || []).filter(r=>!plan.losers.includes(r.id));
+    for(const s of Object.keys(S._vlibRaw || {}))S._vlibRaw[s]=S._vlibRaw[s].filter(r=>!plan.losers.includes(r.id));
+    toast(`Merged into ${plan.keepId}${gone?` · ${gone} archived`:''}${failed?` · ${failed} failed (still listed)`:''}`,failed?'error':'success');
+  }finally{
+    _vlibMerging=false;S._vlibMergePending=null;S._vlibArch=new Set();S._vlibConfirm=false;
+    renderVlibResults();
+  }
+}
 function toggleArch(id) {
   (S._vlibArch ||= new Set());
   if (S._vlibArch.has(id)) S._vlibArch.delete(id); else S._vlibArch.add(id);
@@ -4873,7 +4948,7 @@ function renderVlibTidy(el, rows) {
         const shared = _sharedTokens(c.rows);
         parts.push(`<tr><td colspan="3" style="background:var(--bg2);font-size:10px;color:var(--text3);padding:3px 8px">≈ ${c.rows.length} similar${shared.length ? ` — shares “${_esc(shared.join(' '))}”` : ''} · inspect before selecting anything to archive
           <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick='tickCluster(${_esc(JSON.stringify(c.keepId))},${_esc(JSON.stringify(ids))})'>Keep the most detailed, tick the other ${c.rows.length - 1}</button>
-          <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick='dismissCluster(${_esc(JSON.stringify(ids))})'>Same claim?</button></td></tr>`);
+          <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick='dismissCluster(${_esc(JSON.stringify(ids))})'>Same claim?</button>${c.rows.length <= MERGE_MAX_ROWS ? ` <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick='mergeVlib(${_esc(JSON.stringify(c.keepId))},${_esc(JSON.stringify(ids))})'>Merge into the most detailed</button>` : ''}</td></tr>`);
         parts.push(c.rows.slice().sort((a, b) => (a.id === c.keepId ? -1 : b.id === c.keepId ? 1 : 0)).map(r => rowHtml(r, true)).join(''));
       } else if (_thinName(c.rows[0].name)) {
         thinN++;
@@ -4884,6 +4959,15 @@ function renderVlibTidy(el, rows) {
       <table id="duplicate-${store}" class="data-table" style="font-size:12px"><thead><tr><th></th><th>Material</th><th>Fields</th></tr></thead><tbody>${parts.join('')}</tbody></table>`);
   }
   const total = arch.size;
+  // A merge is previewed before it writes: what moves, what is deliberately left
+  // alone, and where the removed rows go.
+  const pending = S._vlibMergePending;
+  const mergeBox = pending ? `<div class="library-message" style="border-left:3px solid var(--accent);padding-left:10px"><strong>Merge ${pending.losers.length + 1} rows?</strong>${
+    Object.keys(pending.relations).length ? `<br>Will copy: ${Object.entries(pending.relations).map(([p, l]) => `${l.length} links in ${_esc(p)}`).join(' · ')}` : ''
+  }${pending.verify ? '<br>The surviving row has no check, so the retained one is carried over.' : ''}${
+    pending.differing.length ? `<br>Fields that differ and will <strong>not</strong> be merged: ${pending.differing.map(d => `${_esc(d.prop)} (“${_esc(d.mine)}” vs “${_esc(d.theirs)}”)`).join(' · ')}` : ''
+  }<br>The other ${pending.losers.length} row${pending.losers.length > 1 ? 's move' : ' moves'} to Notion trash (you can restore them).
+    <div class="btn-row" style="margin-top:6px"><button class="btn btn-sm btn-danger" onclick='mergeVlib(${_esc(JSON.stringify(pending.keepId))},${_esc(JSON.stringify([pending.keepId, ...pending.losers]))})'>Confirm merge</button><button class="btn btn-sm btn-ghost" onclick="S._vlibMergePending=null;renderVlibResults()">Cancel</button></div></div>` : '';
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
       <strong style="font-size:12px">Duplicates</strong>
@@ -4891,6 +4975,7 @@ function renderVlibTidy(el, rows) {
       <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">Back to claims</button>
       <span style="font-size:11px;color:var(--text3)">${dupN} rows in similar groups · ${thinN} have short or vague names · checked rows move to Notion trash (you can restore them)${dismissedGroups ? ` · ${dismissedGroups} groups dismissed on this device <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="undismissAll()">undo</button>` : ''}</span>
     </div>
+    ${mergeBox}
     <div style="overflow:auto;max-height:55vh;border:1px solid var(--border);border-radius:var(--radius);padding:0 8px 8px">
       ${blocks.join('') || '<div class="empty-state" style="padding:20px"><p>No near-duplicates or thin rows found. 🎉</p></div>'}
     </div>`;
