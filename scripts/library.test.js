@@ -2756,6 +2756,47 @@ test('a run records one cost entry for all of its requests', async () => {
   });
 });
 
+// Duplicate review: the mode declares itself, groups say why they are grouped,
+// and a judgement can be recorded instead of only acted on.
+test('the duplicate view names itself, explains each group, and offers bulk and dismiss', async () => {
+  const t = setup(),
+    S = t.run('S');
+  const notes = new Map();
+  t.c.localArtifact = async (key, value) => {
+    if (value !== undefined) {
+      notes.set(key, value);
+      return value;
+    }
+    return notes.get(key) ?? null;
+  };
+  S.vlib = [
+    { id: 'a', name: 'Cooking in a van kitchen', store: 'activities', fields: 'Category: Food' },
+    { id: 'b', name: 'Cooking in a van on the road', store: 'activities', fields: '' },
+    { id: 'c', name: 'Mount Fuji sunrise', store: 'activities', fields: 'Category: Nature' },
+  ];
+  await t.run('tidyVlib()');
+  let html = t.element('vlib-results').innerHTML;
+  assert.match(html, />Duplicates</, 'the mode says what it is');
+  assert.match(html, /Back to claims/, 'and how to leave');
+  assert.match(html, /shares “[^”]*cooking[^”]*”/, 'the group says why it is grouped');
+  assert.match(html, /Keep the most detailed, tick the other 1/);
+  assert.match(html, /Same claim\?/);
+
+  // The bulk action picks the keeper — the row carrying more detail.
+  await t.run("tickCluster('a',['a','b'])");
+  assert.deepEqual([...t.run('S._vlibArch')], ['b']);
+
+  // Dismissing the pair hides the group on this device, and undo brings it back.
+  await t.run("dismissCluster(['a','b'])");
+  html = t.element('vlib-results').innerHTML;
+  assert.doesNotMatch(html, /shares “/, 'a dismissed group is not asked about again');
+  assert.match(html, /1 groups dismissed on this device/);
+  await t.run('undismissAll()');
+  html = t.element('vlib-results').innerHTML;
+  assert.match(html, /shares “/, 'undo restores the question');
+  assert.doesNotMatch(html, /groups dismissed/);
+});
+
 test('a paid finding still reaches Notion when this browser cannot keep a copy', async () => {
   const t = setup(),
     S = t.run('S');

@@ -4800,9 +4800,43 @@ function vlibAll(on) {
 }
 
 // ─── Tidy mode: cluster near-dupes per store, pre-check the redundant/thin ───
-function tidyVlib() {
+async function tidyVlib() {
   S._vlibTidy=!S._vlibTidy;
-  if(S._vlibTidy){S._vlibTidied=true;S._vlibArch=new Set();S._vlibConfirm=false;}
+  if(S._vlibTidy){
+    S._vlibTidied=true;S._vlibArch=new Set();S._vlibConfirm=false;
+    // Dismissals are kept on this device: they are a judgement, not data.
+    S._dupDismissed=new Set((await localArtifact('dup-dismissed')) || []);
+  }
+  renderVlibResults();
+}
+// Every pair in a group, so dismissing a group also covers the smaller groups
+// it might later be split into.
+function _dupPairKeys(ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i++)
+    for (let j = i + 1; j < ids.length; j++) out.push([ids[i], ids[j]].sort().join('|'));
+  return out;
+}
+// Why these rows are grouped: the words they all share.
+function _sharedTokens(rows) {
+  if (rows.length < 2) return [];
+  const sets = rows.map(r => _normTokens(r.name));
+  return sets[0].filter(t => sets.every(s => s.includes(t))).slice(0, 4);
+}
+async function dismissCluster(ids) {
+  for (const k of _dupPairKeys(ids)) S._dupDismissed.add(k);
+  await localArtifact('dup-dismissed', [...S._dupDismissed]).catch(() => {});
+  renderVlibResults();
+}
+async function undismissAll() {
+  S._dupDismissed = new Set();
+  await localArtifact('dup-dismissed', null).catch(() => {});
+  renderVlibResults();
+}
+// Archive everything except the row that carries the most detail.
+function tickCluster(keepId, ids) {
+  S._vlibArch = new Set(ids.filter(id => id !== keepId));
+  S._vlibConfirm = false;
   renderVlibResults();
 }
 function toggleArch(id) {
@@ -4814,10 +4848,11 @@ function toggleArch(id) {
 
 function renderVlibTidy(el, rows) {
   const arch = (S._vlibArch ||= new Set());
+  const dismissed = S._dupDismissed || new Set();
   const byStore = {};
   for (const r of rows) (byStore[r.store] ||= []).push(r);
   const blocks = [];
-  let dupN = 0, thinN = 0;
+  let dupN = 0, thinN = 0, dismissedGroups = 0;
   for (const [store, list] of Object.entries(byStore)) {
     const clusters = _clusterRows(list);
     const rowHtml = (r, inCluster) => {
@@ -4833,7 +4868,12 @@ function renderVlibTidy(el, rows) {
     const parts = [];
     for (const c of clusters) {
       if (c.rows.length > 1) {
-        parts.push(`<tr><td colspan="3" style="background:var(--bg2);font-size:10px;color:var(--text3);padding:3px 8px">≈ ${c.rows.length} similar — inspect before selecting anything to archive</td></tr>`);
+        const ids = c.rows.map(r => r.id);
+        if (_dupPairKeys(ids).every(k => dismissed.has(k))) { dismissedGroups++; continue; }
+        const shared = _sharedTokens(c.rows);
+        parts.push(`<tr><td colspan="3" style="background:var(--bg2);font-size:10px;color:var(--text3);padding:3px 8px">≈ ${c.rows.length} similar${shared.length ? ` — shares “${_esc(shared.join(' '))}”` : ''} · inspect before selecting anything to archive
+          <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick='tickCluster(${_esc(JSON.stringify(c.keepId))},${_esc(JSON.stringify(ids))})'>Keep the most detailed, tick the other ${c.rows.length - 1}</button>
+          <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick='dismissCluster(${_esc(JSON.stringify(ids))})'>Same claim?</button></td></tr>`);
         parts.push(c.rows.slice().sort((a, b) => (a.id === c.keepId ? -1 : b.id === c.keepId ? 1 : 0)).map(r => rowHtml(r, true)).join(''));
       } else if (_thinName(c.rows[0].name)) {
         thinN++;
@@ -4846,9 +4886,10 @@ function renderVlibTidy(el, rows) {
   const total = arch.size;
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+      <strong style="font-size:12px">Duplicates</strong>
       <button class="btn btn-sm ${S._vlibConfirm ? 'btn-danger' : 'btn-primary'}" style="padding:2px 10px" onclick="archiveVlib(this)" ${total ? '' : 'disabled'}>${S._vlibConfirm ? `Confirm — archive ${total}` : `Archive checked (${total}) →`}</button>
-      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">✕ done</button>
-      <span style="font-size:11px;color:var(--text3)">${dupN} rows in similar groups · ${thinN} have short or vague names · checked rows move to Notion trash (you can restore them)</span>
+      <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="tidyVlib()">Back to claims</button>
+      <span style="font-size:11px;color:var(--text3)">${dupN} rows in similar groups · ${thinN} have short or vague names · checked rows move to Notion trash (you can restore them)${dismissedGroups ? ` · ${dismissedGroups} groups dismissed on this device <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick="undismissAll()">undo</button>` : ''}</span>
     </div>
     <div style="overflow:auto;max-height:55vh;border:1px solid var(--border);border-radius:var(--radius);padding:0 8px 8px">
       ${blocks.join('') || '<div class="empty-state" style="padding:20px"><p>No near-duplicates or thin rows found. 🎉</p></div>'}
