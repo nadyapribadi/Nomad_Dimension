@@ -1,5 +1,7 @@
 #!/bin/sh
-# Run lint + format check before every commit.
+# Refresh both code graphs, then run lint + format check, before every commit.
 # Wired automatically by the "prepare" script in package.json (core.hooksPath).
 # Skip once with:  git commit --no-verify
+npm run --silent graph:refresh ||
+  echo "graph:refresh failed (offline?) - the next search may read a stale graph"
 exec npm run --silent check
