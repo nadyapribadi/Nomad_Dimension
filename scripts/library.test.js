@@ -2756,6 +2756,85 @@ test('a run records one cost entry for all of its requests', async () => {
   });
 });
 
+test('a paid finding still reaches Notion when this browser cannot keep a copy', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [{ id: 'a', name: 'Claim A', store: 'research' }];
+  S._vlibSkip = new Set();
+  let writes = 0;
+  t.c.confirmIdeaChange = async () => true;
+  // Local storage refuses everything, as it would when the quota is exhausted.
+  t.c.localArtifact = async () => {
+    throw new Error('QuotaExceededError');
+  };
+  t.c._writeVerdict = async () => {
+    writes++;
+  };
+  t.c._verifyBatch = async (_store, items) => ({
+    verified: items.map((it) => ({
+      name: it.name,
+      verdict: 'unsupported',
+      note: 'No evidence found.',
+    })),
+  });
+  await t.run('runLibVerify()');
+  assert.equal(writes, 1, 'the write to Notion happens anyway');
+  assert.match(t.element('verify-save-status').textContent, /Checked 1 · saved 1/);
+  assert.equal(S.vlib[0]._aiPending, null);
+});
+
+test('a failed local cleanup does not report a landed save as unsaved', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [{ id: 'a', name: 'Claim A', store: 'research' }];
+  S._vlibSkip = new Set();
+  t.c.confirmIdeaChange = async () => true;
+  // The draft writes fine but cannot be cleared afterwards.
+  t.c.localArtifact = async (_key, value) => {
+    if (value === null) throw new Error('clear failed');
+    return value;
+  };
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => ({
+    verified: items.map((it) => ({
+      name: it.name,
+      verdict: 'unsupported',
+      note: 'No evidence found.',
+    })),
+  });
+  await t.run('runLibVerify()');
+  const row = S.vlib[0];
+  assert.equal(row._aiPending, null, 'the finding is done, not pending');
+  assert.equal(row._checkError, '', 'a cleanup failure is not a save failure');
+  const status = t.element('verify-save-status').textContent;
+  assert.match(status, /saved 1/);
+  assert.doesNotMatch(status, /couldn't be saved/);
+});
+
+test('a draft for a finding that already reached Notion is not resurrected', async () => {
+  const t = setup(),
+    S = t.run('S');
+  const MARKER = '\n[Nomad check v1]\n';
+  const finding = { verdict: 'unsupported', source_url: '', note: 'No evidence found.' };
+  S.vlib = [
+    {
+      id: 'a',
+      name: 'Claim A',
+      store: 'research',
+      status: 'unsupported',
+      note: `AI check: No evidence found.${MARKER}${JSON.stringify({ version: 1, ai: finding })}`,
+    },
+  ];
+  // A stale draft from the moment before the save landed.
+  t.c.localArtifact = async (key) => (key.startsWith('verify-ai-pending:') ? finding : null);
+  await t.run('restoreFactDrafts(S.vlib[0])');
+  assert.equal(
+    S.vlib[0]._aiPending,
+    null,
+    'Notion already holds this finding, so it is not shown as unsaved'
+  );
+});
+
 test('a transient save failure is retried without paying the provider again', async () => {
   const t = setup(),
     S = t.run('S');

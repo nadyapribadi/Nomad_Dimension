@@ -4896,6 +4896,15 @@ function validatedCheck(v) {
 }
 async function restoreFactDrafts(r) {
   const key=r.id || r._key;r._proposal=await localArtifact(`verify-proposal:${key}`);r._aiPending=await localArtifact(`verify-ai-pending:${key}`);
+  // A draft left behind for a finding that already reached Notion must not be
+  // resurrected as "Not saved" — reconcile against what the row itself carries.
+  if(r._aiPending){
+    const stored=checkRecord(r);
+    if(stored.ai && stored.ai.verdict===r._aiPending.verdict && (stored.ai.source_url || '')===(r._aiPending.source_url || '')){
+      r._aiPending=null;
+      await localArtifact(`verify-ai-pending:${key}`,null).catch(()=>{});
+    }
+  }
   if(!r.id){const saved=await localArtifact(`verify-session:${key}`);if(saved){r._newNote=saved.note;r._newStatus=saved.status;}}
   if(!r._aiPending && r._proposal?.name){try{r._aiPending=validatedCheck(r._proposal);await localArtifact(`verify-ai-pending:${key}`,r._aiPending);r._proposal=null;await localArtifact(`verify-proposal:${key}`,null);}catch(e){r._checkError=e.message;}}
 }
@@ -4930,9 +4939,14 @@ async function _writeVerdict(r, v, origin='review') {
 async function saveAutomaticCheck(r) {
   if(!r._aiPending || r._saving)return;
   r._saving=true;
-  try{await _writeVerdict(r,r._aiPending,'ai');await localArtifact(`verify-ai-pending:${r.id || r._key}`,null);r._aiPending=null;r._checkError='';r._retry=false;S._vlibSkip.add(r.id || r._key);}
-  catch(e){r._checkError=`Save failed: ${e.message}`;throw e;}
-  finally{r._saving=false;}
+  try{
+    try{await _writeVerdict(r,r._aiPending,'ai');}
+    catch(e){r._checkError=`Save failed: ${e.message}`;throw e;}
+    r._aiPending=null;r._checkError='';r._retry=false;S._vlibSkip.add(r.id || r._key);
+  }finally{r._saving=false;}
+  // Clearing the local draft is cleanup, not part of the save. If it fails the
+  // finding is still in Notion, and reporting it as unsaved would be a lie.
+  await localArtifact(`verify-ai-pending:${r.id || r._key}`,null).catch(()=>{});
 }
 async function retryFactSave(key) {
   const r=S.vlib.find(r=>(r.id || r._key)===key);if(!r || r._saving || r._checking)return;
@@ -5061,13 +5075,24 @@ async function runLibVerify(btn, mode='selected') {
     const applyReply=async(group,r,result)=>{
       const matches=(result.verified || []).filter(v=>matchesRow(v,r));
       const sameName=group.filter(x=>normName(x.name)===normName(r.name)).length;
+      let draftKept=false;
       try{
         if(matches.length!==1 || sameName!==1)throw new Error('Check failed: the reply did not name this claim exactly once — it may have been omitted, renamed or duplicated. Check same-name records separately.');
         r._aiPending=validatedCheck({...matches[0],model:result.model || '',checkedAt:new Date().toISOString()});
-        await localArtifact(`verify-ai-pending:${keyOf(r)}`,r._aiPending);
+        // Keep a local copy so a tab that dies mid-save can recover the finding —
+        // but local storage must never block the write to Notion. A paid answer
+        // that Notion would accept must not be held back by this browser.
+        draftKept=await localArtifact(`verify-ai-pending:${keyOf(r)}`,r._aiPending).then(()=>true,()=>false);
         S._vlibSkip.add(keyOf(r));
         await queueSave(r);done++;
-      }catch(e){if(r._aiPending){saveFailed++;r._checkError=`Save failed: ${e.message}`;}else{failed++;r._retry=true;r._checkError=e.message;}}
+      }catch(e){
+        if(r._aiPending){
+          saveFailed++;
+          r._checkError=draftKept
+            ?`Save failed: ${e.message}`
+            :`Save failed: ${e.message} — and this browser could not keep a copy, so the finding exists only in this tab until it saves.`;
+        }else{failed++;r._retry=true;r._checkError=e.message;}
+      }
       r._checking=false;renderVlibResults();noteProgress();
     };
     // Check one batch. If the request fails and it held more than one claim,
