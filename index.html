@@ -5157,6 +5157,19 @@ async function runLibVerify(btn, mode='selected') {
         await verifyGroup(job[0],job[1]);
       }
     });
+    // A stopped run can abandon a group that was already counted as attempted —
+    // its split halves return early. Say so on those rows and count them, or the
+    // report shows fewer claims accounted for than it attempted.
+    if(providerStop || _stopFactCheck){
+      for(const r of rows){
+        const k=keyOf(r);
+        if(!attemptedKeys.has(k) || S._vlibSkip.has(k) || r._aiPending || r._retry || r._checkError)continue;
+        r._retry=true;
+        r._checkError=`Not checked: ${stopReason || 'the run stopped before this claim'}. Nothing was saved for it; run again to pick it up.`;
+        failed++;
+      }
+      renderVlibResults();
+    }
     const nextSelected=(S.vlib || []).filter(r=>!r._aiPending && !S._vlibSkip.has(r.id || r._key)).length;
     // The report says what happened and what is left, and nothing else: the
     // policy lines and the always-on zeroes were what made it unreadable.

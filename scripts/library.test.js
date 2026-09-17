@@ -1253,8 +1253,8 @@ test('a provider-wide failure stops the run instead of repeating it for every cl
     'the claims sent while the provider was failing carry the reason'
   );
   assert.ok(
-    S.vlib.some((r) => !r._retry),
-    'later claims stay available for another run'
+    S.vlib.some((r) => !S._vlibSkip.has(r.id)),
+    'claims with no finding stay ticked for another run'
   );
   assert.equal(t.run('_libVerifying'), false);
   assert.equal(t.calls.length, 0);
@@ -2618,6 +2618,44 @@ test('request starts are paced so the provider limit is not walked into', async 
   assert.ok(
     waits.every((ms) => ms > 0 && ms <= 6000),
     `each gap stays inside the interval, saw ${waits}`
+  );
+});
+
+test('a stopped run accounts for every claim it attempted', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 8 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  // Every request refuses, and a non-throttle failure makes the batch split, so
+  // some halves are abandoned mid-flight when the breaker stops the run.
+  t.c._verifyBatch = async () => {
+    throw Object.assign(new Error('The model stopped without a complete answer'), {
+      status: 502,
+      code: 'generation_stopped',
+    });
+  };
+  await t.run('runLibVerify()');
+  const status = t.element('verify-save-status').textContent;
+  // Zeroes are omitted from the report, so a missing phrase means zero.
+  const num = (re) => {
+    const m = re.exec(status);
+    return m ? Number(m[1]) : 0;
+  };
+  const checked = num(/Checked (\d+)/);
+  const failed = num(/(\d+) couldn't be checked/);
+  const notStarted = num(/(\d+) not started/);
+  assert.equal(checked, 8);
+  assert.equal(failed + notStarted, checked, `report must reconcile: ${status}`);
+  assert.equal(
+    S.vlib.filter((r) => !r._retry).length,
+    0,
+    'every claim is either finished or explicitly retryable'
   );
 });
 
