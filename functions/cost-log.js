@@ -59,7 +59,7 @@ exports.handler = withAuth(async (event) => {
   const token = process.env.NOTION_TOKEN;
   if (!token) return json(503, { logged: false, error: 'NOTION_TOKEN not set' });
   try {
-    await logCost({
+    const { charactersDropped } = await logCost({
       task,
       episode: payload.episode || '',
       token,
@@ -74,6 +74,9 @@ exports.handler = withAuth(async (event) => {
         ...(costUsd === undefined ? {} : { costUsd }),
       },
     });
+    // A column that exists but is not a number silently loses the count, so say
+    // so on the way back rather than letting it pass as recorded.
+    if (charactersDropped) return json(200, { logged: true, charactersStored: false });
   } catch (e) {
     return json(502, { logged: false, error: `Cost entry failed: ${e.message}` });
   }

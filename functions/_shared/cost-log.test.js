@@ -88,6 +88,27 @@ test('cost-log reports a failed Notion write instead of pretending it landed', a
   assert.match(JSON.parse(res.body).error, /Notion 502/);
 });
 
+test('cost-log says when the Characters column could not take the count', async (t) => {
+  t.mock.method(global, 'fetch', async (_url, options) => {
+    const props = JSON.parse(options.body).properties;
+    return props.Characters
+      ? {
+          ok: false,
+          status: 400,
+          text: async () => '{"message":"properties.Characters should be a number"}',
+        }
+      : { ok: true, status: 200 };
+  });
+  const { handler } = require('../cost-log');
+  const res = await handler(request({ task: 'tts', requests: 2, characters: 900, model: 'v' }));
+  assert.equal(res.statusCode, 200, 'the row still lands');
+  assert.deepEqual(
+    JSON.parse(res.body),
+    { logged: true, charactersStored: false },
+    'but the count is reported as recorded-when-it-was-not'
+  );
+});
+
 test('cost-log carries the run outcome into the entry label', async (t) => {
   let body;
   t.mock.method(global, 'fetch', async (_url, options) => {

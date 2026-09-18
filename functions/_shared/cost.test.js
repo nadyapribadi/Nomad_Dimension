@@ -135,6 +135,23 @@ test('logCost records the character count that speech is billed by', async (t) =
   assert.equal(body.properties['Cost USD'], undefined);
 });
 
+test('a successful write says so once, and reports nothing dropped', async (t) => {
+  let calls = 0;
+  t.mock.method(global, 'fetch', async () => {
+    calls++;
+    return { ok: true, status: 200 };
+  });
+  const out = await logCost({
+    task: 'tts',
+    token: 'secret',
+    requests: 1,
+    characters: 100,
+    result: { usage: { inputTokens: 0, outputTokens: 0 } },
+  });
+  assert.deepEqual(out, { charactersDropped: false });
+  assert.equal(calls, 1, 'one row, never a second attempt after a success');
+});
+
 test('a missing Characters column costs the count, never the whole entry', async (t) => {
   const seen = [];
   t.mock.method(global, 'fetch', async (_url, options) => {
@@ -149,7 +166,7 @@ test('a missing Characters column costs the count, never the whole entry', async
         }
       : { ok: true, status: 200 };
   });
-  await logCost({
+  const dropped = await logCost({
     task: 'tts',
     token: 'secret',
     requests: 1,
@@ -159,4 +176,9 @@ test('a missing Characters column costs the count, never the whole entry', async
   assert.equal(seen.length, 2, 'the row is retried without the unknown property');
   assert.equal(seen[0].Characters.number, 900);
   assert.equal(seen[1].Characters, undefined);
+  assert.deepEqual(
+    dropped,
+    { charactersDropped: true },
+    'and the caller is told the count was lost'
+  );
 });

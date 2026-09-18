@@ -7588,6 +7588,8 @@ async function renderAllAudio() {
           usage: { inputTokens: 0, outputTokens: 0 },
         });
         if (d && d.logged === false) toast('Audio saved, but the cost entry was not recorded.', 'error');
+        else if (d && d.charactersStored === false)
+          toast('Audio saved, but the costs table\'s Characters column is not a number, so the character count was not recorded.', 'error');
       } catch (e) { toast(`Audio saved, but the cost entry was not recorded (${e.message}).`, 'error'); }
     toast(failed ? 'Audio incomplete. Render again to retry missing lines.' : 'Audio saved on this browser. Ready to play or export.', failed ? 'error' : 'success');
   } catch (e) { toast(`Audio not complete: ${_esc(e.message)}`, 'error'); }

@@ -90,13 +90,20 @@ async function logCost({ result, task, episode, token, requests, scope, characte
   let res = await send(
     countCharacters ? { ...props, Characters: { number: Math.floor(characters) } } : props
   );
+  let charactersDropped = false;
   if (!res.ok && countCharacters) {
-    // The Characters column may not exist yet. A row without the character count
-    // still tells the truth, and a missing column must never cost the entry.
+    // The Characters column may not exist yet, or may not be a number. A row
+    // without the character count still tells the truth, and a mis-typed column
+    // must never cost the whole entry — but the caller is told, so nobody
+    // assumes the count was recorded when it was not.
     const detail = typeof res.text === 'function' ? await res.text().catch(() => '') : '';
-    if (/Characters/i.test(detail)) res = await send(props);
+    if (/Characters/i.test(detail)) {
+      res = await send(props);
+      charactersDropped = res.ok;
+    }
   }
   if (!res.ok) throw new Error(`Notion ${res.status}`);
+  return { charactersDropped };
 }
 
 module.exports = { COSTS_DB_ID, STAGE_BY_TASK, PROVIDER_SELECT, usageFromInteractions, logCost };

@@ -1303,6 +1303,23 @@ test('generating dialogue names what it will spend before it starts', async () =
   assert.match(asked[0].action, /API/);
 });
 
+test('a mis-typed Characters column is reported instead of passed off as recorded', async () => {
+  const t = setup();
+  audioFixture(t, 'KAI: One', 1);
+  t.c.confirmIdeaChange = async () => true;
+  t.c.ttsAPI = async () => btoa('audio');
+  const said = [];
+  t.c.toast = (message) => said.push(message);
+  t.c._postJSON = async () => ({ logged: true, charactersStored: false });
+  await t.run('renderAllAudio()');
+  const warned = said.filter((m) => /Characters column is not a number/.test(m));
+  assert.equal(warned.length, 1, 'the operator hears about the mis-typed column once');
+  assert.ok(
+    said.some((m) => /Audio saved/.test(m)),
+    'and still gets the ordinary success message'
+  );
+});
+
 test('a finished run tells the cost entry what it did', async () => {
   const t = setup(),
     S = t.run('S');
