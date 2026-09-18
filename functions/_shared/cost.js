@@ -44,7 +44,7 @@ function usageFromInteractions(usage) {
 // `requests` is optional: a batch of provider calls reported as one entry says
 // how many it took, so a run's cost stays readable instead of being a row per
 // call. `characters` is the billed unit for text-to-speech, which has no tokens.
-async function logCost({ result, task, episode, token, requests, scope, characters }) {
+async function logCost({ result, task, episode, token, requests, scope, characters, note }) {
   if (!token) throw new Error('Cost logging unavailable');
   const stage = STAGE_BY_TASK[task];
   const usage = (result && result.usage) || {};
@@ -54,6 +54,7 @@ async function logCost({ result, task, episode, token, requests, scope, characte
     stage || null,
     task || null,
     requests ? `${requests} requests` : null,
+    note || null,
   ]
     .filter(Boolean)
     .join(' · ');

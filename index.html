@@ -5454,7 +5454,10 @@ async function runLibVerify(btn, mode='selected') {
   const logRun=async()=>{
     if(!runRequests)return;
     try{
-      const d=await _postJSON('/.netlify/functions/cost-log',{task:'fact-check',requests:runRequests,model:runModel,usage:runUsage,scope:runScope,...(runCostKnown?{costUsd:Math.round(runCostUsd*1e6)/1e6}:{})});
+      // The outcome rides along in the entry's own label, so the Costs DB doubles
+      // as a run log without asking for another column.
+      const note=[`${done} saved`,`${attempted} attempted`,failed?`${failed} failed`:null,saveFailed?`${saveFailed} saves failed`:null,(rows.length-attempted)?`${rows.length-attempted} not started`:null,stopReason?`stopped: ${stopReason}`:null].filter(Boolean).join(' · ');
+      const d=await _postJSON('/.netlify/functions/cost-log',{task:'fact-check',requests:runRequests,model:runModel,usage:runUsage,scope:runScope,note,...(runCostKnown?{costUsd:Math.round(runCostUsd*1e6)/1e6}:{})});
       if(d && d.logged===false)toast('Findings saved, but the cost entry was not recorded.','error');
     }catch(e){toast(`Findings saved, but the cost entry was not recorded (${e.message}).`,'error');}
   };
@@ -7581,6 +7584,7 @@ async function renderAllAudio() {
         const d = await _postJSON('/.netlify/functions/cost-log', {
           task: 'tts', requests: created, characters: synthChars,
           model: voices.join(', '), episode: S.activeEpisode || '',
+          note: `${created} generated · ${cached} reused${failed ? ` · ${failed} failed` : ''}${synthChars ? ` · ${synthChars} characters` : ''}${durable ? '' : ' · storage not durable'}`,
           usage: { inputTokens: 0, outputTokens: 0 },
         });
         if (d && d.logged === false) toast('Audio saved, but the cost entry was not recorded.', 'error');

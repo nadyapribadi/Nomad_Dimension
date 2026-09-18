@@ -7,6 +7,11 @@ const { webcrypto } = require('node:crypto');
 const html = fs.readFileSync('index.html', 'utf8');
 const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\ninit\(\);\s*$/, '\n');
 
+// A deterministic yield. Tests that measure overlap need the scheduler to let
+// other work start, but they must not depend on how long a timer happens to take
+// under load — that is how a passing suite turns flaky on a busy machine.
+const settle = () => new Promise(setImmediate);
+
 function setup() {
   const elements = new Map();
   const element = (id) => {
@@ -921,7 +926,7 @@ test('a file the browser cannot play is cleared so a render can replace it', asy
   assert.ok(await t.c.localArtifact(`audio:${key}`), 'the line starts out cached');
   await t.run('playAudio()');
   players[0].onerror();
-  await new Promise((r) => setTimeout(r, 0));
+  await settle();
   assert.equal(await t.c.localArtifact(`audio:${key}`), null, 'the unplayable file is cleared');
   await t.run('renderAllAudio()');
   assert.equal(calls, 2, 'and the next render records it again instead of reusing it');
@@ -1296,6 +1301,26 @@ test('generating dialogue names what it will spend before it starts', async () =
   assert.match(asked[0].message, /anthropic \/ claude-haiku/);
   assert.match(asked[0].message, /not replaced until you save/);
   assert.match(asked[0].action, /API/);
+});
+
+test('a finished run tells the cost entry what it did', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [{ id: 'r1', name: 'Claim', store: 'research' }];
+  S._vlibSkip = new Set();
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => ({
+    verified: items.map((it) => ({ name: it.name, verdict: 'unsupported', note: 'n' })),
+  });
+  const posts = [];
+  t.c._postJSON = async (url, payload) => {
+    posts.push({ url, payload });
+    return { logged: true };
+  };
+  await t.run('runLibVerify()');
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].payload.note, '1 saved · 1 attempted', 'the entry says what the run did');
 });
 
 test('a render records the characters it bought, once', async () => {
@@ -2999,7 +3024,7 @@ test('provider requests run in parallel up to the limit and every claim still re
     batches++;
     inFlight++;
     maxInFlight = Math.max(maxInFlight, inFlight);
-    await new Promise((r) => setTimeout(r, 2));
+    await settle();
     inFlight--;
     return {
       verified: items.map((it) => ({
@@ -3033,7 +3058,7 @@ test('a failing batch splits without ever exceeding the request ceiling', async 
   t.c._verifyBatch = async (_store, items) => {
     inFlight++;
     maxInFlight = Math.max(maxInFlight, inFlight);
-    await new Promise((r) => setTimeout(r, 2));
+    await settle();
     inFlight--;
     if (items.length > 1) throw new Error('Batch too slow');
     return {
@@ -3067,7 +3092,7 @@ test('findings save one at a time even while provider requests run in parallel',
   t.c._verifyBatch = async (_store, items) => {
     inFlight++;
     maxInFlight = Math.max(maxInFlight, inFlight);
-    await new Promise((r) => setTimeout(r, 3));
+    await settle();
     inFlight--;
     return {
       verified: items.map((it) => ({
@@ -3080,7 +3105,7 @@ test('findings save one at a time even while provider requests run in parallel',
   t.c._writeVerdict = async () => {
     saving++;
     maxSaving = Math.max(maxSaving, saving);
-    await new Promise((r) => setTimeout(r, 1));
+    await settle();
     saving--;
   };
   await t.run('runLibVerify()');
@@ -3337,6 +3362,7 @@ test('a run records one cost entry for all of its requests', async () => {
     model: 'fixture-model',
     usage: { inputTokens: 200, outputTokens: 40 },
     scope: 'Library',
+    note: '8 saved · 8 attempted',
     costUsd: 0.002,
   });
 });

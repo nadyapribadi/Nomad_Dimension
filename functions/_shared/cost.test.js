@@ -93,6 +93,26 @@ test('logCost fails loudly rather than silently losing the entry', async (t) => 
   );
 });
 
+test('logCost carries what the run did, so the entry doubles as a run log', async (t) => {
+  let body;
+  t.mock.method(global, 'fetch', async (_url, options) => {
+    body = JSON.parse(options.body);
+    return { ok: true, status: 200 };
+  });
+  await logCost({
+    task: 'fact-check',
+    scope: 'Library',
+    token: 'secret',
+    requests: 240,
+    note: '950 saved · 960 attempted · 6 failed · stopped: the provider is rate-limiting requests',
+    result: { usage: { inputTokens: 1, outputTokens: 1 } },
+  });
+  assert.equal(
+    body.properties['Cost Entry'].title[0].text.content,
+    'Library · fact-check · 240 requests · 950 saved · 960 attempted · 6 failed · stopped: the provider is rate-limiting requests'
+  );
+});
+
 test('logCost records the character count that speech is billed by', async (t) => {
   let body;
   t.mock.method(global, 'fetch', async (_url, options) => {

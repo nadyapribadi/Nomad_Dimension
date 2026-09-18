@@ -50,6 +50,12 @@ exports.handler = withAuth(async (event) => {
     payload.scope === undefined || payload.scope === null
       ? ''
       : String(payload.scope).slice(0, 120);
+  // What the run did, kept short: the entry label is the only free-text field, so
+  // it carries the outcome rather than asking for another column.
+  const note =
+    typeof payload.note === 'string' && payload.note.trim()
+      ? payload.note.trim().slice(0, 160)
+      : undefined;
   const token = process.env.NOTION_TOKEN;
   if (!token) return json(503, { logged: false, error: 'NOTION_TOKEN not set' });
   try {
@@ -60,6 +66,7 @@ exports.handler = withAuth(async (event) => {
       requests,
       scope,
       characters,
+      note,
       result: {
         model: String(payload.model || ''),
         provider: 'gemini',

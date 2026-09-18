@@ -88,6 +88,24 @@ test('cost-log reports a failed Notion write instead of pretending it landed', a
   assert.match(JSON.parse(res.body).error, /Notion 502/);
 });
 
+test('cost-log carries the run outcome into the entry label', async (t) => {
+  let body;
+  t.mock.method(global, 'fetch', async (_url, options) => {
+    body = JSON.parse(options.body);
+    return { ok: true, status: 200 };
+  });
+  const { handler } = require('../cost-log');
+  const res = await handler(
+    request({ ...good, scope: 'Library', note: '  950 saved · 6 failed  ' })
+  );
+  assert.equal(res.statusCode, 200);
+  assert.match(
+    body.properties['Cost Entry'].title[0].text.content,
+    /950 saved · 6 failed$/,
+    'trimmed and appended, so the row says what the run did'
+  );
+});
+
 test('cost-log accepts a speech render, which is billed by characters', async (t) => {
   let body;
   t.mock.method(global, 'fetch', async (_url, options) => {
