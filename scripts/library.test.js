@@ -1779,6 +1779,69 @@ test('the episode preview pads the number and never shows an empty theme', async
   );
 });
 
+test('a transcript is refused when it is empty, and chunked when it is long', async () => {
+  const t = setup();
+  await assert.rejects(
+    t.run("persistTranscript('vid-1','   ')"),
+    /Select a source and enter a transcript/,
+    'an empty transcript is not written'
+  );
+  assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 0);
+  const long = 'x'.repeat(4501);
+  t.pages.set('vid-1', { id: 'vid-1', last_edited_time: 't1', properties: {} });
+  await t.run(`persistTranscript('vid-1', ${JSON.stringify(long)})`);
+  const patch = t.calls.find((c) => c.method === 'PATCH');
+  const chunks = patch.body.properties.Transcript.rich_text;
+  assert.equal(patch.endpoint, 'pages/vid-1');
+  assert.equal(chunks.length, 3, 'a long transcript is chunked for Notion');
+  assert.equal(
+    chunks.map((c) => c.text.content).join(''),
+    long,
+    'and nothing is lost between the chunks'
+  );
+});
+
+test('an oversized transcript file is refused before anything is read', async () => {
+  const t = setup();
+  t.c.__read = false;
+  await t.run(
+    "importTranscriptFile(0,{files:[{name:'big.txt',size:900000,text:async()=>{__read=true;return 'x';}}]})"
+  );
+  assert.equal(t.c.__read, false, 'the file is never even read');
+  assert.equal(t.element('prep-paste-box-0').value, '', 'and the box is left alone');
+});
+
+test('the episode draft is saved under one key and reports where it went', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.ep = { sections: [], assign: {}, pool: {}, _items: {} };
+  t.element('ep-title-custom').value = 'Lake Tanuki';
+  await t.run('persistEpisodeDraft()');
+  const draft = await t.c.localArtifact('episode-draft');
+  assert.ok(draft?.fields, 'the draft keeps the form fields');
+  assert.equal(draft.fields['ep-title-custom'], 'Lake Tanuki');
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(draft.ep)),
+    JSON.parse(JSON.stringify(S.ep)),
+    'and the episode plan itself'
+  );
+  assert.match(
+    t.element('draft-status').textContent,
+    /saved on this browser/,
+    'the status says where it went, not that Notion has it'
+  );
+});
+
+test('the outline is written to the source page it belongs to', async () => {
+  const t = setup();
+  t.element('transcript-video-select').value = 'vid-9';
+  t.run("S.currentTranscriptOutline = '1. Intro\\n2. Food'");
+  await t.run('saveOutlineToNotion()');
+  const patch = t.calls.find((c) => c.method === 'PATCH');
+  assert.equal(patch.endpoint, 'pages/vid-9');
+  assert.match(patch.body.properties['Content Outline'].rich_text[0].text.content, /1\. Intro/);
+});
+
 test('a finished run tells the cost entry what it did', async () => {
   const t = setup(),
     S = t.run('S');
