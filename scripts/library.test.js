@@ -902,7 +902,7 @@ test('changing one line does not buy the rest of its section again', async () =>
 
 test('a file the browser cannot play is cleared so a render can replace it', async () => {
   const t = setup();
-  const S = audioFixture(t, 'KAI: Only line', 1);
+  audioFixture(t, 'KAI: Only line', 1);
   t.c.confirmIdeaChange = async () => true;
   let calls = 0;
   t.c.ttsAPI = async () => {

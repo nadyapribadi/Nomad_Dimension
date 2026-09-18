@@ -242,19 +242,35 @@ test('dialogue validation rejects an unlabelled model reply instead of assigning
   assert.throws(() => h.run("validateDialogue('Here is your script')"), /KAI/);
   assert.equal(h.run("validateDialogue('**KAI:** hello\\nMIA: hi').length"), 2);
 });
-test('audio identity changes with text, version, episode, and voice settings', () => {
+// The section version is deliberately NOT part of the identity: it moves when any
+// line in the section changes, so including it re-bought every other line for
+// audio that was already correct. This test used to claim it checked four things
+// and only checked two.
+test('audio identity follows the words, voice, speed and episode, not the version', () => {
   const h = setup();
   h.S.activeEpisode = 'EP';
-  h.element('kai-voice').value = 'voice';
+  h.element('kai-voice').value = 'en-US-Neural2-D';
   h.element('kai-speed').value = '1';
-  const key = () => h.run("audioSpec({id:'sec',version:1},{speaker:'KAI',text:'hello'},0).key");
-  const original = key();
-  assert.notEqual(
-    original,
-    h.run("audioSpec({id:'sec',version:1},{speaker:'KAI',text:'changed'},0).key")
+  const key = (over = {}) =>
+    h.run(
+      `audioSpec(${JSON.stringify({ id: 'sec', version: 1, ...(over.sec || {}) })}, ` +
+        `{ speaker: 'KAI', text: ${JSON.stringify(over.text ?? 'hello')} }, 0).key`
+    );
+  const base = key();
+  assert.notEqual(base, key({ text: 'hello there' }), 'the words are the identity');
+  assert.equal(
+    base,
+    key({ sec: { version: 9 } }),
+    'a new version of the same words is the same audio, so it is not bought twice'
   );
+  h.element('kai-voice').value = 'en-US-Neural2-J';
+  assert.notEqual(base, key(), 'the voice is the identity');
+  h.element('kai-voice').value = 'en-US-Neural2-D';
+  h.element('kai-speed').value = '1.5';
+  assert.notEqual(base, key(), 'the speed is the identity');
+  h.element('kai-speed').value = '1';
   h.S.activeEpisode = 'EP2';
-  assert.notEqual(original, key());
+  assert.notEqual(base, key(), 'the episode is the identity');
 });
 test('handoff saving creates a complete body and reuses it when retried', async () => {
   const h = setup();

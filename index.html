@@ -6346,7 +6346,7 @@ async function loadTranscriptVideos() {
       };
     }
     sel.innerHTML = '<option value="">— select a source video —</option>' +
-      vids.map(p => `<option value="${p.id}">${S.transcriptVideos[p.id].title}</option>`).join('');
+      vids.map(p => `<option value="${_esc(p.id)}">${_esc(S.transcriptVideos[p.id].title)}</option>`).join('');
     toast(`Loaded ${vids.length} promoted videos`, 'success');
   } catch (err) {
     sel.innerHTML = '<option>Failed to load</option>';
