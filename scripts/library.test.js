@@ -2010,6 +2010,43 @@ test('switching the verification source clears the loaded rows and hides dedupe 
   t.run('_libVerifying = false');
 });
 
+test('a trial run checks only the first few and leaves the rest ticked', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = Array.from({ length: 12 }, (_, i) => ({
+    id: `row-${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+  }));
+  S._vlibSkip = new Set();
+  const asked = [];
+  t.c.confirmIdeaChange = async (_title, message) => {
+    asked.push(message);
+    return true;
+  };
+  t.c._writeVerdict = async () => {};
+  t.c._verifyBatch = async (_store, items) => ({
+    verified: items.map((it) => ({
+      name: it.name,
+      verdict: 'unsupported',
+      note: 'No evidence found.',
+    })),
+  });
+  await t.run("runLibVerify(null,'sample')");
+  assert.equal(S._vlibSkip.size, 5, 'only the sample is checked');
+  assert.match(asked[0], /5 claims/, 'and the confirmation names that count');
+  assert.equal(
+    S.vlib.filter((r) => !S._vlibSkip.has(r.id)).length,
+    7,
+    'the other seven stay ticked for the real run'
+  );
+  assert.match(
+    t.element('verify-save-status').textContent,
+    /7 claims are still ticked/,
+    'and the report says how many are left'
+  );
+});
+
 test('a finished run tells the cost entry what it did', async () => {
   const t = setup(),
     S = t.run('S');

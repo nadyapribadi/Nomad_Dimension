@@ -2782,6 +2782,10 @@ const _verifyDataMissing=new Set();
 // request and shrinks after a failure, because a failure is what turns one
 // request into a cascade of smaller ones. Clean requests walk it back up.
 const FACT_BATCH_MAX=4,FACT_BATCH_MIN=2,FACT_BATCH_GROW_AFTER=3;
+// A trial run. The panel checks every ticked claim in one go, which is the point
+// — but a thousand-claim run is a lot to commit to before the key, the grounding
+// and the cost are proven, so the disclosure offers the first few.
+const FACT_SAMPLE_SIZE=5;
 // Provider requests in flight at once. Each job below issues one request at a
 // time — the smaller batches a failure splits into run in sequence — so this
 // pool is the ceiling for requests, not just for jobs. A test asserts that a

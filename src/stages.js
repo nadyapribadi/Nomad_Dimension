@@ -1085,6 +1085,7 @@ function renderVlibResults() {
       <div class="btn-row" style="flex-wrap:wrap;margin-top:8px">
         <button class="btn btn-ghost" onclick="selectUncheckedFacts()">Tick unchecked</button>
         <button class="btn btn-ghost" onclick="vlibAll(true)">Tick shown</button><button class="btn btn-ghost" onclick="vlibAll(false)">Untick all</button>
+        <button class="btn btn-ghost" ${_libVerifying || !n ? 'disabled' : ''} onclick="runLibVerify(this,'sample')">Check ${FACT_SAMPLE_SIZE} first · API</button>
       </div>
       <p class="library-message">Ticking chooses what the next run checks. Findings save to Notion as they are found; human review and unticking are never required, and “No evidence found” does not mean false.</p>
     </details></div>
@@ -1338,9 +1339,11 @@ async function runLibVerify(btn, mode = 'selected') {
       !r._aiPending &&
       (mode === 'failed' ? r._retry : !S._vlibSkip.has(r.id || r._key))
   );
-  // Every ticked claim is attempted in this run. Only 'failed' narrows the set,
-  // to the claims whose request failed and to one claim per request.
-  const rows = eligible,
+  // Every ticked claim is attempted in this run. 'failed' narrows the set to the
+  // claims whose request failed and to one claim per request; 'sample' takes the
+  // first few, so a trial run can prove the key, the grounding and the cost
+  // before the operator commits to a thousand of them.
+  const rows = mode === 'sample' ? eligible.slice(0, FACT_SAMPLE_SIZE) : eligible,
     groupSize = mode === 'failed' ? 1 : 4;
   if (!rows.length) {
     toast('Select unchecked claims, or use Retry save for findings already generated.');
