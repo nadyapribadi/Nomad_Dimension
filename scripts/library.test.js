@@ -1842,6 +1842,84 @@ test('the outline is written to the source page it belongs to', async () => {
   assert.match(patch.body.properties['Content Outline'].rich_text[0].text.content, /1\. Intro/);
 });
 
+test('archiving shared material asks first and leaves the library alone if refused', async () => {
+  const t = setup();
+  t.c.currentMaterial = () => ({ name: 'Cooking in a van', id: 'mat-1' });
+  t.c.closeLibraryDetail = () => {};
+  let asked = null;
+  t.c.confirmIdeaChange = async (title, message) => {
+    asked = { title, message };
+    return false;
+  };
+  await t.run('archiveCurrentMaterial()');
+  assert.match(asked.title, /Archive shared material/);
+  assert.match(asked.message, /Cooking in a van/, 'the confirmation names the row');
+  assert.match(
+    asked.message,
+    /restore the original from Notion trash/,
+    'and says the removal is reversible'
+  );
+  assert.equal(
+    t.calls.filter((c) => c.method === 'PATCH' || c.method === 'POST').length,
+    0,
+    'refusing archives nothing'
+  );
+});
+
+test('a candidate already queued for saving cannot be edited again', async () => {
+  const t = setup();
+  t.run("REVIEW.current = {src:'prep', category:'activities', key:'k1'}");
+  t.run('REVIEW.decisions = {}');
+  t.c.materialCandidateSaving = () => true;
+  await t.run("saveCandidateReview('accepted')");
+  assert.match(
+    t.element('candidate-error').textContent,
+    /already queued for saving/,
+    'the edit is refused with a reason'
+  );
+  assert.equal(t.run("REVIEW.decisions['k1']"), undefined, 'and no decision is recorded for it');
+});
+
+test('the library workspace is written once under one key, in order', async () => {
+  const t = setup();
+  t.run('LIB.selected = new Set()');
+  t.run("LIB.filters = {q:''}");
+  const writes = [];
+  const real = t.c.localArtifact;
+  t.c.localArtifact = async (key, value) => {
+    if (value !== undefined) writes.push(key);
+    return real(key, value);
+  };
+  await t.run('persistLibrary()');
+  await t.run('persistLibrary()');
+  assert.deepEqual(
+    writes,
+    ['material-workspace-v1', 'material-workspace-v1'],
+    'each save writes the same single key'
+  );
+  assert.ok(await t.c.localArtifact('material-workspace-v1'), 'the snapshot is stored');
+});
+
+test('a failing local save says what the operator should do instead', async () => {
+  const t = setup();
+  t.c.localArtifact = async () => {
+    throw new Error('Quota exhausted');
+  };
+  t.run('persistLibrarySoon()');
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  assert.match(
+    t.element('idea-save-status').textContent,
+    /Download your draft before leaving/,
+    'the operator is told to take a copy'
+  );
+  assert.match(
+    t.element('library-load-status').textContent,
+    /Keep this tab open/,
+    'and not to walk away from the tab'
+  );
+});
+
 test('a finished run tells the cost entry what it did', async () => {
   const t = setup(),
     S = t.run('S');
