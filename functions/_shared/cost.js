@@ -43,8 +43,8 @@ function usageFromInteractions(usage) {
 
 // `requests` is optional: a batch of provider calls reported as one entry says
 // how many it took, so a run's cost stays readable instead of being a row per
-// call.
-async function logCost({ result, task, episode, token, requests, scope }) {
+// call. `characters` is the billed unit for text-to-speech, which has no tokens.
+async function logCost({ result, task, episode, token, requests, scope, characters }) {
   if (!token) throw new Error('Cost logging unavailable');
   const stage = STAGE_BY_TASK[task];
   const usage = (result && result.usage) || {};
@@ -72,16 +72,29 @@ async function logCost({ result, task, episode, token, requests, scope }) {
   }
   if (stage) props.Stage = { select: { name: stage } };
 
-  const res = await fetch('https://api.notion.com/v1/pages', {
-    method: 'POST',
-    signal: AbortSignal.timeout(2500),
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Notion-Version': '2022-06-28',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ parent: { database_id: COSTS_DB_ID }, properties: props }),
-  });
+  const send = (properties) =>
+    fetch('https://api.notion.com/v1/pages', {
+      method: 'POST',
+      signal: AbortSignal.timeout(2500),
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ parent: { database_id: COSTS_DB_ID }, properties }),
+    });
+
+  const countCharacters =
+    typeof characters === 'number' && Number.isFinite(characters) && characters >= 0;
+  let res = await send(
+    countCharacters ? { ...props, Characters: { number: Math.floor(characters) } } : props
+  );
+  if (!res.ok && countCharacters) {
+    // The Characters column may not exist yet. A row without the character count
+    // still tells the truth, and a missing column must never cost the entry.
+    const detail = typeof res.text === 'function' ? await res.text().catch(() => '') : '';
+    if (/Characters/i.test(detail)) res = await send(props);
+  }
   if (!res.ok) throw new Error(`Notion ${res.status}`);
 }
 

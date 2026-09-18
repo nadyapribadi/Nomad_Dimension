@@ -10,7 +10,9 @@
 const { withAuth } = require('./_shared/auth');
 const { logCost } = require('./_shared/cost');
 
-const TASKS = new Set(['fact-check']);
+// `tts` is billed per character rather than per token, so it reports characters
+// and needs no token counts.
+const TASKS = new Set(['fact-check', 'tts']);
 
 const num = (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Math.floor(Number(v)) : null);
 
@@ -25,9 +27,19 @@ exports.handler = withAuth(async (event) => {
   if (!TASKS.has(task)) return json(400, { error: 'Unknown task' });
   const requests = num(payload.requests);
   if (!requests) return json(400, { error: 'requests must be a positive whole number' });
+  const characters =
+    payload.characters === undefined || payload.characters === null
+      ? undefined
+      : num(payload.characters);
+  if (characters === null)
+    return json(400, { error: 'characters must be a non-negative whole number' });
+  if (task === 'tts' && !characters)
+    return json(400, { error: 'tts entries must report characters' });
   const usage = payload.usage || {};
-  const inputTokens = num(usage.inputTokens);
-  const outputTokens = num(usage.outputTokens);
+  const inputTokens =
+    task === 'tts' && usage.inputTokens === undefined ? 0 : num(usage.inputTokens);
+  const outputTokens =
+    task === 'tts' && usage.outputTokens === undefined ? 0 : num(usage.outputTokens);
   if (inputTokens === null || outputTokens === null)
     return json(400, { error: 'usage must be non-negative token counts' });
   const costUsd =
@@ -47,6 +59,7 @@ exports.handler = withAuth(async (event) => {
       token,
       requests,
       scope,
+      characters,
       result: {
         model: String(payload.model || ''),
         provider: 'gemini',

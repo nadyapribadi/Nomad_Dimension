@@ -7350,6 +7350,7 @@ async function renderAllAudio() {
       return;
     }
     const chars = work.flat().filter(s => todo.has(s.key)).reduce((n, s) => n + s.text.length, 0);
+    const voices = [...new Set(work.flat().filter(s => todo.has(s.key)).map(s => s.voice))];
     if (!await confirmIdeaChange('Render audio for these lines?',
       `${pending.length} of ${total} lines need audio — about ${chars.toLocaleString()} characters.\nLines whose words, voice and speed have not changed are reused instead of bought again. Keep this tab open while it renders.`,
       `Render ${pending.length} line${pending.length > 1 ? 's' : ''} · API`)) return;
@@ -7370,6 +7371,17 @@ async function renderAllAudio() {
       document.getElementById(`audio-seg-${i}`)?.classList.add('ready');
     }
     document.getElementById('audio-save-status').textContent = `${created} generated · ${cached} reused · ${failed} failed. Audio is saved on this browser; export a ZIP backup before changing devices.`;
+    // Speech is billed per character, so that is what the cost row records. The
+    // row is written once per render, not once per line.
+    if (created)
+      try {
+        const d = await _postJSON('/.netlify/functions/cost-log', {
+          task: 'tts', requests: created, characters: chars,
+          model: voices.join(', '), episode: S.activeEpisode || '',
+          usage: { inputTokens: 0, outputTokens: 0 },
+        });
+        if (d && d.logged === false) toast('Audio saved, but the cost entry was not recorded.', 'error');
+      } catch (e) { toast(`Audio saved, but the cost entry was not recorded (${e.message}).`, 'error'); }
     toast(failed ? 'Audio incomplete. Render again to retry missing lines.' : 'Audio saved on this browser. Ready to play or export.', failed ? 'error' : 'success');
   } catch (e) { toast(`Audio not complete: ${_esc(e.message)}`, 'error'); }
   finally { renderingAudio = false; btn.disabled = false; btn.textContent = 'Render missing audio →'; releaseRunLease(lease); }

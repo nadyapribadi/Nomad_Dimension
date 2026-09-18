@@ -927,6 +927,28 @@ test('a file the browser cannot play is cleared so a render can replace it', asy
   assert.equal(calls, 2, 'and the next render records it again instead of reusing it');
 });
 
+test('a render records the characters it bought, once', async () => {
+  const t = setup();
+  audioFixture(t);
+  t.c.confirmIdeaChange = async () => true;
+  t.c.ttsAPI = async () => btoa('audio');
+  const posts = [];
+  t.c._postJSON = async (url, payload) => {
+    posts.push({ url, payload });
+    return { logged: true };
+  };
+  await t.run('renderAllAudio()');
+  assert.equal(posts.length, 1, 'one row per render, not one per line');
+  assert.equal(posts[0].url, '/.netlify/functions/cost-log');
+  assert.equal(posts[0].payload.task, 'tts');
+  assert.equal(posts[0].payload.requests, 3);
+  assert.equal(posts[0].payload.characters, 11, 'characters are the billed unit');
+  // A run that buys nothing writes nothing.
+  posts.length = 0;
+  await t.run('renderAllAudio()');
+  assert.equal(posts.length, 0);
+});
+
 test('a failed transcript save can be recovered for review without replacing saved text or fetching', async () => {
   const t = setup(),
     S = t.run('S');

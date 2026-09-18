@@ -56,8 +56,10 @@ routing returns `503 routing_unavailable` before any model call; it never silent
 uses server defaults. A complete explicit provider/model override remains supported. Provider attempts share a 48-second deadline. Token output is
 capped at 12,000; empty/truncated output fails visibly. A cost write is awaited
 for up to 2.5 seconds; failure does not discard completed model output.
-This is not a complete billing ledger: TTS, web grounding, and other provider
-calls are not covered, and Episodes has no calculated total here.
+This is not a complete billing ledger: web grounding and other provider calls are
+not covered, and Episodes has no calculated total here. Speech is covered as of
+the `tts` task — one row per render, carrying characters rather than tokens (see
+`tts-proxy.js`).
 
 ## `notion-proxy.js`
 
@@ -99,7 +101,10 @@ The provider key travels in the `X-Goog-Api-Key` header, not the query string, a
 an upstream failure is relayed as `{ error: { code, status, message } }` with
 anything credential-shaped stripped from the message. `voice` and `audioConfig`
 are passed through as supplied; there is no allow-list of voice names or speed
-values yet.
+values yet. One Production Costs row is written per render by `cost-log.js`
+(`task: "tts"`), reporting characters, requests and voices; the Costs DB therefore
+needs a `Characters` number property, and a row is written without it if the
+column is missing.
 
 ## `youtube-proxy.js`
 

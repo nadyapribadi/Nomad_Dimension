@@ -87,3 +87,38 @@ test('cost-log reports a failed Notion write instead of pretending it landed', a
   assert.equal(JSON.parse(res.body).logged, false);
   assert.match(JSON.parse(res.body).error, /Notion 502/);
 });
+
+test('cost-log accepts a speech render, which is billed by characters', async (t) => {
+  let body;
+  t.mock.method(global, 'fetch', async (_url, options) => {
+    body = JSON.parse(options.body);
+    return { ok: true, status: 200 };
+  });
+  const { handler } = require('../cost-log');
+  const res = await handler(
+    request({ task: 'tts', requests: 9, characters: 4200, model: 'en-US-Neural2-D' })
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(body.properties.Characters.number, 4200);
+  assert.equal(body.properties['Tokens In'].number, 0);
+  assert.match(body.properties['Cost Entry'].title[0].text.content, /tts · 9 requests/);
+});
+
+test('cost-log refuses a speech entry with no character count', async (t) => {
+  const calls = [];
+  t.mock.method(global, 'fetch', async () => {
+    calls.push(1);
+    return { ok: true, status: 200 };
+  });
+  const { handler } = require('../cost-log');
+  assert.equal(
+    (await handler(request({ task: 'tts', requests: 3, model: 'v' }))).statusCode,
+    400,
+    'a speech row without characters would record nothing useful'
+  );
+  assert.equal(
+    (await handler(request({ task: 'tts', requests: 3, characters: -5 }))).statusCode,
+    400
+  );
+  assert.equal(calls.length, 0);
+});

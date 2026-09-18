@@ -92,3 +92,51 @@ test('logCost fails loudly rather than silently losing the entry', async (t) => 
     /Notion 502/
   );
 });
+
+test('logCost records the character count that speech is billed by', async (t) => {
+  let body;
+  t.mock.method(global, 'fetch', async (_url, options) => {
+    body = JSON.parse(options.body);
+    return { ok: true, status: 200 };
+  });
+  await logCost({
+    task: 'tts',
+    episode: 'EP7',
+    token: 'secret',
+    requests: 4,
+    characters: 5120.6,
+    result: { model: 'en-US-Neural2-D', usage: { inputTokens: 0, outputTokens: 0 } },
+  });
+  assert.equal(body.properties.Characters.number, 5120, 'characters are whole');
+  assert.equal(body.properties['Cost Entry'].title[0].text.content, 'EP7 · tts · 4 requests');
+  // No stage mapping exists for speech, so no Stage option is invented.
+  assert.equal(body.properties.Stage, undefined);
+  // And no price is invented either: only a rate the operator supplies sets one.
+  assert.equal(body.properties['Cost USD'], undefined);
+});
+
+test('a missing Characters column costs the count, never the whole entry', async (t) => {
+  const seen = [];
+  t.mock.method(global, 'fetch', async (_url, options) => {
+    const props = JSON.parse(options.body).properties;
+    seen.push(props);
+    return props.Characters
+      ? {
+          ok: false,
+          status: 400,
+          text: async () =>
+            '{"message":"body failed validation: property Characters does not exist"}',
+        }
+      : { ok: true, status: 200 };
+  });
+  await logCost({
+    task: 'tts',
+    token: 'secret',
+    requests: 1,
+    characters: 900,
+    result: { usage: { inputTokens: 0, outputTokens: 0 } },
+  });
+  assert.equal(seen.length, 2, 'the row is retried without the unknown property');
+  assert.equal(seen[0].Characters.number, 900);
+  assert.equal(seen[1].Characters, undefined);
+});
