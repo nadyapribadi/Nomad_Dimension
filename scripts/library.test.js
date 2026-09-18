@@ -738,6 +738,93 @@ test('routing without a loaded saved block never pretends to persist or changes 
   assert.match(t.element('routing-save-status').textContent, /have not been saved/);
 });
 
+// Stage 3 and Plan read every page. A fixed page_size made the video picker and
+// the gap analysis look complete while quietly hiding rows past the first page.
+test('promoted source videos are read past the first page', async () => {
+  const t = setup(),
+    S = t.run('S');
+  const pageOf = (titles, more) => ({
+    results: titles.map((title) => ({
+      id: `v-${title}`,
+      properties: { 'Video Title': { title: [{ plain_text: title }] } },
+    })),
+    has_more: more,
+    next_cursor: more ? 'cursor-2' : null,
+  });
+  let calls = 0;
+  t.c.notionAPI = async (endpoint) => {
+    if (!/^databases\/.+\/query$/.test(endpoint)) throw new Error(`Unhandled ${endpoint}`);
+    calls++;
+    return calls === 1 ? pageOf(['First page video'], true) : pageOf(['Second page video'], false);
+  };
+  await t.run('loadTranscriptVideos()');
+  assert.equal(calls, 2, 'the read follows the cursor instead of stopping at page one');
+  assert.deepEqual(JSON.parse(JSON.stringify(Object.keys(S.transcriptVideos))), [
+    'v-First page video',
+    'v-Second page video',
+  ]);
+});
+
+test('the gap analysis sees episodes beyond the first page', async () => {
+  const t = setup();
+  const episodeDb = `databases/${t.run('DB_IDS.episodes')}/query`;
+  let episodeCalls = 0;
+  let prompt = '';
+  t.c.notionAPI = async (endpoint) => {
+    if (endpoint === episodeDb) {
+      episodeCalls++;
+      return episodeCalls === 1
+        ? {
+            results: [
+              { properties: { 'Episode Title': { title: [{ plain_text: 'Episode one' }] } } },
+            ],
+            has_more: true,
+            next_cursor: 'cursor-2',
+          }
+        : {
+            results: [
+              { properties: { 'Episode Title': { title: [{ plain_text: 'Episode fifty-one' }] } } },
+            ],
+            has_more: false,
+          };
+    }
+    if (/^databases\/.+\/query$/.test(endpoint))
+      return {
+        results: [{ properties: { Name: { title: [{ plain_text: 'Somewhere' }] } } }],
+        has_more: false,
+      };
+    throw new Error(`Unhandled ${endpoint}`);
+  };
+  t.c.buildDNASystem = () => 'dna';
+  t.c.aiRun = async (_task, req) => {
+    prompt = req.messages[0].content;
+    return { text: 'ok' };
+  };
+  await t.run('runGapAnalysis()');
+  assert.equal(episodeCalls, 2, 'episodes are read past the first page');
+  assert.ok(prompt.includes('Episode fifty-one'), 'the analysis is given the later page');
+  assert.ok(prompt.includes('(2)'), 'and it knows how many episodes it saw');
+});
+
+test('the script check no longer prints a tick it could never earn', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.dna = {};
+  S.confirmedPlaces = [];
+  S.sections = [
+    { id: 's1', title: 'Intro', type: 'Intro', duration: 2, dialogue: 'KAI: One\nMIA: Two' },
+  ];
+  t.run('runScriptCheck()');
+  const html = t.element('script-check-results').innerHTML;
+  assert.doesNotMatch(html, /reused from a past episode/, 'the dead check is gone');
+  assert.doesNotMatch(
+    html,
+    /No confirmed places flagged/,
+    'and it can no longer report a pass nothing verified'
+  );
+  assert.match(html, /checks passed|checks need a look/, 'the remaining checks still report');
+});
+
 test('a failed transcript save can be recovered for review without replacing saved text or fetching', async () => {
   const t = setup(),
     S = t.run('S');

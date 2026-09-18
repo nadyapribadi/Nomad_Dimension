@@ -6121,14 +6121,16 @@ async function runGapAnalysis() {
   resultsEl.style.display = 'none';
 
   try {
-    // Fetch episodes and places
-    const [epsData, placesData] = await Promise.all([
-      notionAPI(`databases/${DB_IDS.episodes}/query`, 'POST', { page_size: 50 }),
-      notionAPI(`databases/${DB_IDS.places}/query`, 'POST', { page_size: 100 }),
+    // Fetch episodes and places. Both follow every page: the analysis is only as
+    // good as the history it can see, and a fixed page_size quietly cut it off
+    // at fifty episodes and a hundred places.
+    const [episodeRows, placeRows] = await Promise.all([
+      notionQueryAll(DB_IDS.episodes),
+      notionQueryAll(DB_IDS.places),
     ]);
 
-    const eps = (epsData.results || []).map(p => p.properties?.['Episode Title']?.title?.[0]?.plain_text || '');
-    const places = (placesData.results || []).map(p => ({
+    const eps = episodeRows.map(p => p.properties?.['Episode Title']?.title?.[0]?.plain_text || '');
+    const places = placeRows.map(p => ({
       name: p.properties?.Name?.title?.[0]?.plain_text || '',
       prefecture: p.properties?.Prefecture?.select?.name || '',
       type: p.properties?.Type?.select?.name || '',
@@ -6163,17 +6165,17 @@ async function loadTranscriptVideos() {
   const sel = document.getElementById('transcript-video-select');
   sel.innerHTML = '<option value="">Loading…</option>';
   try {
-    // Promoted source videos (Stage 2 sets them to "Partially Used").
-    const data = await notionAPI(`databases/${DB_IDS.sourceVideos}/query`, 'POST', {
+    // Promoted source videos (Stage 2 sets them to "Partially Used"). Follow
+    // every page: a fixed page_size silently hid every promoted video past the
+    // first fifty, so the picker looked complete when it was not.
+    const vids = await notionQueryAll(DB_IDS.sourceVideos, {
       filter: {
         or: [
           { property: 'B-Roll Status', select: { equals: 'Partially Used' } },
           { property: 'B-Roll Status', select: { equals: 'Fully Used' } },
         ],
       },
-      page_size: 50,
     });
-    const vids = data.results || [];
     S.transcriptVideos = {};
     for (const p of vids) {
       const pr = p.properties || {};
@@ -7004,12 +7006,11 @@ function runScriptCheck() {
     ? { warn: true, label: 'Repeated phrasing across sections', detail: repeats.join(' · ') }
     : { warn: false, label: 'No repeated 8-word runs across sections' });
 
-  // 6 — Confirmed places used in a previous episode
-  const reused = (S.confirmedPlaces || []).filter(p => p.already_in_episode_warning).map(p => p.name);
-  findings.push(reused.length
-    ? { warn: true, label: 'Confirmed places reused from a past episode', detail: reused.join(', ') }
-    : { warn: false, label: 'No confirmed places flagged as reused' });
-
+  // A sixth check used to report "no confirmed places reused" here. It read a
+  // flag nothing ever set, off a queue that is emptied as soon as places are
+  // saved, so it could only ever print a green tick — a false pass is worse than
+  // no check. Reinstating it needs a real relation read from the Places table,
+  // which is a network call this synchronous check cannot make.
   const warns = findings.filter(f => f.warn).length;
   out.innerHTML = `
     <div style="margin:12px 0 8px;font-size:13px;color:var(--text2)">
