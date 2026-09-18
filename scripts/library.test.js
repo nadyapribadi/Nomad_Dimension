@@ -61,7 +61,10 @@ function setup() {
   vm.runInContext(source, c);
   // Timers are inert in tests: pacing and back-off are exercised through their
   // seams instead, so no test waits on the clock.
-  vm.runInContext('_minIntervalMs=0;_throttleWait=async()=>{}', c);
+  vm.runInContext(
+    '_minIntervalMs=0;_throttleWait=async()=>{};_notionWriteIntervalMs=0;_notionWriteWait=async()=>{}',
+    c
+  );
   const run = (code) => vm.runInContext(code, c),
     LIB = run('LIB'),
     db = run('DB_IDS');
@@ -2893,6 +2896,235 @@ test('a merge carries a check onto a survivor that has none', async () => {
 
 // Duplicate review: the mode declares itself, groups say why they are grouped,
 // and a judgement can be recorded instead of only acted on.
+// A merge preview is a promise about the rows it read. A chain of look-alikes is
+// not the same claim, and an edit in Notion since the preview must stop the write.
+function mergeFixture(t, names, fields) {
+  const pages = Object.fromEntries(
+    names.map((name, i) => [
+      `p${i}`,
+      {
+        id: `p${i}`,
+        last_edited_time: `t${i + 1}`,
+        properties: {
+          Name: { type: 'title', title: [{ plain_text: name }] },
+          'Source Video': { type: 'relation', relation: [{ id: `vid${i}` }] },
+        },
+      },
+    ])
+  );
+  const writes = [];
+  t.c.notionAPI = async (endpoint, method = 'GET', body) => {
+    const id = endpoint.split('/')[1];
+    if (method === 'PATCH') {
+      writes.push({ id, body });
+      return { ...pages[id], last_edited_time: 'written' };
+    }
+    return pages[id];
+  };
+  t.run(
+    `S.vlib=${JSON.stringify(names.map((name, i) => ({ id: `p${i}`, name, store: 'activities', fields: fields?.[i] ?? '' })))};S._dupDismissed=new Set()`
+  );
+  return { pages, writes };
+}
+
+test('a merge refuses a row that changed in Notion after the preview', async () => {
+  const t = setup(),
+    S = t.run('S');
+  const { pages, writes } = mergeFixture(
+    t,
+    ['Cooking in a van', 'Cooking in a van on the road'],
+    ['Category: Food', '']
+  );
+  await t.run('tidyVlib()');
+  await t.run("mergeVlib('p0',['p0','p1'])");
+  // Someone edits the duplicate in Notion while the preview sits on screen.
+  pages.p1.last_edited_time = 'edited-elsewhere';
+  await t.run("mergeVlib('p0',['p0','p1'])");
+  assert.equal(writes.length, 0, 'a preview that no longer describes the rows writes nothing');
+  assert.equal(S.vlib.length, 2, 'both rows stay listed and selectable');
+  assert.equal(S._vlibMergePending, null, 'the stale preview is cleared');
+});
+
+test('a merge that cannot archive a duplicate keeps it listed instead of hiding it', async () => {
+  const t = setup(),
+    S = t.run('S');
+  const { writes } = mergeFixture(t, ['Cooking in a van', 'Cooking in a van on the road']);
+  const allowed = t.c.notionAPI;
+  t.c.notionAPI = async (endpoint, method = 'GET', body) => {
+    if (method === 'PATCH' && endpoint === 'pages/p1')
+      throw Object.assign(new Error('Notion refused the write'), { status: 500 });
+    return allowed(endpoint, method, body);
+  };
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    await t.run('tidyVlib()');
+    await t.run("mergeVlib('p0',['p0','p1'])");
+    await t.run("mergeVlib('p0',['p0','p1'])");
+  } finally {
+    console.error = quiet;
+  }
+  assert.equal(
+    writes.filter((w) => w.id === 'p0').length,
+    1,
+    'the survivor kept its unioned links'
+  );
+  assert.equal(S.vlib.length, 2, '"still listed" has to mean still listed');
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(S.vlib.map((r) => r.id))).sort(),
+    ['p0', 'p1'],
+    'a duplicate that is still in Notion stays in the list'
+  );
+});
+
+test('a chained look-alike group is shown but never merged', async () => {
+  const t = setup(),
+    S = t.run('S');
+  // A~B and B~C, but A and C share only "cooking van": a merge would join them.
+  S.vlib = [
+    { id: 'a', name: 'cooking van kitchen pot', store: 'activities', fields: 'x' },
+    { id: 'b', name: 'cooking van kitchen market', store: 'activities', fields: '' },
+    { id: 'c', name: 'cooking van market fish', store: 'activities', fields: '' },
+  ];
+  S._dupDismissed = new Set();
+  await t.run('tidyVlib()');
+  const html = t.element('vlib-results').innerHTML;
+  assert.match(html, /3 similar/, 'the chain is still reported as a group');
+  assert.doesNotMatch(
+    html,
+    /Merge into the most detailed/,
+    'a chained group is not offered a merge'
+  );
+  assert.match(html, /chained look-alikes/, 'and the view says why');
+  // The guard has to hold for the direct call too, not just for the button.
+  await t.run("mergeVlib('a',['a','b','c'])");
+  assert.equal(S._vlibMergePending, null, 'no preview is built for a chained group');
+  assert.equal(
+    t.calls.filter((c) => /^pages\//.test(c.endpoint)).length,
+    0,
+    'nothing is even read for a group that cannot be merged'
+  );
+});
+
+test('archiving is paced, and a rate-limited write is retried', async () => {
+  const t = setup(),
+    S = t.run('S');
+  t.c.__waits = [];
+  t.run('_notionWriteIntervalMs=1000;_notionWriteWait=async(ms)=>{__waits.push(ms)}');
+  let patches = 0;
+  t.c.notionAPI = async (endpoint, method = 'GET') => {
+    const id = endpoint.split('/')[1];
+    if (method === 'PATCH') {
+      patches++;
+      if (patches === 1) throw Object.assign(new Error('rate limited'), { status: 429 });
+      return { id, last_edited_time: 't1' };
+    }
+    return { id, last_edited_time: 't1', properties: {} };
+  };
+  S.vlib = ['a', 'b'].map((id) => ({
+    id,
+    name: `Claim ${id}`,
+    store: 'research',
+    fields: '',
+    lastEdited: 't1',
+  }));
+  S._vlibArch = new Set(['a', 'b']);
+  S._vlibConfirm = true;
+  await t.run("archiveVlib(document.getElementById('archive'))");
+  assert.equal(patches, 3, 'the refused write was retried, then the second row went through');
+  assert.equal(S.vlib.length, 0, 'both rows archived');
+  assert.ok(t.run('__waits').length >= 1, 'writes are spaced instead of fired together');
+});
+
+test('a persistently refused archive stops instead of failing every row', async () => {
+  const t = setup(),
+    S = t.run('S');
+  t.run('_notionWriteIntervalMs=0;_notionWriteWait=async()=>{}');
+  let patches = 0;
+  t.c.notionAPI = async (endpoint, method = 'GET') => {
+    const id = endpoint.split('/')[1];
+    if (method === 'PATCH') {
+      patches++;
+      throw Object.assign(new Error('Notion is refusing writes'), { status: 500 });
+    }
+    return { id, last_edited_time: 't1', properties: {} };
+  };
+  S.vlib = Array.from({ length: 12 }, (_, i) => ({
+    id: `r${i}`,
+    name: `Claim ${i}`,
+    store: 'research',
+    fields: '',
+    lastEdited: 't1',
+  }));
+  S._vlibArch = new Set(S.vlib.map((r) => r.id));
+  S._vlibConfirm = true;
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    await t.run("archiveVlib(document.getElementById('archive'))");
+  } finally {
+    console.error = quiet;
+  }
+  assert.ok(patches <= 6, `the breaker stops early instead of hammering 12 rows, saw ${patches}`);
+  assert.equal(S.vlib.length, 12, 'every row is still listed and retryable');
+});
+
+test('a paid run refuses to start while another tab holds the lease', async () => {
+  const t = setup(),
+    S = t.run('S');
+  const store = new Map();
+  t.c.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+  store.set(
+    'nomad-paid-run',
+    JSON.stringify({ id: 'other-tab', at: Date.now(), label: 'A fact-check run' })
+  );
+  S.vlib = [{ id: 'row-1', name: 'Claim', store: 'research' }];
+  S._vlibSkip = new Set();
+  // If the lease check ever regresses, the run must fail here rather than walk
+  // into the real confirmation dialog and hang the suite.
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  let requests = 0;
+  t.c._verifyBatch = async () => {
+    requests++;
+    return { verified: [] };
+  };
+  await t.run('runLibVerify()');
+  assert.equal(requests, 0, 'the second tab never spends on the same claims');
+  assert.match(t.element('verify-save-status').textContent, /another tab/i);
+  assert.equal(t.run('_libVerifying'), false);
+});
+
+test('an expired lease is reclaimed, held for the run, then released', async () => {
+  const t = setup(),
+    S = t.run('S');
+  const store = new Map();
+  t.c.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+  store.set('nomad-paid-run', JSON.stringify({ id: 'dead-tab', at: 0, label: 'A fact-check run' }));
+  S.vlib = [{ id: 'row-1', name: 'Claim', store: 'research' }];
+  S._vlibSkip = new Set();
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  let leaseHeld = false;
+  t.c._verifyBatch = async (_store, items) => {
+    leaseHeld = store.has('nomad-paid-run');
+    return {
+      verified: items.map((it) => ({ name: it.name, verdict: 'unsupported', note: 'n' })),
+    };
+  };
+  await t.run('runLibVerify()');
+  assert.equal(leaseHeld, true, 'the run holds the lease while it spends');
+  assert.equal(store.get('nomad-paid-run'), undefined, 'and releases it when the run ends');
+});
+
 test('the duplicate view names itself, explains each group, and offers bulk and dismiss', async () => {
   const t = setup(),
     S = t.run('S');

@@ -4642,6 +4642,55 @@ function _clusterRows(rows, thr = 0.5) {
   }
   return clusters;
 }
+// Single-link clustering is right for *showing* a group, but not for merging:
+// A~B and B~C is enough to chain A and C together even when they share nothing.
+// A merge unions relation properties, so a chained group would quietly join
+// unrelated rows. Offer a merge only when every pair in the group is similar.
+function _clusterMergeSafe(rows, thr = 0.5) {
+  for (let i = 0; i < rows.length; i++)
+    for (let j = i + 1; j < rows.length; j++)
+      if (_sim(rows[i].name, rows[j].name) < thr) return false;
+  return true;
+}
+
+// ─── Notion writes: paced, retried, and stopped before they cascade ─────────
+// The verify path learned this the hard way: an unpaced loop of a thousand rows
+// trips the provider limit and half the rows fail for no reason. Archiving and
+// merging write to Notion too, two calls per row, so they use the same
+// discipline — space the writes, retry a transport or 5xx failure, and stop
+// rather than grind when the provider keeps refusing. Nothing is half-done:
+// rows that fail stay listed, selected, and retryable.
+const NOTION_WRITE_INTERVAL_MS = 350;                  // Notion averages ~3 requests/second
+const NOTION_WRITE_ATTEMPTS = 3;
+const NOTION_WRITE_BREAKER = 5;                        // consecutive failures before the loop stops
+let _notionWriteIntervalMs = NOTION_WRITE_INTERVAL_MS;
+let _notionWriteWait = ms => new Promise(r => setTimeout(r, ms));
+let _lastNotionWriteAt = 0;
+// A stale row is a deliberate refusal, not a transport hiccup: retrying it
+// would fail exactly the same way, so it is reported at once.
+function staleRowError(msg) { return Object.assign(new Error(msg), { code: 'stale' }); }
+function notionWritePacer(label) {
+  let failStreak = 0, stopped = false;
+  return async fn => {
+    if (stopped)
+      throw new Error(`${label} paused after repeated failures. Nothing else was changed; retry when Notion accepts writes again.`);
+    let last;
+    for (let attempt = 1; attempt <= NOTION_WRITE_ATTEMPTS; attempt++) {
+      const gap = _notionWriteIntervalMs - (Date.now() - _lastNotionWriteAt);
+      if (gap > 0) await _notionWriteWait(gap);
+      _lastNotionWriteAt = Date.now();
+      try { const out = await fn(); failStreak = 0; return out; }
+      catch (e) {
+        last = e;
+        const status = Number(e && e.status);
+        if (e && e.code === 'stale') break;               // our own refusal; a retry cannot help
+        if (Number.isFinite(status) && status >= 400 && status < 500 && status !== 429) break;
+        if (++failStreak >= NOTION_WRITE_BREAKER) { stopped = true; break; }
+      }
+    }
+    throw last;
+  };
+}
 
 const CHECK_MARKER = '\n[Nomad check v1]\n';
 function checkRecord(r) {
@@ -4853,10 +4902,22 @@ async function mergeVlib(keepId, ids) {
   S._vlibMergePending=null;
   const losers=ids.filter(id=>id!==keepId);
   if(!losers.length)return;
+  // A merge unions relations, so a group that only hangs together by a chain of
+  // look-alikes would join unrelated links. Refuse it here as well as in the
+  // view, because the button is only one of the ways this function is reached.
+  const group=ids.map(id=>(S.vlib || []).find(r=>r.id===id)).filter(Boolean);
+  if(group.length!==ids.length || !_clusterMergeSafe(group)){
+    toast('Those rows are only loosely related — merging would join unrelated links. Dismiss the group, or archive the ones you are sure about.','error');
+    return;
+  }
   const pages=new Map();
   for(const id of [keepId,...losers])pages.set(id,await notionAPI(`pages/${id}`));
   const keep=pages.get(keepId),keepProps=keep.properties||{};
-  const plan={keepId,losers,relations:{},differing:[],verify:null};
+  // What each row held when this preview was built. Confirming re-reads them and
+  // refuses if any of them moved on in Notion, so the preview stays a promise
+  // about the rows it actually described.
+  const plan={keepId,losers,relations:{},differing:[],verify:null,
+    base:Object.fromEntries([keepId,...losers].map(id=>[id,pages.get(id).last_edited_time]))};
   for(const prop of Object.keys(keepProps)){
     const kind=keepProps[prop]?.type;
     if(kind==='relation'){
@@ -4892,6 +4953,7 @@ async function runMerge() {
   if(!plan)return;
   _vlibMerging=true;
   try{
+    const write=notionWritePacer('Merging');
     // Notion wants each relation property wrapped: { relations: { Prop: { relation: [...] } } }
     const props={};
     for(const [prop,list] of Object.entries(plan.relations))props[prop]={relation:list};
@@ -4899,16 +4961,40 @@ async function runMerge() {
       if(plan.verify.note)props['Verify Note']={rich_text:codeBlockRichText(plan.verify.note)};
       if(plan.verify.status)props['Verify Status']={select:{name:plan.verify.status}};
     }
+    // The preview describes the rows as they were read. If any of them moved on
+    // in Notion since then, nothing is written at all: the union below would
+    // replace newer relations with an older list. Check every row first, so a
+    // stale duplicate is found before the survivor has been modified.
+    const current=new Map();
+    for(const id of [plan.keepId,...plan.losers]){
+      const page=await notionAPI(`pages/${id}`);
+      if(page.last_edited_time!==plan.base[id])throw staleRowError(id===plan.keepId
+        ?'The surviving row changed in Notion after this merge was previewed. Nothing was merged — reload and preview again.'
+        :'One of these rows changed in Notion after the merge was previewed. Nothing was merged — reload and preview again.');
+      current.set(id,page);
+    }
     // The survivor must hold everything before anything is archived.
-    if(Object.keys(props).length)await notionAPI(`pages/${plan.keepId}`,'PATCH',{properties:props});
+    if(Object.keys(props).length)await write(()=>notionAPI(`pages/${plan.keepId}`,'PATCH',{properties:props}));
     let gone=0,failed=0;
+    const archived=new Set();
     for(const id of plan.losers){
-      try{const current=await notionAPI(`pages/${id}`);if(current.archived||current.in_trash)continue;await notionAPI(`pages/${id}`,'PATCH',{archived:true});gone++;}
+      try{
+        const page=current.get(id);
+        if(page.archived||page.in_trash){archived.add(id);gone++;continue;}
+        await write(()=>notionAPI(`pages/${id}`,'PATCH',{archived:true}));
+        archived.add(id);gone++;
+      }
       catch(e){failed++;console.error('merge archive failed',id,e);}
     }
-    S.vlib=(S.vlib || []).filter(r=>!plan.losers.includes(r.id));
-    for(const s of Object.keys(S._vlibRaw || {}))S._vlibRaw[s]=S._vlibRaw[s].filter(r=>!plan.losers.includes(r.id));
+    // Drop only the rows that actually left Notion. Saying "still listed" while
+    // deleting them from the view is how a failed archive becomes invisible.
+    S.vlib=(S.vlib || []).filter(r=>!archived.has(r.id));
+    for(const s of Object.keys(S._vlibRaw || {}))S._vlibRaw[s]=S._vlibRaw[s].filter(r=>!archived.has(r.id));
     toast(`Merged into ${plan.keepId}${gone?` · ${gone} archived`:''}${failed?` · ${failed} failed (still listed)`:''}`,failed?'error':'success');
+  }catch(e){
+    // A refused merge (a row moved on, or Notion stopped accepting writes) must
+    // say so instead of ending as an unhandled rejection behind a dead button.
+    toast(`Not merged: ${_esc(e.message)}`, 'error');
   }finally{
     _vlibMerging=false;S._vlibMergePending=null;S._vlibArch=new Set();S._vlibConfirm=false;
     renderVlibResults();
@@ -4946,9 +5032,15 @@ function renderVlibTidy(el, rows) {
         const ids = c.rows.map(r => r.id);
         if (_dupPairKeys(ids).every(k => dismissed.has(k))) { dismissedGroups++; continue; }
         const shared = _sharedTokens(c.rows);
-        parts.push(`<tr><td colspan="3" style="background:var(--bg2);font-size:10px;color:var(--text3);padding:3px 8px">≈ ${c.rows.length} similar${shared.length ? ` — shares “${_esc(shared.join(' '))}”` : ''} · inspect before selecting anything to archive
+        // A group can be a chain of look-alikes rather than one claim. It is
+        // still worth showing, and it is not safe to merge.
+        const mergeOffered = c.rows.length <= MERGE_MAX_ROWS && _clusterMergeSafe(c.rows);
+        const chained = c.rows.length <= MERGE_MAX_ROWS && !mergeOffered
+          ? ' · chained look-alikes, so a merge is not offered — dismiss the group if they are the same claim'
+          : '';
+        parts.push(`<tr><td colspan="3" style="background:var(--bg2);font-size:10px;color:var(--text3);padding:3px 8px">≈ ${c.rows.length} similar${shared.length ? ` — shares “${_esc(shared.join(' '))}”` : ''}${chained} · inspect before selecting anything to archive
           <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick='tickCluster(${_esc(JSON.stringify(c.keepId))},${_esc(JSON.stringify(ids))})'>Keep the most detailed, tick the other ${c.rows.length - 1}</button>
-          <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick='dismissCluster(${_esc(JSON.stringify(ids))})'>Same claim?</button>${c.rows.length <= MERGE_MAX_ROWS ? ` <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick='mergeVlib(${_esc(JSON.stringify(c.keepId))},${_esc(JSON.stringify(ids))})'>Merge into the most detailed</button>` : ''}</td></tr>`);
+          <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick='dismissCluster(${_esc(JSON.stringify(ids))})'>Same claim?</button>${mergeOffered ? ` <button class="btn btn-sm btn-ghost" style="padding:2px 8px" onclick='mergeVlib(${_esc(JSON.stringify(c.keepId))},${_esc(JSON.stringify(ids))})'>Merge into the most detailed</button>` : ''}</td></tr>`);
         parts.push(c.rows.slice().sort((a, b) => (a.id === c.keepId ? -1 : b.id === c.keepId ? 1 : 0)).map(r => rowHtml(r, true)).join(''));
       } else if (_thinName(c.rows[0].name)) {
         thinN++;
@@ -4993,9 +5085,16 @@ async function archiveVlib(btn) {
   if (btn) { btn.disabled = true; btn.textContent = 'Archiving…'; }
   const gone = new Set();
   let failed = 0;
+  const write = notionWritePacer('Archiving');
   try {
     for (const id of ids) {
-      try { const row=S.vlib.find(r=>r.id===id),current=await notionAPI(`pages/${id}`);if(current.archived || current.in_trash || (row?.lastEdited && current.last_edited_time!==row.lastEdited))throw new Error('Source changed; reload before archiving.');await notionAPI(`pages/${id}`, 'PATCH', { archived: true }); gone.add(id); }
+      try {
+        const row=S.vlib.find(r=>r.id===id),current=await notionAPI(`pages/${id}`);
+        if(current.archived || current.in_trash)throw staleRowError('Already archived in Notion.');
+        if(row?.lastEdited && current.last_edited_time!==row.lastEdited)throw staleRowError('Source changed; reload before archiving.');
+        await write(()=>notionAPI(`pages/${id}`, 'PATCH', { archived: true }));
+        gone.add(id);
+      }
       catch (e) { failed++; console.error('archive failed', id, e); }
     }
     // drop ONLY the rows that actually archived — keep failures visible to retry
@@ -5108,6 +5207,51 @@ const THROTTLE_WAITS=[15000,30000,45000,60000,60000,60000];
 let _minIntervalMs=FACT_MIN_INTERVAL_MS,_throttleWait=ms=>new Promise(r=>setTimeout(r,ms)),_lastVerifyAt=0;
 let _factBatch=FACT_BATCH_MAX,_factClean=0;
 let _libVerifying = false, _stopFactCheck = false;
+
+// ─── One paid run at a time, across tabs ────────────────────────────────────
+// Two tabs share one workspace but not their memory: each would spend on the
+// same claims and only the slower write would survive. The lease is a
+// localStorage heartbeat — visible to the other tab, no server needed, and it
+// expires on its own if a tab dies mid-run.
+const RUN_LEASE_KEY = 'nomad-paid-run';
+const RUN_LEASE_MS = 25000;
+let _runHeartbeat = null;
+function readRunLease() {
+  try {
+    const raw = localStorage.getItem(RUN_LEASE_KEY), lease = raw ? JSON.parse(raw) : null;
+    return lease && lease.id ? lease : null;
+  } catch { return null; }
+}
+function leaseOwner() {
+  const held = readRunLease();
+  return held && Date.now() - (held.at || 0) < RUN_LEASE_MS ? held : null;
+}
+function releaseRunLease(lease) {
+  // Another tab may have taken the lease over after it expired; never delete
+  // a lease this run no longer owns.
+  try { const held = readRunLease(); if (held && held.id === lease.id) localStorage.removeItem(RUN_LEASE_KEY); } catch { /* storage gone: nothing to release */ }
+  if (_runHeartbeat != null && typeof clearInterval === 'function') { try { clearInterval(_runHeartbeat); } catch { /* no timer to stop */ } }
+  _runHeartbeat = null;
+}
+// Storage that is unavailable or full cannot be shared between tabs, so the run
+// proceeds rather than blocking paid work on a browser policy.
+function claimRunLease(label) {
+  if (leaseOwner()) return null;
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`, lease = { id, at: Date.now(), label };
+  try {
+    localStorage.setItem(RUN_LEASE_KEY, JSON.stringify(lease));
+    if (typeof setInterval === 'function')
+      _runHeartbeat = setInterval(() => {
+        try { localStorage.setItem(RUN_LEASE_KEY, JSON.stringify({ ...lease, at: Date.now() })); } catch { /* a failed heartbeat lets the lease expire */ }
+      }, RUN_LEASE_MS / 5);
+  } catch { /* storage blocked: the run proceeds, it just cannot be shared */ }
+  return lease;
+}
+function runLeaseMessage(label) {
+  const held = leaseOwner();
+  return `${label} is already running in another tab${held?.label ? ` (${held.label})` : ''}. Wait for it to finish, or close that tab. Nothing was spent here.`;
+}
+
 async function runLibVerify(btn, mode='selected') {
   if(_libVerifying)return;
   const eligible=(S.vlib || []).filter(r=>!r._saving && !r._aiPending && (mode==='failed'?r._retry:!S._vlibSkip.has(r.id || r._key)));
@@ -5115,6 +5259,8 @@ async function runLibVerify(btn, mode='selected') {
   // to the claims whose request failed and to one claim per request.
   const rows=eligible,groupSize=mode==='failed'?1:4;
   if(!rows.length){toast('Select unchecked claims, or use Retry save for findings already generated.');return;}
+  const lease=claimRunLease('A fact-check run');
+  if(!lease){const m=runLeaseMessage('A fact-check run');const status=document.getElementById('verify-save-status');if(status)status.textContent=m;toast(m,'error');return;}
   _libVerifying=true;
   let done=0,failed=0,saveFailed=0,attempted=0,stopReason='';_stopFactCheck=false;
   const keyOf=r=>r.id || r._key,normName=x=>String(x || '').replace(/\s+/g,' ').trim().toLowerCase().replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"');
@@ -5335,7 +5481,7 @@ async function runLibVerify(btn, mode='selected') {
     await logRun();
 
     if(S.vlib.some(r=>!r.id))renderExtractReview();
-  }finally{for(const r of rows)r._checking=false;_libVerifying=false;if(btn)btn.disabled=false;renderVlibResults();}
+  }finally{for(const r of rows)r._checking=false;_libVerifying=false;if(btn)btn.disabled=false;releaseRunLease(lease);renderVlibResults();}
 }
 
 // One short "key: value" line per row, so the model knows what it's checking.
@@ -7176,6 +7322,8 @@ async function renderAllAudio() {
   if (renderingAudio) return;
   if (!S.activeEpisode || !S.sections.length) { toast('Open an episode and write its sections first', 'error'); return; }
   if (S.sections.some(s => !s.locked)) { toast('Approve every script section before rendering audio', 'error'); return; }
+  const lease = claimRunLease('An audio render');
+  if (!lease) { toast(runLeaseMessage('An audio render'), 'error'); return; }
   renderingAudio = true;
   const btn = document.getElementById('render-audio-btn'); btn.disabled = true;
   let created = 0, cached = 0, failed = 0;
@@ -7202,7 +7350,7 @@ async function renderAllAudio() {
     document.getElementById('audio-save-status').textContent = `${created} generated · ${cached} reused · ${failed} failed. Audio is saved on this browser; export a ZIP backup before changing devices.`;
     toast(failed ? 'Audio incomplete. Render again to retry missing lines.' : 'Audio saved on this browser. Ready to play or export.', failed ? 'error' : 'success');
   } catch (e) { toast(`Audio not complete: ${_esc(e.message)}`, 'error'); }
-  finally { renderingAudio = false; btn.disabled = false; btn.textContent = 'Render missing audio →'; }
+  finally { renderingAudio = false; btn.disabled = false; btn.textContent = 'Render missing audio →'; releaseRunLease(lease); }
 }
 function stopAudio() {
   playbackToken++;
