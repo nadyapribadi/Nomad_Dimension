@@ -1043,6 +1043,11 @@ button.btn.icon-button svg { pointer-events: none; }
 .library-table th .column-sort { display:flex;justify-content:space-between;gap:10px;min-width:0;width:100%;padding:0 0 10px;border:0;background:none;font:600 12px var(--font-sans);cursor:pointer; }
 .library-table th input,.library-table th select { width:100%;min-width:125px;padding:7px 9px;background:white;font-size:12px; }
 .column-hint { display:block;font-size:11px;font-weight:400; }
+/* The review, fact and duplicate tables sort from their headings too, so the
+   button has to read as the heading rather than as a stray browser button. */
+.data-table th .column-sort { display:flex;align-items:center;gap:6px;width:100%;min-width:0;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer; }
+.data-table th .column-sort:hover { color:var(--text); }
+.data-table th .column-sort span { color:var(--text3);font-size:11px; }
 .library-table td[data-label="Why this matched"] { min-width:260px;max-width:400px;line-height:1.65;font-size:12px; }
 mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
 #library-detail-modal { padding:24px; }
