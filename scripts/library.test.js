@@ -1691,6 +1691,94 @@ test('a settings write with no block never invents one', async () => {
   );
 });
 
+// ── Script and dialogue writes ──────────────────────────────────────────────
+test('a new section is refused until it has a title and a sane duration', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.activeEpisode = 'EP';
+  t.element('sec-title').value = '';
+  t.element('sec-duration').value = '2';
+  await t.run('saveSection()');
+  assert.equal(t.calls.filter((c) => c.method === 'POST').length, 0, 'no title, no page');
+  t.element('sec-title').value = 'Intro';
+  t.element('sec-duration').value = '30';
+  await t.run('saveSection()');
+  assert.equal(
+    t.calls.filter((c) => c.method === 'POST').length,
+    0,
+    'a 30-minute section is refused, not written'
+  );
+  t.element('sec-duration').value = '3';
+  await t.run('saveSection()');
+  assert.equal(
+    t.calls.filter((c) => c.method === 'POST').length,
+    1,
+    'and a valid one is written once'
+  );
+});
+
+test('editing dialogue never touches an approved section', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.sections = [{ id: 'sec-1', title: 'Intro', locked: true, dialogue: 'KAI: Saved' }];
+  t.element('sec-edit-0').value = 'KAI: Edited';
+  t.element('sec-brief-0').value = 'brief';
+  await t.run('saveDialogueEdit(0)');
+  assert.equal(
+    t.calls.filter((c) => c.method === 'PATCH').length,
+    0,
+    'an approved section is protected from an edit'
+  );
+  assert.equal(S.sections[0].dialogue, 'KAI: Saved');
+});
+
+test('a local script draft is cleared once it matches the saved text', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.sections = [{ id: 'sec-1', dialogue: 'KAI: Saved', brief: 'b' }];
+  const sec = S.sections[0];
+  sec.draftDialogue = 'KAI: Edited';
+  await t.run('saveScriptDraft(S.sections[0])');
+  assert.ok(await t.c.localArtifact('script-draft:sec-1'), 'an edited draft is kept locally');
+  sec.draftDialogue = sec.dialogue;
+  await t.run('saveScriptDraft(S.sections[0])');
+  assert.equal(
+    await t.c.localArtifact('script-draft:sec-1'),
+    null,
+    'and clearing back to the saved text removes it, so no stale draft survives'
+  );
+});
+
+test('a section type cannot change while the episode name is still saving', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.ep = {
+    sections: [{ id: 's1', type: 'Intro' }],
+    assign: {},
+    pool: {},
+    _items: {},
+    pendingName: 'Saving…',
+  };
+  t.run("setSectionType('s1','Outro')");
+  assert.equal(S.ep.sections[0].type, 'Intro', 'the plan is locked while saving');
+  S.ep.pendingName = null;
+  t.run("setSectionType('s1','Outro')");
+  assert.equal(S.ep.sections[0].type, 'Outro', 'and free again afterwards');
+});
+
+test('the episode preview pads the number and never shows an empty theme', async () => {
+  const t = setup();
+  t.element('ep-series').value = 'Japan';
+  t.element('ep-number').value = '7';
+  t.run('updateEpisodePreview()');
+  assert.match(t.element('ep-name-preview').textContent, /^Japan · EP07 · /);
+  assert.match(
+    t.element('ep-name-preview').textContent,
+    /·\s*…$/,
+    'an empty theme reads as a placeholder, not a dangling separator'
+  );
+});
+
 test('a finished run tells the cost entry what it did', async () => {
   const t = setup(),
     S = t.run('S');
