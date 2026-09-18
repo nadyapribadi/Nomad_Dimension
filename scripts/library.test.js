@@ -927,6 +927,112 @@ test('a file the browser cannot play is cleared so a render can replace it', asy
   assert.equal(calls, 2, 'and the next render records it again instead of reusing it');
 });
 
+// Inline handlers throw into the void: the click just does nothing. One listener
+// pair has to catch both shapes, and it has to stay quiet about repeats.
+test('a handler that throws says so instead of doing nothing', async () => {
+  const t = setup();
+  const listeners = {};
+  t.c.addEventListener = (type, fn) => {
+    listeners[type] = fn;
+  };
+  const said = [];
+  t.c.toast = (message, type) => said.push({ message, type });
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    t.run('installFailureReporting()');
+    assert.equal(typeof listeners.unhandledrejection, 'function');
+    assert.equal(typeof listeners.error, 'function');
+    listeners.unhandledrejection({ reason: new Error('IndexedDB is unavailable') });
+    assert.equal(said.length, 1, 'a rejected handler reports once');
+    assert.match(said[0].message, /did not finish: IndexedDB is unavailable/);
+    assert.equal(said[0].type, 'error');
+    // The same failure repeating must not become a stream of toasts.
+    listeners.unhandledrejection({ reason: new Error('IndexedDB is unavailable') });
+    assert.equal(said.length, 1, 'a repeat inside the window stays silent');
+    listeners.error({ error: new Error('Something else broke') });
+    assert.equal(said.length, 2, 'a different failure is reported');
+    // Stopping playback is a deliberate abort, not a failure.
+    listeners.unhandledrejection({
+      reason: Object.assign(new Error('aborted'), { name: 'AbortError' }),
+    });
+    assert.equal(said.length, 2, 'an abort is not a failure');
+  } finally {
+    console.error = quiet;
+  }
+});
+
+test('the script check escapes what it prints', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.dna = {};
+  S.sections = [
+    {
+      id: 's1',
+      title: '<img src=x onerror=alert(1)>',
+      type: 'Intro',
+      duration: 2,
+      dialogue: 'KAI: One\nMIA: Two',
+    },
+  ];
+  t.run('runScriptCheck()');
+  const html = t.element('script-check-results').innerHTML;
+  assert.doesNotMatch(html, /<img/, 'a title from Notion is text, not markup');
+  assert.match(html, /&lt;img/, 'and it still shows what the title says');
+});
+
+test('typing in a section is coalesced into one local save', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.activeEpisode = 'EP';
+  S.activeEpisodeId = 'ep-1';
+  S.sections = [{ id: 'sec', title: 'Intro', dialogue: '', brief: '' }];
+  const writes = [];
+  const real = t.c.localArtifact;
+  t.c.localArtifact = async (key, value) => {
+    if (value !== undefined) writes.push(key);
+    return real(key, value);
+  };
+  t.run("editScriptDraft(0,'dialogue','KAI: a')");
+  t.run("editScriptDraft(0,'dialogue','KAI: ab')");
+  t.run("editScriptDraft(0,'dialogue','KAI: abc')");
+  assert.deepEqual(writes, [], 'a keystroke does not write the whole section');
+  assert.equal(S.sections[0].draftDialogue, 'KAI: abc', 'the editor state is still current');
+  // Now let the debounce fire: the burst still lands as one save.
+  t.c.setTimeout = (fn) => {
+    fn();
+    return 1;
+  };
+  t.run("editScriptDraft(0,'dialogue','KAI: abcd')");
+  await new Promise(setImmediate);
+  assert.equal(writes.filter((k) => k === 'script-draft:sec').length, 1, 'one save per burst');
+});
+
+test('play and export wait for the render that is filling the cache', async () => {
+  const t = setup();
+  audioFixture(t);
+  const controls = [{ disabled: false }, { disabled: false }];
+  t.c.document.querySelectorAll = (selector) => (selector === '[data-audio-busy]' ? controls : []);
+  t.c.confirmIdeaChange = async () => true;
+  let release;
+  t.c.ttsAPI = async () => {
+    if (!release) await new Promise((r) => (release = r));
+    return btoa('audio');
+  };
+  const rendering = t.run('renderAllAudio()');
+  await new Promise(setImmediate);
+  assert.ok(
+    controls.every((c) => c.disabled === true),
+    'play and export are disabled while the render spends'
+  );
+  release();
+  await rendering;
+  assert.ok(
+    controls.every((c) => c.disabled === false),
+    'and they work again when it finishes'
+  );
+});
+
 test('a render records the characters it bought, once', async () => {
   const t = setup();
   audioFixture(t);

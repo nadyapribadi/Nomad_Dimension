@@ -386,7 +386,14 @@ test('editing a section preserves its draft when another section triggers a rend
   h.run("editScriptDraft(0, 'dialogue', 'KAI: Unsaved change'); renderSections();");
   assert.match(h.element('sections-area').innerHTML, /KAI: Unsaved change/);
   assert.equal(h.S.sections[0].dialogue, 'KAI: Saved');
-  await Promise.resolve();
+  // The local save is coalesced now, so it lands after a short pause rather than
+  // on the keystroke. Let the debounce fire, then let the write settle.
+  h.context.setTimeout = (fn) => {
+    fn();
+    return 1;
+  };
+  h.run("editScriptDraft(0, 'dialogue', 'KAI: Unsaved change');");
+  await new Promise((r) => setImmediate(r));
   assert.equal(h.context.localStore.get('script-draft:section').dialogue, 'KAI: Unsaved change');
 });
 

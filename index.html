@@ -1936,8 +1936,8 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
     </div>
     <div class="btn-row" id="audio-controls" style="display:none">
       <button id="render-audio-btn" class="btn btn-primary" onclick="renderAllAudio()">🎙️ Render All Sections →</button>
-      <button class="btn" onclick="playFullEpisode()">▶ Full Episode Playback</button>
-      <button class="btn" onclick="exportAudio()">⬇ Export audio ZIP</button><button class="btn" onclick="stopAudio()">Stop playback</button>
+      <button class="btn" data-audio-busy onclick="playFullEpisode()">▶ Full Episode Playback</button>
+      <button class="btn" data-audio-busy onclick="exportAudio()">⬇ Export audio ZIP</button><button class="btn" onclick="stopAudio()">Stop playback</button>
     </div>
   </div>
 
@@ -1961,7 +1961,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
   <div class="card">
     <div class="card-title">Export your work</div>
     <p>Download the script, section evidence, and an editable project snapshot. No AI call. Audio can be exported separately after rendering.</p>
-    <div class="btn-row"><button class="btn btn-primary" onclick="exportEpisodePackage()">Download episode package</button><button class="btn" onclick="exportAudio()">Download audio ZIP</button></div>
+    <div class="btn-row"><button class="btn btn-primary" onclick="exportEpisodePackage()">Download episode package</button><button class="btn" data-audio-busy onclick="exportAudio()">Download audio ZIP</button></div>
     <p id="export-package-status" class="save-state" role="status"></p>
   </div>
 
@@ -7018,10 +7018,10 @@ function runScriptCheck() {
     </div>
     ${findings.map(f => `
       <div style="display:flex;gap:10px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
-        <span>${f.warn ? '⚠️' : '✅'}</span>
+      <span>${f.warn ? '⚠️' : '✅'}</span>
         <div>
-          <div style="font-size:13px;font-weight:500">${f.label}</div>
-          ${f.detail ? `<div style="font-size:12px;color:var(--text3);margin-top:2px">${f.detail}</div>` : ''}
+          <div style="font-size:13px;font-weight:500">${_esc(f.label)}</div>
+          ${f.detail ? `<div style="font-size:12px;color:var(--text3);margin-top:2px">${_esc(f.detail)}</div>` : ''}
         </div>
       </div>`).join('')}`;
 }
@@ -7129,13 +7129,25 @@ async function generateDialogue(i) {
   }
 }
 
+const _scriptDraftTimers = new Map();
 function editScriptDraft(i, field, value) {
   const sec = S.sections[i];
   if (!sec || sec.locked || sec._saving) return;
   sec[field === 'brief' ? 'draftBrief' : 'draftDialogue'] = value;
   const status = document.getElementById(`sec-save-${i}`);
   if (status) status.textContent = 'Saving on this device…';
-  saveScriptDraft(sec).then(() => { if (status) status.textContent = 'Saved on this device · save draft to sync'; }).catch(e => { if (status) status.textContent = `Local save failed: ${e.message}`; });
+  // A keystroke is not a save. Coalesce the burst so a long section does not
+  // write the whole dialogue to IndexedDB once per character.
+  queueLocalDraftSave(sec, status);
+}
+function queueLocalDraftSave(sec, status) {
+  clearTimeout(_scriptDraftTimers.get(sec.id));
+  _scriptDraftTimers.set(sec.id, setTimeout(() => {
+    _scriptDraftTimers.delete(sec.id);
+    saveScriptDraft(sec)
+      .then(() => { if (status) status.textContent = 'Saved on this device · save draft to sync'; })
+      .catch(e => { if (status) status.textContent = `Local save failed: ${e.message}`; });
+  }, 400));
 }
 async function saveScriptDraft(sec) {
   const plan = Object.fromEntries(['draftTitle','draftType','draftDuration'].filter(k => sec[k] !== undefined).map(k => [k,sec[k]]));
@@ -7322,6 +7334,10 @@ async function currentAudio(sectionIndex = null) {
   if (!files.length) throw new Error('Load an episode with dialogue first');
   return files;
 }
+// Play and export read the cache the render is filling, so they wait for it.
+function setAudioBusy(busy) {
+  document.querySelectorAll('[data-audio-busy]').forEach(el => { el.disabled = busy; });
+}
 async function renderAllAudio() {
   if (renderingAudio) return;
   if (!S.activeEpisode || !S.sections.length) { toast('Open an episode and write its sections first', 'error'); return; }
@@ -7330,6 +7346,7 @@ async function renderAllAudio() {
   if (!lease) { toast(runLeaseMessage('An audio render'), 'error'); return; }
   renderingAudio = true;
   const btn = document.getElementById('render-audio-btn'); btn.disabled = true;
+  setAudioBusy(true);
   let created = 0, cached = 0, failed = 0;
   try {
     const work=S.sections.map(sec=>validateDialogue(sec.dialogue).map((line,j)=>audioSpec(sec,line,j)));
@@ -7384,7 +7401,7 @@ async function renderAllAudio() {
       } catch (e) { toast(`Audio saved, but the cost entry was not recorded (${e.message}).`, 'error'); }
     toast(failed ? 'Audio incomplete. Render again to retry missing lines.' : 'Audio saved on this browser. Ready to play or export.', failed ? 'error' : 'success');
   } catch (e) { toast(`Audio not complete: ${_esc(e.message)}`, 'error'); }
-  finally { renderingAudio = false; btn.disabled = false; btn.textContent = 'Render missing audio →'; releaseRunLease(lease); }
+  finally { renderingAudio = false; btn.disabled = false; btn.textContent = 'Render missing audio →'; setAudioBusy(false); releaseRunLease(lease); }
 }
 function stopAudio() {
   playbackToken++;
@@ -8355,7 +8372,29 @@ async function signOut() {
   await fetch('/.netlify/functions/session', { method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'}) });
   location.reload();
 }
+// ─── One net for the failure nobody catches ─────────────────────────────────
+// Inline handlers are written as onclick="doThing()". Twenty of them are async,
+// and a throw inside one used to end as an unhandled rejection: the click simply
+// did nothing, with no message. Per-handler try/catch would need patching twenty
+// functions and would be forgotten by the twenty-first, so this is one listener
+// pair for both shapes — a rejected promise and a synchronous throw.
+let _lastFailure = { message: '', at: 0 };
+function reportUncaughtFailure(error) {
+  const message = (error && error.message) || String(error || 'The action did not finish');
+  if (error && error.name === 'AbortError') return;             // stopping playback is not a failure
+  if (message === _lastFailure.message && Date.now() - _lastFailure.at < 4000) return;
+  _lastFailure = { message, at: Date.now() };
+  toast(`That action did not finish: ${_esc(message)}`, 'error');
+  console.error(error);
+}
+function installFailureReporting() {
+  if (typeof globalThis?.addEventListener !== 'function') return;
+  globalThis.addEventListener('unhandledrejection', event => { event?.preventDefault?.(); reportUncaughtFailure(event?.reason); });
+  globalThis.addEventListener('error', event => reportUncaughtFailure(event?.error || event?.message));
+}
+
 async function init() {
+  installFailureReporting();
   await restoreReviews().catch(()=>{REVIEW.loaded=true;});
   await restorePlacesReview().catch(()=>{});
   syncWorkspaceTabs();
