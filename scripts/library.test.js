@@ -1035,6 +1035,28 @@ test('play and export wait for the render that is filling the cache', async () =
 
 // A paid run lands findings every second or so. Repainting the whole table and
 // rewriting a live region per finding was the cost and the screen-reader flood.
+test('the claim table keeps one live region instead of one per row', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [
+    { id: 'a', name: 'Claim A', store: 'research', fields: '', _checking: true },
+    {
+      id: 'b',
+      name: 'Claim B',
+      store: 'research',
+      fields: '',
+      _retry: true,
+      _checkError: 'Check failed: nope',
+    },
+  ];
+  S._vlibSkip = new Set();
+  t.run('renderVlibResults()');
+  const html = t.element('vlib-results').innerHTML;
+  assert.doesNotMatch(html, /role="status"/, 'a row rebuilt on every repaint is not a live region');
+  assert.match(html, /Checking…/, 'the row still says what it is doing');
+  assert.match(html, /Check failed: nope/, 'and still shows why it failed');
+});
+
 test('the claim table repaints once per burst, not once per claim', async () => {
   const t = setup();
   const timers = [];
