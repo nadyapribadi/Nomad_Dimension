@@ -1550,6 +1550,147 @@ test('a table with no Source Video relation still reconciles without error', asy
   );
 });
 
+// ── The destructive write paths ─────────────────────────────────────────────
+// These move pages to Notion trash or rewrite the plan. A bug here loses work,
+// so the guard rails are what is pinned first.
+test('removing a section asks first, and a locked one is never touched', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.activeEpisode = 'EP';
+  S.sections = [{ id: 'sec-1', title: 'Intro', locked: false, lastEdited: 't1' }];
+  t.c.confirm = () => false;
+  await t.run('archiveSection(0)');
+  assert.equal(
+    t.calls.filter((c) => c.method === 'PATCH').length,
+    0,
+    'a cancelled removal writes nothing'
+  );
+  assert.equal(S.sections.length, 1);
+  S.sections[0].locked = true;
+  t.c.confirm = () => true;
+  await t.run('archiveSection(0)');
+  assert.equal(
+    t.calls.filter((c) => c.method === 'PATCH').length,
+    0,
+    'an approved section is refused without a single write'
+  );
+  assert.equal(S.sections.length, 1);
+});
+
+test('removing a section archives its page and drops it from the plan', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.activeEpisode = 'EP';
+  S.sections = [
+    {
+      id: 'sec-1',
+      title: 'Intro',
+      type: 'Intro',
+      duration: 2,
+      dialogue: 'KAI: Hi',
+      brief: 'Evidence',
+      version: 3,
+      locked: false,
+      lastEdited: 't1',
+    },
+  ];
+  t.c.confirm = () => true;
+  const patches = [];
+  // The section has to match the stored page or the freshness check refuses, so
+  // this stub mirrors it exactly — the same shape a real reload produces.
+  const page = {
+    id: 'sec-1',
+    archived: false,
+    last_edited_time: 't1',
+    properties: {
+      'Dialogue Content': { rich_text: [{ plain_text: 'KAI: Hi' }] },
+      'Section Brief': { rich_text: [{ plain_text: 'Evidence' }] },
+      'Dialogue Version': { number: 3 },
+      'Script Status': { select: { name: '✏️ Editing' } },
+      'Section Title': { title: [{ plain_text: 'Intro' }] },
+      'Estimated Duration': { rich_text: [{ plain_text: '2 min' }] },
+      'Section Type': { select: { name: 'Intro' } },
+    },
+  };
+  t.c.notionAPI = async (endpoint, method = 'GET', body) => {
+    if (method === 'PATCH') {
+      patches.push({ endpoint, body });
+      return { last_edited_time: 't2' };
+    }
+    return page;
+  };
+  await t.run('archiveSection(0)');
+  assert.deepEqual(JSON.parse(JSON.stringify(patches)), [
+    { endpoint: 'pages/sec-1', body: { archived: true } },
+  ]);
+  assert.equal(S.sections.length, 0, 'the section leaves the plan');
+  assert.equal(S.handoffDoc, null, 'and a stale handoff cannot survive it');
+});
+
+test('a template never overwrites a plan that already has sections', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.activeEpisode = 'EP';
+  S.sections = [{ id: 'sec-1', title: 'Intro', type: 'Intro', duration: 2 }];
+  await t.run("applyTemplate('A')");
+  assert.equal(S.sections.length, 1, 'the existing plan is untouched');
+  assert.equal(
+    t.calls.filter((c) => c.method === 'POST' || c.method === 'PATCH').length,
+    0,
+    'and nothing is written for a template that was refused'
+  );
+});
+
+test('reordering refuses a stale order and writes the one it was given', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.activeEpisode = 'EP';
+  S.sections = [{ id: 'a' }, { id: 'b' }];
+  // The harness's Notion fake 404s on an unknown page, so the two sections have
+  // to exist before their order can be written.
+  for (const id of ['a', 'b']) t.pages.set(id, { id, last_edited_time: 't1', properties: {} });
+  await t.run("saveSectionOrder(['a'])");
+  await t.run("saveSectionOrder(['a','a'])");
+  await t.run("saveSectionOrder(['a','zzz'])");
+  assert.equal(
+    t.calls.filter((c) => c.method === 'PATCH').length,
+    0,
+    'a short, duplicated or unknown order writes nothing'
+  );
+  await t.run("saveSectionOrder(['b','a'])");
+  const numbered = t.calls
+    .filter((c) => c.method === 'PATCH')
+    .map((c) => [c.endpoint, c.body.properties['Section Order'].number]);
+  assert.deepEqual(numbered, [
+    ['pages/b', 1],
+    ['pages/a', 2],
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(S.sections.map((s) => s.id))), ['b', 'a']);
+});
+
+test('a settings write with no block never invents one', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.channels = ['Channel A'];
+  S.sourceChannelsBlockId = null;
+  S.lookupsBlockId = null;
+  const copied = [];
+  t.c.navigator.clipboard = { writeText: async (text) => copied.push(text) };
+  await t.run('saveChannels()');
+  assert.equal(
+    t.calls.filter((c) => c.method === 'PATCH').length,
+    0,
+    'no block id means no write, not a guessed one'
+  );
+  assert.match(copied[0], /Channel A/, 'the JSON is handed to the operator instead');
+  await t.run('saveLookups()');
+  assert.equal(
+    t.calls.filter((c) => c.method === 'PATCH').length,
+    0,
+    'and the same for the lookup tables'
+  );
+});
+
 test('a finished run tells the cost entry what it did', async () => {
   const t = setup(),
     S = t.run('S');
