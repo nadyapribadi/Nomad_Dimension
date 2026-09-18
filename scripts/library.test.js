@@ -1421,6 +1421,126 @@ test('a missing Verify Data column still saves, and says so once', async () => {
   assert.equal(said.filter((m) => /Verify Data/.test(m)).length, 1, 'the operator is told once');
 });
 
+// The same fact found in a second video used to become a second row, because the
+// record identity includes its source. The claim identity drops the provenance,
+// so the source joins the row that already holds the claim.
+function materialJob(db, items) {
+  return {
+    scope: 'prep:one',
+    src: 'prep',
+    state: 'saving',
+    stop: false,
+    total: items.length,
+    saved: 0,
+    keys: new Set(),
+    errors: {},
+    items: { activities: items },
+    databases: { activities: db },
+  };
+}
+const claim = (sourceId) => ({
+  _key: `k-${sourceId}`,
+  activity: 'Sunrise hike to the ridge',
+  type: 'Hike',
+  source_page_id: sourceId,
+  source_url: 'https://youtu.be/example',
+});
+
+test('the claim identity ignores provenance but keeps the claim itself', async () => {
+  const t = setup();
+  const same = t.run(
+    `materialClaimIdentity({activity:'x',source_page_id:'a'}) === materialClaimIdentity({activity:'x',source_page_id:'b'})`
+  );
+  assert.equal(same, true, 'the same claim from another video is the same claim');
+  const route = t.run(
+    `materialClaimIdentity({route:'A → B',from:'A',to:'B',source_page_id:'a'}) === materialClaimIdentity({route:'A → B',from:'A',to:'B',source_page_id:'b'})`
+  );
+  assert.equal(route, true, 'a transport route keeps its endpoints as part of the claim');
+  assert.equal(
+    t.run(
+      `materialClaimIdentity({route:'A → B',from:'A',to:'B'}) === materialClaimIdentity({route:'A → C',from:'A',to:'C'})`
+    ),
+    false,
+    'but a different route is a different claim'
+  );
+});
+
+test('the same claim from a second source is linked, not duplicated', async () => {
+  const t = setup();
+  const db = t.run('DB_IDS.activities');
+  t.run('S._pushed=new Set();');
+  t.c.__job = materialJob(db, [claim('vid-1')]);
+  await t.run("writeMaterialStore('activities', __job)");
+  const created = [...t.pages.values()].filter((p) => p.parent.database_id === db);
+  assert.equal(created.length, 1, 'the first source creates the row');
+  t.c.__job = materialJob(db, [claim('vid-2')]);
+  await t.run("writeMaterialStore('activities', __job)");
+  assert.equal(
+    [...t.pages.values()].filter((p) => p.parent.database_id === db).length,
+    1,
+    'the second source does not create a duplicate'
+  );
+  const row = [...t.pages.values()].find((p) => p.parent.database_id === db);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(row.properties['Source Video'].relation.map((r) => r.id))),
+    ['vid-1', 'vid-2'],
+    'the row now carries both sources'
+  );
+  assert.equal(t.c.__job.saved, 1, 'and the candidate counts as saved');
+});
+
+test('a source already on the row is not written twice', async () => {
+  const t = setup();
+  const db = t.run('DB_IDS.activities');
+  t.run('S._pushed=new Set();');
+  t.c.__job = materialJob(db, [claim('vid-1')]);
+  await t.run("writeMaterialStore('activities', __job)");
+  const patchesBefore = t.calls.filter((c) => c.method === 'PATCH').length;
+  t.c.__job = materialJob(db, [claim('vid-1')]);
+  await t.run("writeMaterialStore('activities', __job)");
+  const row = [...t.pages.values()].find((p) => p.parent.database_id === db);
+  assert.equal(row.properties['Source Video'].relation.length, 1, 'the relation stays as it was');
+  assert.equal(
+    t.calls.filter((c) => c.method === 'PATCH').length,
+    patchesBefore,
+    'and nothing is written for a link that already exists'
+  );
+});
+
+test('a table with no Source Video relation still reconciles without error', async () => {
+  const t = setup();
+  const db = t.run('DB_IDS.glossary');
+  t.run('S._pushed=new Set();');
+  const item = (sourceId) => ({
+    _key: `g-${sourceId}`,
+    term: 'Okonomiyaki',
+    reading: 'おこのみやき',
+    source_page_id: sourceId,
+  });
+  const job = (sourceId) => ({
+    scope: 'prep:one',
+    src: 'prep',
+    state: 'saving',
+    stop: false,
+    total: 1,
+    saved: 0,
+    keys: new Set(),
+    errors: {},
+    items: { glossary: [item(sourceId)] },
+    databases: { glossary: db },
+  });
+  t.c.__job = job('vid-1');
+  await t.run("writeMaterialStore('glossary', __job)");
+  t.c.__job = job('vid-2');
+  await t.run("writeMaterialStore('glossary', __job)");
+  assert.equal(t.c.__job.error, undefined, 'no error is raised for the missing relation');
+  assert.equal(
+    [...t.pages.values()].filter((p) => p.parent.database_id === db).length,
+    1,
+    'and the claim is still stored once'
+  );
+});
+
 test('a finished run tells the cost entry what it did', async () => {
   const t = setup(),
     S = t.run('S');

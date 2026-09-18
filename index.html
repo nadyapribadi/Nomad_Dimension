@@ -4351,9 +4351,22 @@ S._pushed = S._pushed || new Set();
 S.verify = S.verify || {};   // "<store>:<name>" -> { confidence, source_url, as_of_date, verify_note, _verified }
 // Identity describes an observation, not its display title. Full canonical content
 // is retained so hashing is never treated as proof of equality.
-function materialIdentity(it) {
-  const clean=value=>Array.isArray(value)?value.map(clean):value && typeof value==='object'?Object.fromEntries(Object.keys(value).sort().filter(k=>!k.startsWith('_') && !['needs_verification','verify_note','confidence'].includes(k)).map(k=>[k,clean(value[k])])):value;
-  return JSON.stringify(clean(it));
+// Stable JSON: sorted keys, private/derived fields dropped. Shared so the stored
+// evidence and the incoming candidate are compared the same way.
+function sortedJson(value) {
+  const clean=v=>Array.isArray(v)?v.map(clean):v && typeof v==='object'?Object.fromEntries(Object.keys(v).sort().filter(k=>!k.startsWith('_') && !['needs_verification','verify_note','confidence'].includes(k)).map(k=>[k,clean(v[k])])):v;
+  return JSON.stringify(clean(value));
+}
+// Identity of the record as extracted, source included: the receipt that proves a
+// create already happened.
+function materialIdentity(it) { return sortedJson(it); }
+// Identity of the *claim*, with the provenance stripped. The same fact found in a
+// second video is the same claim, so it must not become a second row: its source
+// belongs on the existing row. `from`/`to` stay — they are the route, not the
+// provenance.
+const MATERIAL_PROVENANCE = new Set(['source_page_id','source_url','source_title','source_excerpt','timestamp','fromIds']);
+function materialClaimIdentity(it) {
+  return sortedJson(Object.fromEntries(Object.entries(it || {}).filter(([k]) => !MATERIAL_PROVENANCE.has(k))));
 }
 function materialEvidenceBlock(it) {
   const json=JSON.stringify({nomadMaterial:1,identity:materialIdentity(it),observation:Object.fromEntries(Object.entries(it).filter(([k])=>!k.startsWith('_'))),original:it._original || Object.fromEntries(Object.entries(it).filter(([k])=>!k.startsWith('_')))});
@@ -4413,7 +4426,7 @@ function renderReviewInto(elId, src) {
   el.innerHTML=`${saveStatus}${REVIEW.receipts[reviewReceiptKey(src)]?`<p role="status" class="library-message">Last save: ${REVIEW.receipts[reviewReceiptKey(src)].saved} saved or reconciled · ${REVIEW.receipts[reviewReceiptKey(src)].remaining} accepted records still to save.</p>`:''}<div class="review-summary"><div><h3>Review extracted material</h3><p>${total.length} candidates · ${accepted} accepted. Accepting keeps a candidate for saving; it does not verify its claims.</p></div><button class="btn btn-primary" onclick="saveAcceptedMaterial('${src}',this)" ${!accepted || saving?'disabled':''}>${saving?(job.state==='queued'?'Save queued':`Saving (${job.saved}/${job.total})`):`${otherSaving?'Queue accepted':'Save accepted'} (${accepted})`}</button></div>
     <div class="review-categories" role="group" aria-label="Candidate categories">${keys.map(k=>`<button class="btn btn-sm" aria-pressed="${k===active}" onclick="switchReviewTab('${src}','${k}')">${RESEARCH_STORES[k].label} <span>${pools[k].length}</span></button>`).join('')}</div>
     <div class="review-bulk"><span>${pool.filter(it=>selected.has(it._key)).length} selected in this category</span><button class="btn btn-sm" onclick="reviewAll('${src}','${active}',true)">Select shown</button><button class="btn btn-sm" onclick="reviewAll('${src}','${active}',false)">Clear shown</button><button class="btn btn-sm" onclick="decideReview('${src}','${active}','accepted')">Accept selected shown</button><button class="btn btn-sm" onclick="decideReview('${src}','${active}','skipped')">Skip selected shown</button></div>
-    ${(S._lastPush || {})[`${reviewReceiptKey(src)}:${active}`]?`<p role="status">${S._lastPush[`${reviewReceiptKey(src)}:${active}`].added} saved · ${S._lastPush[`${reviewReceiptKey(src)}:${active}`].skipped} existing receipts reconciled.</p>`:''}
+    ${(S._lastPush || {})[`${reviewReceiptKey(src)}:${active}`]?`<p role="status">${S._lastPush[`${reviewReceiptKey(src)}:${active}`].added} saved · ${S._lastPush[`${reviewReceiptKey(src)}:${active}`].skipped} existing receipts reconciled${S._lastPush[`${reviewReceiptKey(src)}:${active}`].linked?` · ${S._lastPush[`${reviewReceiptKey(src)}:${active}`].linked} source${S._lastPush[`${reviewReceiptKey(src)}:${active}`].linked>1?'s':''} linked to a claim already stored`:''}.</p>`:''}
     ${job?.errors?.[active]?`<p class="library-error" role="alert">${_esc(job.errors[active])} Accepted candidates remain available.</p>`:''}
     <div class="review-table-wrap"><table id="review-${src}-${active}" class="data-table"><thead><tr><th></th><th>Material</th><th>Source context</th><th data-filter-kind="select">Decision</th><th data-filter-kind="none">Action</th></tr></thead><tbody>${pool.map(it=>`<tr data-row-key="${_esc(it._key)}"><td><input type="checkbox" aria-label="Select ${_esc(cfg.name(it))}" ${selected.has(it._key)?'checked':''} onchange="toggleReview(${_esc(JSON.stringify(it._key))},'${src}',this)"></td><td><strong>${_esc(cfg.name(it))}</strong><p>${_esc(Object.entries(cfg.props(it)).filter(([k])=>![cfg.titleProp,'Source Video','Source URL','Date Added','Retrieved Date'].includes(k)).slice(0,3).map(([k,v])=>`${k}: ${_propText(v)}`).join(' · '))}</p></td><td>${_esc(it.source_excerpt || it.source_title || it.source_name || it.source_url || 'Source context not recorded')}<small>${_esc(it.timestamp || '')}</small></td><td>${_esc(REVIEW.decisions[it._key] || 'pending')}</td><td><button class="btn btn-sm" data-key="${_esc(it._key)}" onclick="openCandidateReview('${src}','${active}',this.dataset.key)" ${materialCandidateSaving(it._key)?'disabled':''}>Review</button></td></tr>`).join('')}</tbody></table></div>`;
   enhanceTable(`review-${src}-${active}`);
@@ -4513,9 +4526,21 @@ async function saveAcceptedMaterial(src,btn,onlyCategory=null) {
   REVIEW.saveTail=promise.catch(()=>{});refreshMaterialSaves();return promise;
 }
 
+// A claim found in a second video keeps its single row: the new source is unioned
+// into the existing relation. Only when the row actually has that relation —
+// Glossary has none — and only when the source is not already on it.
+async function linkMaterialSource(row, it) {
+  const sourceId = it.source_page_id;
+  if (!sourceId) return false;
+  const relation = row.properties?.['Source Video']?.relation;
+  if (!relation) return false;
+  if (relation.some(r => r.id === sourceId)) return false;
+  await notionAPI(`pages/${row.id}`,'PATCH',{properties:{'Source Video':{relation:[...relation.map(r=>({id:r.id})),{id:sourceId}]}}});
+  return true;
+}
 async function writeMaterialStore(key, job) {
   const cfg = RESEARCH_STORES[key], items=job.items[key], db=job.databases[key];
-  let added = 0, skipped = 0;
+  let added = 0, skipped = 0, linked = 0;
   try {
     delete job.errors[key];delete (S._pushErrors ||= {})[key];
     const existing=await notionQueryAll(db);
@@ -4529,9 +4554,22 @@ async function writeMaterialStore(key, job) {
         // Only a matching stored receipt proves a replay. Legacy/similar names
         // remain distinct; their original rows are never overwritten.
         const matches=existing.filter(r=>richText(r.properties?.[cfg.titleProp]).trim().toLowerCase()===name.toLowerCase());
-        let receipt=null;
-        for(const row of matches){const evidence=materialEvidence(await getPageBlocks(row.id));if(evidence?.identity===identity){receipt=row;break;}}
+        const claim=materialClaimIdentity(it);
+        let receipt=null, sameClaim=null;
+        for(const row of matches){
+          const evidence=materialEvidence(await getPageBlocks(row.id));
+          if(!evidence)continue;
+          if(evidence.identity===identity){receipt=row;break;}
+          if(!sameClaim && materialClaimIdentity(evidence.observation||{})===claim)sameClaim=row;
+        }
         if(receipt){await localArtifact(intentKey,null);S._pushed.add(it._key);job.saved++;skipped++;continue;}
+        // The same claim from another video: keep one row and add the source to it,
+        // rather than creating a duplicate that someone has to merge later.
+        if(sameClaim){
+          await localArtifact(intentKey,null);S._pushed.add(it._key);job.saved++;skipped++;
+          if(await linkMaterialSource(sameClaim,it))linked++;
+          continue;
+        }
         if(await localArtifact(intentKey))throw new Error('Earlier save may have reached Notion. No matching receipt was found; inspect the original before retrying.');
         const evidence=materialEvidenceBlock(it);
         await localArtifact(intentKey,{name,at:new Date().toISOString()});
@@ -4548,7 +4586,7 @@ async function writeMaterialStore(key, job) {
     if (added) { delete LIB.rows[key]; LIB.loaded=false; }
     if (added || skipped) {
       (S._lastPush ||= {})[`${job.scope}:${key}`] = {
-        added, skipped,
+        added, skipped, linked,
         url: `https://www.notion.so/${db.replace(/-/g, '')}`,
       };
     }
