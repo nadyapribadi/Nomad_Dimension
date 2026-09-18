@@ -7510,6 +7510,15 @@ async function currentAudio(sectionIndex = null) {
 function setAudioBusy(busy) {
   document.querySelectorAll('[data-audio-busy]').forEach(el => { el.disabled = busy; });
 }
+// Best effort: ask the browser to keep this origin's storage. Returns whether the
+// audio is protected, so the operator can be told the truth either way.
+async function keepPaidAudio() {
+  try {
+    if (!navigator?.storage?.persist) return false;
+    if (await navigator.storage.persisted?.()) return true;
+    return await navigator.storage.persist();
+  } catch { return false; }
+}
 async function renderAllAudio() {
   if (renderingAudio) return;
   if (!S.activeEpisode || !S.sections.length) { toast('Open an episode and write its sections first', 'error'); return; }
@@ -7519,10 +7528,14 @@ async function renderAllAudio() {
   renderingAudio = true;
   const btn = document.getElementById('render-audio-btn'); btn.disabled = true;
   setAudioBusy(true);
-  let created = 0, cached = 0, failed = 0;
+  let created = 0, cached = 0, failed = 0, synthChars = 0;
   try {
     const work=S.sections.map(sec=>validateDialogue(sec.dialogue).map((line,j)=>audioSpec(sec,line,j)));
     await openArtifactDB(); // do not pay for audio if this browser cannot save it
+    // Paid audio lives in this browser only, so ask for durable storage before
+    // spending: a browser under pressure may clear an origin's storage, and that
+    // would delete something that was bought.
+    const durable = await keepPaidAudio();
     // Work out what is actually missing before spending anything, so the
     // confirmation can name the real number instead of the whole script.
     const total = work.reduce((n, specs) => n + specs.length, 0);
@@ -7553,19 +7566,20 @@ async function renderAllAudio() {
           if (typeof b64 !== 'string' || !b64) throw new Error('TTS returned no audio');
           audioCache[spec.key] = b64;
           await localArtifact(`audio:${spec.key}`, b64);
+          synthChars += spec.text.length;
           created++;
         } catch (e) { failed++; sectionFailed = true; toast(`Section ${i + 1}, line ${j + 1}: ${_esc(e.message)}`, 'error'); }
       }
       if (sectionFailed) continue;
       document.getElementById(`audio-seg-${i}`)?.classList.add('ready');
     }
-    document.getElementById('audio-save-status').textContent = `${created} generated · ${cached} reused · ${failed} failed. Audio is saved on this browser; export a ZIP backup before changing devices.`;
+    document.getElementById('audio-save-status').textContent = `${created} generated · ${cached} reused · ${failed} failed · ${synthChars.toLocaleString()} characters. Audio is saved on this browser${durable ? '' : ', which may clear it when storage runs short'}; export a ZIP backup before changing devices.`;
     // Speech is billed per character, so that is what the cost row records. The
     // row is written once per render, not once per line.
     if (created)
       try {
         const d = await _postJSON('/.netlify/functions/cost-log', {
-          task: 'tts', requests: created, characters: chars,
+          task: 'tts', requests: created, characters: synthChars,
           model: voices.join(', '), episode: S.activeEpisode || '',
           usage: { inputTokens: 0, outputTokens: 0 },
         });
@@ -7671,11 +7685,22 @@ async function exportAudio() {
     const script = S.sections.map(s=>`${s.title}\n${s.dialogue}`).join('\n\n');
     const files = await currentAudio();
     const encoder = new TextEncoder();
-    const entries = files.map(f => ({ name:f.filename, data:Uint8Array.from(atob(f.b64), c=>c.charCodeAt(0)) }));
+    // Decode one line at a time and drop its base64 as soon as it is bytes. The
+    // in-memory copy is what makes a long episode expensive: holding every line's
+    // base64 *and* its decoded bytes doubles the peak. Playback re-reads from
+    // IndexedDB when the cache misses, so nothing is lost by letting it go.
+    const entries = [];
+    let bytes = 0;
+    for (const f of files) {
+      const data = Uint8Array.from(atob(f.b64), c=>c.charCodeAt(0));
+      bytes += data.length;
+      entries.push({ name: f.filename, data });
+      delete audioCache[f.key];
+    }
     entries.push({ name:'manifest.json', data:encoder.encode(JSON.stringify({ episode, exportedAt:new Date().toISOString(), files:files.map(({b64:_b64,key:_key,...f})=>f) },null,2)) });
     entries.push({ name:'script.txt', data:encoder.encode(script) });
     downloadBlob(zipBytes(entries), `nomad-${(episodeId || 'episode').slice(0,8)}-audio.zip`);
-    toast('Audio ZIP prepared with ordered MP3s, script, and manifest', 'success');
+    toast(`Audio ZIP prepared — ${(bytes/1048576).toFixed(1)} MB of MP3s, plus script and manifest`, 'success');
   } catch(e) { toast(`Export not ready: ${_esc(e.message)}`, 'error'); }
 }
 

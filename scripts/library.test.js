@@ -1162,6 +1162,56 @@ test('a failed session call is reported once, in the sign-in panel', async () =>
   assert.match(t.element('signin-status').textContent, /offline/);
 });
 
+test('exporting audio lets go of the in-memory copies it just decoded', async () => {
+  const t = setup();
+  audioFixture(t, 'KAI: One\nMIA: Two', 1);
+  t.c.confirmIdeaChange = async () => true;
+  t.c.ttsAPI = async () => btoa('audio-bytes');
+  let entries;
+  t.c.zipBytes = (value) => {
+    entries = value;
+    return new Blob();
+  };
+  t.c.downloadBlob = () => {};
+  await t.run('renderAllAudio()');
+  assert.equal(Object.keys(t.run('audioCache')).length, 2, 'both lines are cached after render');
+  await t.run('exportAudio()');
+  assert.equal(
+    Object.keys(t.run('audioCache')).length,
+    0,
+    'the base64 copies are released once they are bytes in the ZIP'
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(entries.map((e) => e.name))), [
+    '01-001-KAI.mp3',
+    '01-002-MIA.mp3',
+    'manifest.json',
+    'script.txt',
+  ]);
+  // Nothing is lost: playback re-reads the line from IndexedDB.
+  const files = await t.run('currentAudio()');
+  assert.equal(files.length, 2);
+});
+
+test('a render says whether the browser promised to keep the audio', async () => {
+  const t = setup();
+  audioFixture(t, 'KAI: One', 1);
+  t.c.confirmIdeaChange = async () => true;
+  t.c.ttsAPI = async () => btoa('audio');
+  t.c.navigator.storage = { persist: async () => false, persisted: async () => false };
+  await t.run('renderAllAudio()');
+  assert.match(
+    t.element('audio-save-status').textContent,
+    /may clear it when storage runs short/,
+    'an unprotected render says so'
+  );
+  t.c.navigator.storage = { persist: async () => true, persisted: async () => false };
+  audioFixture(t, 'KAI: Two', 2);
+  await t.run('renderAllAudio()');
+  const status = t.element('audio-save-status').textContent;
+  assert.match(status, /1 generated/);
+  assert.doesNotMatch(status, /may clear it/, 'a protected render does not nag');
+});
+
 test('the claim table keeps one live region instead of one per row', async () => {
   const t = setup(),
     S = t.run('S');
