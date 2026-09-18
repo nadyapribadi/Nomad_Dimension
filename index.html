@@ -4718,7 +4718,7 @@ async function searchLibrary(btn) {
             .filter(([k]) => k !== cfg.titleProp && !k.startsWith('Verify') && !['Source Video', 'Date Added', 'Retrieved Date', 'Last Verified'].includes(k))
             .map(([k, v]) => { const t = _readProp(v); return t ? `${k}: ${t}` : ''; })
             .filter(Boolean).join(' · ');
-          return { store, id: row.id, lastEdited:row.last_edited_time, name, fields, status: _readProp(props['Verify Status']), note: richText(props['Verify Note']) };
+          return { store, id: row.id, lastEdited:row.last_edited_time, name, fields, status: _readProp(props['Verify Status']), note: richText(props['Verify Note']), data: richText(props['Verify Data']) };
         }).filter(r => r.name);
       }
       for (const r of S._vlibRaw[store]) {
@@ -4823,7 +4823,20 @@ function notionWritePacer(label) {
 }
 
 const CHECK_MARKER = '\n[Nomad check v1]\n';
+// The machine-readable check lives in its own `Verify Data` property, so the
+// human note stays human: editing it in Notion can no longer break a save, and
+// nothing has to be parsed out of prose. Rows saved before the split still carry
+// the marker inside the note, so those are read the old way until they are next
+// saved.
 function checkRecord(r) {
+  const raw=r._newData !== undefined ? r._newData : r.data;
+  if(raw) {
+    try {
+      const data=JSON.parse(raw);
+      if(data.version!==1 || [data.ai,data.review].filter(Boolean).some(v=>!['confirmed','corrected','unsupported'].includes(v.verdict)))throw new Error();
+      return data;
+    } catch { /* fall through to the note, and repair on the next save */ }
+  }
   const note=r._newNote || r.note || '';
   if(!note.includes(CHECK_MARKER))return {legacy:note || ['confirmed','corrected','unsupported'].includes(r._newStatus || r.status) ? {verdict:r._newStatus || r.status,note} : null};
   try {const data=JSON.parse(note.split(CHECK_MARKER)[1]);if(data.version!==1 || [data.ai,data.review].filter(Boolean).some(v=>!['confirmed','corrected','unsupported'].includes(v.verdict)))throw new Error();return data;}catch{return {legacy:{verdict:r.status,note},invalid:true};}
@@ -5298,10 +5311,14 @@ async function _writeVerdict(r, v, origin='review') {
   let current=null,data=checkRecord(r);
   if(r.id){
     current=await notionAPI(`pages/${r.id}`);
-    const stored=checkRecord({note:richText(current.properties?.['Verify Note']),status:current.properties?.['Verify Status']?.select?.name});
+    const stored=checkRecord({
+      note:richText(current.properties?.['Verify Note']),
+      data:richText(current.properties?.['Verify Data']),
+      status:current.properties?.['Verify Status']?.select?.name,
+    });
     if(current.archived || current.in_trash)throw new Error('This material was archived. Reload before saving.');
     // Reconcile a previous PATCH whose response was lost, without another write.
-    if(JSON.stringify(stored[field])===JSON.stringify(value)){r.lastEdited=current.last_edited_time;r._newNote=richText(current.properties['Verify Note']);r._newStatus=current.properties['Verify Status']?.select?.name;delete LIB.rows[r.store];LIB.loaded=false;delete S._vlibRaw?.[r.store];return r._newStatus;}
+    if(JSON.stringify(stored[field])===JSON.stringify(value)){r.lastEdited=current.last_edited_time;r._newNote=richText(current.properties['Verify Note']);r._newData=richText(current.properties['Verify Data']);r._newStatus=current.properties['Verify Status']?.select?.name;delete LIB.rows[r.store];LIB.loaded=false;delete S._vlibRaw?.[r.store];return r._newStatus;}
     if(r.lastEdited && current.last_edited_time!==r.lastEdited)throw new Error('This row changed in Notion. Reload before retrying the retained result.');
     data=stored;
   }
@@ -5309,17 +5326,41 @@ async function _writeVerdict(r, v, origin='review') {
   const record={...data,version:1,[field]:value};
   const effective=record.review || record.ai;
   const summary=[record.ai && `AI check: ${checkLabel(record.ai.verdict)} · ${checkSummary(record.ai)}`,record.review && `Human review: ${checkLabel(record.review.verdict)} · ${checkSummary(record.review)}`,record.legacy && `Previous saved check (reviewer unknown): ${record.legacy.note}`].filter(Boolean).join('\n');
-  const note=summary+CHECK_MARKER+JSON.stringify(record);
-  if(note.length>16000)throw new Error('Verification history exceeds the save limit. Existing notes were not truncated.');
+  const detail=JSON.stringify(record);
+  const note=summary+CHECK_MARKER+detail;   // only used while the column is missing
+  if(detail.length>16000)throw new Error('Verification history exceeds the save limit. Existing notes were not truncated.');
   if(r.id){
-    const saved=await notionAPI(`pages/${r.id}`,'PATCH',{properties:{'Verify Status':{select:{name:effective.verdict}},'Verify Note':{rich_text:codeBlockRichText(note)}}});
+    const saved=await writeVerifyRow(r,effective.verdict,summary,detail,note);
     r.lastEdited=saved.last_edited_time;
   }else{
     S.verify[`${r.store}:${r.name.trim().toLowerCase()}`]={_verified:true,confidence:effective.confidence,source_url:effective.source_url,as_of_date:effective.as_of_date,verify_note:summary};
     await localArtifact(`verify-session:${r._key}`,{note,status:effective.verdict});
   }
-  r._newStatus=effective.verdict;r._newNote=note;delete LIB.rows[r.store];LIB.loaded=false;delete S._vlibRaw?.[r.store];
+  r._newStatus=effective.verdict;r._newNote=summary;r._newData=detail;delete LIB.rows[r.store];LIB.loaded=false;delete S._vlibRaw?.[r.store];
   return effective.verdict;
+}
+// Writes the human summary and the machine record to separate properties. The
+// `Verify Data` column may not exist yet, and a paid finding must never fail for
+// that: Notion names the unknown property, so the retry falls back to the marker
+// inside the note — the shape every row used before the split.
+// Per table, not global: the eight material tables can be migrated one at a
+// time, and a table that has the column should start using it immediately rather
+// than waiting for its neighbours. One probe per table per session, so a missing
+// column costs one extra round trip instead of one per row.
+const _verifyDataMissing=new Set();
+async function writeVerifyRow(r, verdict, summary, detail, noteWithMarker) {
+  const base={'Verify Status':{select:{name:verdict}}};
+  if(!_verifyDataMissing.has(r.store)){
+    try{
+      return await notionAPI(`pages/${r.id}`,'PATCH',{properties:{...base,'Verify Note':{rich_text:codeBlockRichText(summary)},'Verify Data':{rich_text:codeBlockRichText(detail)}}});
+    }catch(e){
+      const detailText=String((e&&e.message)||'');
+      if(!/Verify Data/i.test(detailText))throw e;
+      _verifyDataMissing.add(r.store);
+      toast(`Verification details for ${RESEARCH_STORES[r.store]?.label || r.store} are still kept inside the note: that table needs a Verify Data property to keep them out of your own words.`,'error');
+    }
+  }
+  return await notionAPI(`pages/${r.id}`,'PATCH',{properties:{...base,'Verify Note':{rich_text:codeBlockRichText(noteWithMarker)}}});
 }
 async function saveAutomaticCheck(r) {
   if(!r._aiPending || r._saving)return;
@@ -8264,7 +8305,7 @@ async function openMaterialEdit() {
   const row=currentMaterial();if(!row)return;closeLibraryDetail();const ctx=materialEdit={row,fields:{}};
   const recovered=await localArtifact(`material-edit:${row.id}`);
   if(materialEdit!==ctx || LIB.detailKey!==row.key)return;
-  const editable=Object.entries(row.properties).filter(([name,p])=>name!=='Verify Note' && ['title','rich_text','url','number','date'].includes(p.type));
+  const editable=Object.entries(row.properties).filter(([name,p])=>!name.startsWith('Verify') && ['title','rich_text','url','number','date'].includes(p.type));
   document.getElementById('material-edit-fields').innerHTML=editable.map(([name,p])=>{const value=recovered?.fields&&name in recovered.fields?recovered.fields[name]:p.type==='number'?p.number??'':p.type==='date'?p.date?.start||'':libProperty(p);materialEdit.fields[name]=value;return `<label>${_esc(name)}${recovered && recovered.baseEdited!==row.lastEdited?`<small>Current saved value: ${_esc(libProperty(p)||'Empty')}</small>`:''}${['title','rich_text'].includes(p.type)?`<textarea aria-label="${_esc(name)}" rows="${p.type==='title'?2:4}" data-property="${_esc(name)}" oninput="retainMaterialEdit(this)">${_esc(value)}</textarea>`:`<input aria-label="${_esc(name)}" type="${p.type==='number'?'number':p.type==='date'?'text':'url'}" data-property="${_esc(name)}" value="${_esc(value)}" oninput="retainMaterialEdit(this)">`}</label>`;}).join('');
   document.getElementById('material-edit-status').textContent=(recovered && recovered.baseEdited!==row.lastEdited?'Recovered edits are based on an older record. Compare the latest fields before saving. ':'')+'Text, links, numbers and dates are editable here. Categories, relations and computed fields remain in Notion. Empty values explicitly clear a field.';openModal('material-edit-modal');
 }

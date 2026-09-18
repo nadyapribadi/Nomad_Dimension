@@ -1320,6 +1320,107 @@ test('a mis-typed Characters column is reported instead of passed off as recorde
   );
 });
 
+// The machine-readable check moved out of the human note, so an operator typing
+// in Notion can no longer break a save — and old rows still have to read.
+test('a check is read from its own property, and old rows still read from the note', async () => {
+  const t = setup();
+  const json = JSON.stringify({ version: 1, ai: { verdict: 'confirmed', note: 'n' } });
+  assert.equal(
+    t.run(`checkRecord({note:'my own words',data:${JSON.stringify(json)}}).ai.verdict`),
+    'confirmed',
+    'the property wins'
+  );
+  assert.equal(
+    t.run(
+      `checkRecord({note:${JSON.stringify(`AI check: Supported\n[Nomad check v1]\n${json}`)}}).ai.verdict`
+    ),
+    'confirmed',
+    'a row saved before the split still reads'
+  );
+  assert.equal(
+    t.run("checkRecord({note:'just my own words',data:''}).legacy.note"),
+    'just my own words',
+    'and a note with no record is treated as the reviewer note it is'
+  );
+});
+
+test('a hand-edited note no longer makes the saved check unreadable', async () => {
+  const t = setup();
+  const json = JSON.stringify({ version: 1, ai: { verdict: 'corrected', note: 'n' } });
+  const record = JSON.parse(
+    JSON.stringify(
+      t.run(`checkRecord({note:'please double-check this one — mia',data:${JSON.stringify(json)}})`)
+    )
+  );
+  assert.equal(record.ai.verdict, 'corrected');
+  assert.equal(record.invalid, undefined, 'the note is prose, not a payload');
+});
+
+test('saving a check keeps the note human and the record separate', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [{ id: 'row-1', store: 'research', name: 'Claim', fields: '', lastEdited: 't1' }];
+  S._vlibSkip = new Set();
+  const patches = [];
+  t.c.notionAPI = async (endpoint, method = 'GET', body) => {
+    if (method === 'PATCH') {
+      patches.push(body.properties);
+      return { last_edited_time: 't2' };
+    }
+    return {
+      id: 'row-1',
+      last_edited_time: 't1',
+      properties: { 'Verify Note': { rich_text: [] }, 'Verify Status': { select: null } },
+    };
+  };
+  t.run(
+    "S.vlib[0]._aiPending={verdict:'confirmed',note:'because',source_url:'https://example.test/a'};"
+  );
+  await t.run('saveAutomaticCheck(S.vlib[0])');
+  const props = patches[0];
+  assert.equal(props['Verify Status'].select.name, 'confirmed');
+  assert.match(props['Verify Data'].rich_text[0].text.content, /"version":1/);
+  assert.equal(
+    props['Verify Note'].rich_text[0].text.content.includes('Nomad check'),
+    false,
+    'the note carries words only'
+  );
+  assert.match(props['Verify Note'].rich_text[0].text.content, /AI check: Supported/);
+});
+
+test('a missing Verify Data column still saves, and says so once', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [{ id: 'row-1', store: 'research', name: 'Claim', fields: '', lastEdited: 't1' }];
+  S._vlibSkip = new Set();
+  const said = [];
+  t.c.toast = (message) => said.push(message);
+  const notes = [];
+  t.c.notionAPI = async (endpoint, method = 'GET', body) => {
+    if (method === 'PATCH') {
+      if (body.properties['Verify Data'])
+        throw Object.assign(
+          new Error('body failed validation: property Verify Data does not exist'),
+          { status: 400 }
+        );
+      notes.push(body.properties['Verify Note'].rich_text[0].text.content);
+      return { last_edited_time: 't2' };
+    }
+    return {
+      id: 'row-1',
+      last_edited_time: 't1',
+      properties: { 'Verify Note': { rich_text: [] }, 'Verify Status': { select: null } },
+    };
+  };
+  t.run(
+    "S.vlib[0]._aiPending={verdict:'unsupported',note:'no evidence',source_url:'https://example.test/b'};"
+  );
+  await t.run('saveAutomaticCheck(S.vlib[0])');
+  assert.equal(notes.length, 1, 'the finding is still saved');
+  assert.match(notes[0], /Nomad check v1/, 'in the shape rows used before the split');
+  assert.equal(said.filter((m) => /Verify Data/.test(m)).length, 1, 'the operator is told once');
+});
+
 test('a finished run tells the cost entry what it did', async () => {
   const t = setup(),
     S = t.run('S');
@@ -2557,12 +2658,20 @@ test('automatic checks and optional human overrides remain separate through savi
   const page = t.pages.get(t.r.id);
   t.c.reloaded = {
     note: t.text(page.properties['Verify Note']),
+    data: t.text(page.properties['Verify Data']),
     status: page.properties['Verify Status'].select.name,
   };
   const record = t.run('checkRecord(reloaded)');
   assert.equal(record.ai.verdict, 'confirmed');
   assert.equal(record.ai.model, 'fixture-model');
   assert.equal(record.review.note, 'My review disagrees.');
+  assert.match(
+    t.c.reloaded.note,
+    /AI check: Supported/,
+    'the note reloads as prose the operator can read and edit'
+  );
+  assert.doesNotMatch(t.c.reloaded.note, /Nomad check v1/, 'the record is not inside the note');
+  assert.match(t.c.reloaded.data, /"version":1/, 'and reloads from its own property');
   assert.equal(t.c.reloaded.status, 'unsupported');
   assert.equal(t.calls.filter((c) => c.method === 'PATCH').length, 3);
   assert.equal(t.pages.get(t.r.id).properties.Confidence, undefined);
