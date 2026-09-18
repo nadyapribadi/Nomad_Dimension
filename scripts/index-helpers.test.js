@@ -158,12 +158,15 @@ const bootstrap = [
   extract('_readProp'),
   extract('parseJsonLoose'),
   extract('_afetch'),
+  extract('nextTableSort'),
+  extract('compareCellValues'),
+  extract('cellNumber'),
 ].join('\n');
 
 const H = {};
 new Function(
   'exports',
-  `${bootstrap}\n Object.assign(exports, { _normTokens, _sim, _thinName, _clusterRows, _cheapHash, _esc, _propText, _readProp, parseJsonLoose, _afetch });`
+  `${bootstrap}\n Object.assign(exports, { _normTokens, _sim, _thinName, _clusterRows, _cheapHash, _esc, _propText, _readProp, parseJsonLoose, _afetch, nextTableSort, compareCellValues, cellNumber });`
 )(H);
 
 // ── _cheapHash ────────────────────────────────────────────────────────────────
@@ -178,6 +181,50 @@ test('_cheapHash returns an unsigned decimal string', () => {
 });
 
 // ── _esc (XSS guard on review/tidy tables) ───────────────────────────────────
+// ── Sorting the big tables ───────────────────────────────────────────────────
+test('a column sorts ascending first, then flips, and a new column starts over', () => {
+  assert.deepEqual(H.nextTableSort(null, 'Claim'), { label: 'Claim', desc: false });
+  assert.deepEqual(H.nextTableSort({ label: 'Claim', desc: false }, 'Claim'), {
+    label: 'Claim',
+    desc: true,
+  });
+  assert.deepEqual(H.nextTableSort({ label: 'Claim', desc: true }, 'Claim'), {
+    label: 'Claim',
+    desc: false,
+  });
+  assert.deepEqual(H.nextTableSort({ label: 'Claim', desc: true }, 'Table'), {
+    label: 'Table',
+    desc: false,
+  });
+});
+
+test('numbers sort as numbers, including inside a price', () => {
+  assert.ok(H.compareCellValues('9', '10') < 0);
+  assert.ok(H.compareCellValues('10', '9') > 0);
+  assert.ok(
+    H.compareCellValues('¥300', '¥1,200') < 0,
+    'both numeric collation and a leading-number parse get this backwards'
+  );
+  assert.equal(H.compareCellValues('10', '10'), 0);
+});
+
+test('a date is left to read chronologically as text', () => {
+  assert.equal(H.cellNumber('2026-09-18'), null, 'an ISO date is not treated as a number');
+  assert.ok(H.compareCellValues('2026-01-05', '2026-09-18') < 0);
+  assert.ok(H.compareCellValues('2025-12-31', '2026-01-01') < 0);
+});
+
+test('everything else sorts as text and never throws on a blank cell', () => {
+  assert.deepEqual(['row b', 'row a', 'row c'].sort(H.compareCellValues), [
+    'row a',
+    'row b',
+    'row c',
+  ]);
+  assert.ok(H.compareCellValues('', '3') !== 0, 'a blank cell still has an order');
+  assert.ok(H.compareCellValues(undefined, '3') !== 0);
+  assert.notEqual(H.compareCellValues('Check failed', 'Not checked'), 0);
+});
+
 test('_esc neutralises the HTML metacharacters', () => {
   assert.equal(
     H._esc('<img src=x onerror="alert(1)">'),

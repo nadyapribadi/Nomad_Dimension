@@ -1110,6 +1110,58 @@ test('the script check does not invent a duration for a section that has none', 
   assert.doesNotMatch(html, /vs ~260 words/, 'no target is invented from a default');
 });
 
+// Startup used to pay for the session round trip and then for local restores, one
+// after another. They are independent, so the network call goes first.
+test('startup overlaps the session call with local work instead of stacking them', async () => {
+  const t = setup();
+  const order = [];
+  let releaseSession;
+  const gate = new Promise((r) => (releaseSession = r));
+  t.c.fetch = async (url) => {
+    order.push('session:start');
+    if (/session/.test(url)) await gate;
+    return { ok: true, json: async () => ({ authenticated: false }) };
+  };
+  t.c.restoreReviews = async () => {
+    order.push('reviews');
+  };
+  t.c.restorePlacesReview = async () => {
+    order.push('places');
+  };
+  t.c.syncWorkspaceTabs = () => {};
+  t.c.renderChannelChips = () => {};
+  t.c.showStage = () => {
+    order.push('showStage');
+  };
+  const booted = t.run('init()');
+  await new Promise((r) => setImmediate(r));
+  assert.equal(order[0], 'session:start', 'the network call goes out first');
+  assert.ok(
+    order.includes('reviews') && order.includes('places'),
+    'local work starts while the session call is still in flight (its gate is still shut here)'
+  );
+  releaseSession();
+  await booted;
+  assert.equal(t.element('signin-status').textContent, '', 'signed-out is a state, not an error');
+});
+
+test('a failed session call is reported once, in the sign-in panel', async () => {
+  const t = setup();
+  let toasts = 0;
+  t.c.toast = () => toasts++;
+  t.c.fetch = async () => {
+    throw new Error('offline');
+  };
+  t.c.restoreReviews = async () => {};
+  t.c.restorePlacesReview = async () => {};
+  t.c.syncWorkspaceTabs = () => {};
+  t.c.renderChannelChips = () => {};
+  t.c.showStage = () => {};
+  await t.run('init()');
+  assert.equal(toasts, 0, 'startup reports through the panel, not as a stray toast');
+  assert.match(t.element('signin-status').textContent, /offline/);
+});
+
 test('the claim table keeps one live region instead of one per row', async () => {
   const t = setup(),
     S = t.run('S');

@@ -3545,7 +3545,33 @@ function selectAllQueue() {
 
 // Shared column filters for every generated data table. Filtering never changes selection.
 const TABLE_VIEWS = new Map();
-function tableView(id) { if(!TABLE_VIEWS.has(id))TABLE_VIEWS.set(id,{filters:{}});return TABLE_VIEWS.get(id); }
+function tableView(id) { if(!TABLE_VIEWS.has(id))TABLE_VIEWS.set(id,{filters:{},sort:null});return TABLE_VIEWS.get(id); }
+// Sorting a table of a thousand claims is a decision rule, not a DOM trick:
+// which way does a column go next, and which value wins. Both are pure so they
+// can be tested without a browser.
+function nextTableSort(current, label) {
+  if (current && current.label === label) return { label, desc: !current.desc };
+  return { label, desc: false };
+}
+function compareCellValues(a, b) {
+  const sa = Array.isArray(a) ? a.join(', ') : String(a ?? '');
+  const sb = Array.isArray(b) ? b.join(', ') : String(b ?? '');
+  const na = cellNumber(sa), nb = cellNumber(sb);
+  if (na !== null && nb !== null) return na - nb;
+  return sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' });
+}
+// A number stays a number when it wears a currency symbol or thousands
+// separators. Numeric collation alone reads "¥1,200" as the digit run "1", and a
+// leading-number parse reads it as 1 as well — both put ¥300 after it. An ISO
+// date is left alone: it already reads chronologically as text.
+function cellNumber(value) {
+  const s = String(value ?? '').trim();
+  if (!s || /^\d{4}-\d{2}-\d{2}/.test(s)) return null;
+  const match = s.match(/-?\d[\d,._ ]*(?:\.\d+)?/);
+  if (!match) return null;
+  const n = Number(match[0].replace(/[,_ ]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
 function tableValueMatches(value, filter, kind='text') {
   if(!filter)return true;
   if(kind==='number' || kind==='date') {
@@ -3569,6 +3595,17 @@ function enhanceTable(id) {
     for(const row of table.tBodies[0].rows)if(row.cells[i])row.cells[i].dataset.label=th.dataset.label || th.textContent.trim();
     if(th.dataset.filterKind==='none' || !th.textContent.trim())return;
     const label=th.dataset.label || th.textContent.trim(),kind=th.dataset.filterKind || 'text';th.dataset.label=label;
+    // The header itself is the sort control, the way the material table already
+    // works. Its text is replaced rather than joined, so the label is not printed
+    // twice beside the filter box.
+    th.textContent='';
+    const sortButton=document.createElement('button');
+    sortButton.type='button';sortButton.className='column-sort';sortButton.dataset.column=label;
+    sortButton.setAttribute('aria-label',`Sort by ${label}`);
+    sortButton.innerHTML=`${_esc(label)} <span aria-hidden="true">↕</span>`;
+    sortButton.addEventListener('click',()=>sortEnhancedTable(id,label));
+    th.appendChild(sortButton);
+    th.setAttribute('aria-sort','none');
     const field=view.filters[label];
     const values=[...new Set([...table.tBodies[0].rows].filter(r=>r.cells.length===headers.length).flatMap(r=>{const value=tableCellValue(r.cells[i]);return Array.isArray(value)?value:[value];}).filter(v=>v!==''))].sort((a,b)=>String(a).localeCompare(String(b)));
     if(field && typeof field==='string' && !values.includes(field))values.push(field);
@@ -3584,7 +3621,37 @@ function enhanceTable(id) {
   table.classList.toggle('filters-open',!!view.open);
   summary.querySelector('[data-toggle-filters]').addEventListener('click',event=>{view.open=!view.open;table.classList.toggle('filters-open',view.open);event.currentTarget.setAttribute('aria-expanded',String(view.open));});
   summary.querySelector('[data-clear-filters]').addEventListener('click',()=>{view.filters={};table.tHead.querySelectorAll('.table-column-control input,.table-column-control select').forEach(el=>el.value='');applyTableFilters(id);});
-  table.parentElement.insertBefore(summary,table);applyTableFilters(id);
+  table.parentElement.insertBefore(summary,table);applyTableSort(id);applyTableFilters(id);
+}
+function sortEnhancedTable(id, label) {
+  const view = tableView(id);
+  view.sort = nextTableSort(view.sort, label);
+  applyTableSort(id);
+}
+function applyTableSort(id) {
+  const table = document.getElementById(id), view = tableView(id);
+  if (!table?.tHead || !table.tBodies?.length) return;
+  const headers = [...table.tHead.rows[0].cells];
+  headers.forEach(th => {
+    const button = th.querySelector?.('.column-sort');
+    if (!button) return;
+    const active = !!view.sort && th.dataset.label === view.sort.label;
+    th.setAttribute('aria-sort', active ? (view.sort.desc ? 'descending' : 'ascending') : 'none');
+    const glyph = button.querySelector?.('span');
+    if (glyph) glyph.textContent = active ? (view.sort.desc ? '↓' : '↑') : '↕';
+  });
+  if (!view.sort) return;
+  const rows = [...table.tBodies[0].rows];
+  // A table with spanning rows is grouped on purpose — the duplicate view puts a
+  // heading above its members — so reordering it would separate the two.
+  if (!rows.length || rows.some(row => row.cells.length !== headers.length)) return;
+  const index = headers.findIndex(th => th.dataset.label === view.sort.label);
+  if (index < 0) return;
+  const direction = view.sort.desc ? -1 : 1;
+  rows
+    .map(row => ({ row, key: tableCellValue(row.cells[index]) }))
+    .sort((a, b) => compareCellValues(a.key, b.key) * direction)
+    .forEach(({ row }) => table.tBodies[0].appendChild(row));
 }
 function applyTableFilters(id) {
   const table=document.getElementById(id);if(!table?.tHead)return;
@@ -8493,23 +8560,39 @@ function installFailureReporting() {
   globalThis.addEventListener('error', event => reportUncaughtFailure(event?.error || event?.message));
 }
 
+async function fetchSessionStatus() {
+  const res = await fetch('/.netlify/functions/session', { method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'status'}) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Server unavailable');
+  return data;
+}
 async function init() {
   installFailureReporting();
-  await restoreReviews().catch(()=>{REVIEW.loaded=true;});
-  await restorePlacesReview().catch(()=>{});
+  // Startup used to pay for the session round trip and then for the local
+  // restores, one after another. They do not depend on each other, so the call
+  // goes out first and the wait is spent on local work. The rejection is caught
+  // here and re-thrown below: an unhandled one would trip the failure reporter
+  // and show the operator a toast about nothing.
+  const session = fetchSessionStatus().catch(error => ({ __startupError: error }));
+  await Promise.all([
+    restoreReviews().catch(()=>{REVIEW.loaded=true;}),
+    restorePlacesReview().catch(()=>{}),
+  ]);
   syncWorkspaceTabs();
   renderChannelChips(); showStage(0);
   try {
-    const res = await fetch('/.netlify/functions/session', { method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'status'}) });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Server unavailable');
+    const data = await session;
+    if (data.__startupError) throw data.__startupError;
     if (data.authenticated) {
       document.getElementById('signin-status').textContent = 'Opening your workspace…';
       await connectNotion(); restoringDraft = true; enterAssemble();
+      // The calendar renders into its own area, so it can load while the local
+      // draft is being restored instead of after it.
+      const calendar = S.notionToken ? loadCalendar().catch(()=>{}) : Promise.resolve();
       await restoreEpisodeDraft().catch(e=>toast(`Local draft unavailable: ${_esc(e.message)}`, 'error'));
       restoringDraft = false;
       showStage(S.notionToken ? 1 : 0);
-      if (S.notionToken) await loadCalendar();
+      await calendar;
       document.getElementById('signin-overlay').classList.remove('open');restoreLibraryRoute();
     } else document.getElementById('signin-password').focus();
   } catch(e) { document.getElementById('signin-status').textContent = e.message; }
