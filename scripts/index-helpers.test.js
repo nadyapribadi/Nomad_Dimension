@@ -7,161 +7,19 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-
-const SRC = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-
-// Pull one top-level definition (`function NAME(` or `const NAME =`) out of the
-// source. String- and comment-aware. For `function`, returns from the keyword
-// to the matching `}` of the body. For `const`, to the terminating `;`.
-function extract(name) {
-  const re = new RegExp(`(?:^|\\n)((?:async\\s+)?function\\s+${name}\\b|const\\s+${name}\\s*=)`);
-  const m = SRC.match(re);
-  if (!m) throw new Error(`helper not found in index.html: ${name}`);
-  const from = SRC.indexOf(m[1], m.index);
-  const isFn = m[1].includes('function');
-
-  let str = null,
-    line = false,
-    blk = false,
-    prevSig = '';
-  // returns how many chars to skip (>=1) when i is inside a string/comment/regex
-  // or such a token starts here; 0 when SRC[i] is ordinary code to inspect.
-  const step = (i) => {
-    const c = SRC[i],
-      n = SRC[i + 1];
-    if (line) {
-      if (c === '\n') line = false;
-      return 1;
-    }
-    if (blk) {
-      if (c === '*' && n === '/') {
-        blk = false;
-        return 2;
-      }
-      return 1;
-    }
-    if (str) {
-      if (c === '\\') return 2;
-      if (c === str) str = null;
-      return 1;
-    }
-    if (c === '/' && n === '/') {
-      line = true;
-      return 2;
-    }
-    if (c === '/' && n === '*') {
-      blk = true;
-      return 2;
-    }
-    if (c === '"' || c === "'" || c === '`') {
-      str = c;
-      prevSig = c;
-      return 1;
-    }
-    if (c === '/' && (prevSig === '' || '([{,;:=!&|?+-*/%^~<>'.includes(prevSig))) {
-      // regex literal — scan to the closing unescaped '/', respecting [ ] classes
-      let j = i + 1,
-        inClass = false;
-      for (; j < SRC.length; j++) {
-        const d = SRC[j];
-        if (d === '\\') {
-          j++;
-          continue;
-        }
-        if (d === '[') inClass = true;
-        else if (d === ']') inClass = false;
-        else if (d === '/' && !inClass) break;
-        else if (d === '\n') break;
-      }
-      while (/[a-z]/i.test(SRC[j + 1] || '')) j++; // flags
-      prevSig = '/';
-      return j - i + 1;
-    }
-    if (!/\s/.test(c)) prevSig = c;
-    return 0;
-  };
-
-  if (!isFn) {
-    let depth = 0;
-    for (let i = from; i < SRC.length; i++) {
-      const s = step(i);
-      if (s) {
-        i += s - 1;
-        continue;
-      }
-      const c = SRC[i];
-      if ('([{'.includes(c)) depth++;
-      else if (')]}'.includes(c)) depth--;
-      else if (c === ';' && depth === 0) return SRC.slice(from, i + 1);
-    }
-    throw new Error(`could not delimit const: ${name}`);
-  }
-
-  // function: paren-match the parameter list first (defaults like `= {}` contain
-  // braces), then brace-match the body from the next `{`.
-  let i = from;
-  while (i < SRC.length && SRC[i] !== '(') {
-    const s = step(i);
-    i += s ? s : 1;
-  }
-  let pd = 0;
-  for (; i < SRC.length; i++) {
-    const s = step(i);
-    if (s) {
-      i += s - 1;
-      continue;
-    }
-    const c = SRC[i];
-    if (c === '(') pd++;
-    else if (c === ')') {
-      pd--;
-      if (pd === 0) {
-        i++;
-        break;
-      }
-    }
-  }
-  while (i < SRC.length && SRC[i] !== '{') {
-    const s = step(i);
-    i += s ? s : 1;
-  }
-  let depth = 0;
-  for (; i < SRC.length; i++) {
-    const s = step(i);
-    if (s) {
-      i += s - 1;
-      continue;
-    }
-    const c = SRC[i];
-    if (c === '{') depth++;
-    else if (c === '}') {
-      depth--;
-      if (depth === 0) return SRC.slice(from, i + 1);
-    }
-  }
-  throw new Error(`could not delimit function: ${name}`);
-}
-
-// Build a sandbox with the helpers we want to exercise.
-const bootstrap = [
-  extract('_cheapHash'),
-  extract('_propText'),
-  extract('_readProp'),
-  extract('parseJsonLoose'),
-  extract('_afetch'),
-].join('\n');
-
-// The pure helpers live in src/core.js now, so they are required instead of
-// extracted out of the HTML — which also means Node's own coverage can see them.
-const H = require('../src/core.js');
-new Function(
-  'exports',
-  `${bootstrap}\n Object.assign(exports, { _cheapHash, _propText, _readProp, parseJsonLoose, _afetch });`
-)(H);
 
 // ── _cheapHash ────────────────────────────────────────────────────────────────
+// Everything under test lives in a real file, so it is required rather than
+// extracted out of the HTML — and Node's coverage can finally see it.
+const H = Object.assign(
+  {},
+  require('../src/core.js'),
+  require('../src/notion.js'),
+  require('../src/app.js'),
+  require('../src/library.js'),
+  require('../src/stages.js')
+);
+
 test('_cheapHash is stable for the same input', () => {
   assert.equal(H._cheapHash('the quick brown fox'), H._cheapHash('the quick brown fox'));
 });

@@ -43,14 +43,24 @@ const declaredIn = (text) => {
   return names;
 };
 const inlineNames = declaredIn(script);
+// Loading the same file twice runs it twice, and the second run throws on every
+// top-level `const` it declares — a broken page from a duplicated line.
+const scriptTags = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
+const duplicateTags = scriptTags.filter((rel, i) => scriptTags.indexOf(rel) !== i);
+for (const rel of duplicateTags)
+  console.log(
+    `${rel}  error  loaded twice — the second run redeclares its consts  (duplicate <script src>)`
+  );
 const duplicates = [];
 // Names the earlier classic scripts provide to this one. Declaring them to ESLint
 // is what lets `no-undef` stay an error: a name the inline script uses must come
 // from a file that really declares it, and removing it from src/ fails the lint
 // instead of failing at runtime.
 const srcGlobals = {};
+let srcText = '';
 for (const name of srcFiles) {
   const text = await readFile(path.join(SRC_DIR, name), 'utf8');
+  srcText += `${text}\n`;
   for (const declared of declaredIn(text)) {
     srcGlobals[declared] = 'readonly';
     if (inlineNames.has(declared)) duplicates.push(`${name}: ${declared}`);
@@ -69,9 +79,52 @@ const lineOffset = html.slice(0, html.indexOf(script)).split('\n').length - 1;
 // no-unused-vars pointed at names that appear exactly once — their declaration.
 const declared = new Set();
 for (const m of script.matchAll(/^(?:async )?function ([A-Za-z_$][\w$]*)/gm)) declared.add(m[1]);
-for (const m of script.matchAll(/^(?:const|let|var) ([A-Za-z_$][\w$]*)/gm)) declared.add(m[1]);
+// Comma-splitting alone would read property names out of an object literal
+// (`const R = { edits: {}, drafts: {} }`) and then "use" identifiers that do not
+// exist, which is a no-undef error all of its own.
+function declarators(text) {
+  const out = [];
+  let depth = 0,
+    start = 0,
+    quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      quote = c;
+      continue;
+    }
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (c === ',' && depth === 0) {
+      out.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(text.slice(start));
+  return out;
+}
+for (const m of script.matchAll(/^(?:const|let|var)\s+([^;\n]*)/gm))
+  for (const part of declarators(m[1])) {
+    const name = part
+      .split('=')[0]
+      .replace(/[{}[\]:]/g, ' ')
+      .trim()
+      .split(/\s+/)[0];
+    if (/^[A-Za-z_$][\w$]*$/.test(name)) declared.add(name);
+  }
+// A name counts as used when the page or a src file mentions it anywhere else:
+// the callers of what is still declared inline now live in src/*.js.
 const fromHandlers = [...declared]
-  .filter((name) => (html.match(new RegExp(`\\b${name}\\b`, 'g')) || []).length > 1)
+  .filter(
+    (name) =>
+      (html.match(new RegExp(`\\b${name}\\b`, 'g')) || []).length > 1 ||
+      new RegExp(`\\b${name}\\b`).test(srcText)
+  )
   .sort();
 const withHandlers = fromHandlers.length
   ? `${script}\nvoid [${fromHandlers.join(',')}];\n`
@@ -204,6 +257,6 @@ for (const f of escapeFindings)
 const errors = result.messages.filter((m) => m.severity === 2).length;
 const warnings = result.messages.length - errors;
 console.log(
-  `index.html inline script — ${errors} error(s), ${warnings} warning(s), ${escapeFindings.length} unescaped innerHTML finding(s), ${duplicates.length} duplicate declaration(s)`
+  `index.html inline script — ${errors} error(s), ${warnings} warning(s), ${escapeFindings.length} unescaped innerHTML finding(s), ${duplicates.length} duplicate declaration(s), ${duplicateTags.length} duplicate script tag(s)`
 );
-process.exit(errors || escapeFindings.length || duplicates.length ? 1 : 0);
+process.exit(errors || escapeFindings.length || duplicates.length || duplicateTags.length ? 1 : 0);

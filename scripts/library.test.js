@@ -5,10 +5,14 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const { webcrypto } = require('node:crypto');
 const html = fs.readFileSync('index.html', 'utf8');
-const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\ninit\(\);\s*$/, '\n');
-// The page loads src/core.js as a classic script before the inline one, so the
-// sandbox has to do the same or every moved helper reads as undefined.
-const coreSource = fs.readFileSync('src/core.js', 'utf8');
+const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^\s*init\(\);\s*$/m, '');
+// Same load order as the page: every classic script it lists, in order, then the
+// inline one. Reading the list from index.html keeps this correct as more code
+// moves out.
+const srcScripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) =>
+  fs.readFileSync(m[1], 'utf8')
+);
+const notionSource = fs.readFileSync('src/notion.js', 'utf8');
 
 // A deterministic yield. Tests that measure overlap need the scheduler to let
 // other work start, but they must not depend on how long a timer happens to take
@@ -66,7 +70,7 @@ function setup() {
     atob,
     btoa,
   });
-  vm.runInContext(coreSource, c);
+  for (const text of srcScripts) vm.runInContext(text, c);
   vm.runInContext(source, c);
   // Timers are inert in tests: pacing and back-off are exercised through their
   // seams instead, so no test waits on the clock.
@@ -1131,6 +1135,7 @@ test('startup overlaps the session call with local work instead of stacking them
     if (/session/.test(url)) await gate;
     return { ok: true, json: async () => ({ authenticated: false }) };
   };
+  assert.equal(t.run('typeof fetch'), 'function', 'the harness stub is visible as a global');
   t.c.restoreReviews = async () => {
     order.push('reviews');
   };
@@ -2200,10 +2205,12 @@ test('shared Notion helper does not automatically replay a create after HTTP 529
     attempts++;
     return { ok: false, status: 529, json: async () => ({ error: 'Overloaded' }) };
   };
+  // The harness installs a fake notionAPI, so the real one is re-installed from
+  // the file that owns it — this test is about its own retry policy.
   t.run(
     'notionAPI = ' +
-      source
-        .match(/async function notionAPI\([\s\S]+?(?=\n\/\/ Run `fn`)/)[0]
+      notionSource
+        .match(/async function notionAPI\([\s\S]*?\n\}/)[0]
         .replace('async function notionAPI', 'async function')
   );
   await assert.rejects(t.run('notionAPI("pages","POST",{})'), /Overloaded/);

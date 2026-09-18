@@ -21,7 +21,14 @@ const OUT = path.join(ROOT, '_deploy');
 // step: index.html carries its own inline CSS and JavaScript, and src/*.js are
 // classic scripts it loads before that. Adding a script tag without adding the
 // file here is caught below, before anything is staged.
-const PUBLISH = ['index.html', 'src/core.js'];
+const PUBLISH = [
+  'index.html',
+  'src/core.js',
+  'src/notion.js',
+  'src/library.js',
+  'src/stages.js',
+  'src/app.js',
+];
 
 // Never allowed in a deploy artifact. Checked after staging.
 const FORBIDDEN_DIRS = [

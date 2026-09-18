@@ -4,9 +4,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const html = fs.readFileSync('index.html', 'utf8');
-const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\ninit\(\);\s*$/, '\n');
-// Same load order as the page: the classic script first, then the inline one.
-const coreSource = fs.readFileSync('src/core.js', 'utf8');
+const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^\s*init\(\);\s*$/m, '');
+// Same load order as the page: every classic script it lists, then the inline one.
+const srcScripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) =>
+  fs.readFileSync(m[1], 'utf8')
+);
 function setup() {
   const elements = new Map();
   const element = (id) => {
@@ -57,7 +59,7 @@ function setup() {
     atob,
     btoa,
   });
-  vm.runInContext(coreSource, context);
+  for (const text of srcScripts) vm.runInContext(text, context);
   vm.runInContext(source, context);
   const run = (code) => vm.runInContext(code, context);
   // Confirmation dialogs are accepted in tests, exactly like `confirm`.
