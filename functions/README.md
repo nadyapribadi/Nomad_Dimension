@@ -99,9 +99,11 @@ Kai = `en-US-Neural2-D`, Mia = `en-US-Neural2-F`. Returns
 
 The provider key travels in the `X-Goog-Api-Key` header, not the query string, and
 an upstream failure is relayed as `{ error: { code, status, message } }` with
-anything credential-shaped stripped from the message. `voice` and `audioConfig`
-are passed through as supplied; there is no allow-list of voice names or speed
-values yet. One Production Costs row is written per render by `cost-log.js`
+anything credential-shaped stripped from the message. `voice.name` must be one of
+the four voices Stage 5 offers (`en-US-Neural2-D/J/F/H`), `languageCode` is fixed
+to `en-US`, and `speakingRate` must be between 0.5 and 2 — an unlisted voice is a
+way to ask for a pricier tier, so adding a voice to the UI means adding it here.
+One Production Costs row is written per render by `cost-log.js`
 (`task: "tts"`), reporting characters, requests and voices; the Costs DB therefore
 needs a `Characters` number property, and a row is written without it if the
 column is missing.

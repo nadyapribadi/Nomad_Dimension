@@ -3,6 +3,18 @@
 // Key: process.env.GOOGLE_TTS_API_KEY (required). Browser sends no keys.
 // Browser sends: { text, voice, audioConfig }
 
+// The four voices the app offers, and nothing else: an unlisted name is a way to
+// ask for a pricier voice tier, and the language is fixed because the script is
+// English. Adding a voice to Stage 5 means adding it here.
+const VOICES = new Set([
+  'en-US-Neural2-D',
+  'en-US-Neural2-J',
+  'en-US-Neural2-F',
+  'en-US-Neural2-H',
+]);
+const SPEED_MIN = 0.5;
+const SPEED_MAX = 2;
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: corsHeaders(), body: '' };
@@ -25,10 +37,20 @@ exports.handler = async (event) => {
   if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 4500)
     return respond(400, { error: 'Split this dialogue line: it exceeds the TTS input limit' });
 
+  const voiceName = voice?.name || 'en-US-Neural2-D';
+  if (!VOICES.has(voiceName))
+    return respond(400, { error: `Unsupported voice: use one of ${[...VOICES].join(', ')}` });
+  const rate = audioConfig?.speakingRate;
+  if (rate !== undefined && !(Number(rate) >= SPEED_MIN && Number(rate) <= SPEED_MAX))
+    return respond(400, { error: `Speaking rate must be between ${SPEED_MIN} and ${SPEED_MAX}` });
+
   const reqBody = {
     input: { text },
-    voice: voice || { languageCode: 'en-US', name: 'en-US-Neural2-D' },
-    audioConfig: audioConfig || { audioEncoding: 'MP3' },
+    voice: { languageCode: 'en-US', name: voiceName },
+    audioConfig: {
+      audioEncoding: 'MP3',
+      ...(rate === undefined ? {} : { speakingRate: Number(rate) }),
+    },
   };
 
   // The key travels in a header, not the URL. A URL ends up in request logs and

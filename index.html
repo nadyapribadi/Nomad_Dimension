@@ -4757,6 +4757,36 @@ async function retryAllFactSaves(btn) {
   renderVlibResults();
 }
 
+// A long run lands findings every second or so, and each one used to repaint the
+// whole table and rewrite a live region — which a screen reader reads aloud. So
+// paints coalesce inside a short window, and the progress line speaks at most
+// once every few seconds, always with the real summary at the end of the run.
+const VLIB_PAINT_MS = 300;
+const VLIB_ANNOUNCE_MS = 5000;
+let _vlibPaintTimer = null, _vlibAnnounceTimer = null, _vlibPendingProgress = null;
+function scheduleVlibRender() {
+  if (_vlibPaintTimer != null) return;
+  _vlibPaintTimer = setTimeout(() => { _vlibPaintTimer = null; renderVlibResults(); }, VLIB_PAINT_MS);
+}
+function flushVlibRender() {
+  if (_vlibPaintTimer != null) clearTimeout(_vlibPaintTimer);
+  _vlibPaintTimer = null;
+}
+function announceProgress(text) {
+  const status = document.getElementById('verify-save-status');
+  if (!status) return;
+  if (_vlibAnnounceTimer != null) { _vlibPendingProgress = text; return; }
+  status.textContent = text;
+  _vlibAnnounceTimer = setTimeout(() => {
+    _vlibAnnounceTimer = null;
+    if (_vlibPendingProgress != null) { status.textContent = _vlibPendingProgress; _vlibPendingProgress = null; }
+  }, VLIB_ANNOUNCE_MS);
+}
+function flushProgressAnnouncement() {
+  if (_vlibAnnounceTimer != null) clearTimeout(_vlibAnnounceTimer);
+  _vlibAnnounceTimer = null; _vlibPendingProgress = null;
+}
+
 function renderVlibResults() {
   const el=document.getElementById('vlib-results'),rows=S.vlib || [];
   if(!rows.length){el.innerHTML='<div class="empty-state"><p>Load material or use your Library selection to check claims.</p></div>';return;}
@@ -5341,7 +5371,7 @@ async function runLibVerify(btn, mode='selected') {
     const byStore={};for(const r of rows)(byStore[r.store] ||= []).push(r);
     const status=document.getElementById('verify-save-status');
     renderVlibResults();
-    const noteProgress=()=>{status.textContent=`${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry`;};
+    const noteProgress=()=>announceProgress(`${done} findings saved · ${failed} checks failed · ${saveFailed} saves need retry`);
     // Match one claim's finding from a reply, then save it. Anything that goes
     // wrong here is attributed to this claim only, never to the whole batch.
     const applyReply=async(group,r,result)=>{
@@ -5365,7 +5395,7 @@ async function runLibVerify(btn, mode='selected') {
             :`Save failed: ${e.message} — and this browser could not keep a copy, so the finding exists only in this tab until it saves.`;
         }else{failed++;r._retry=true;r._checkError=e.message;}
       }
-      r._checking=false;renderVlibResults();noteProgress();
+      r._checking=false;scheduleVlibRender();noteProgress();
     };
     // Check one batch. If the request fails and it held more than one claim,
     // split it and retry the halves, down to single claims, so only the claim
@@ -5374,11 +5404,11 @@ async function runLibVerify(btn, mode='selected') {
       if(_stopFactCheck){stopReason='Stopped by you after the previous request';return;}
       if(providerStop)return;
       for(const r of group){if(!attemptedKeys.has(keyOf(r))){attemptedKeys.add(keyOf(r));attempted++;}r._checking=true;}
-      renderVlibResults();
+      scheduleVlibRender();
       const splitAndRetry=async()=>{
         const mid=Math.ceil(group.length/2);
         for(const r of group)r._checking=false;
-        renderVlibResults();
+        scheduleVlibRender();
         await verifyGroup(store,group.slice(0,mid));
         await verifyGroup(store,group.slice(mid));
       };
@@ -5410,7 +5440,7 @@ async function runLibVerify(btn, mode='selected') {
           // operator can tell "wait a minute" from "fix your quota".
           providerStop=true;stopReason='Google kept refusing after several minutes of waiting';
           for(const r of group){r._checking=false;r._retry=true;r._checkError=`Not checked: the provider is rate-limiting requests (${e.message}). Waiting did not clear it — try again later.`;}
-          failed+=group.length;renderVlibResults();noteProgress();
+          failed+=group.length;scheduleVlibRender();noteProgress();
           return;
         }
         noteBatchResult(false);
@@ -5418,11 +5448,11 @@ async function runLibVerify(btn, mode='selected') {
         else providerStreak=0;
         if(providerStop){
           for(const r of group){r._checking=false;r._retry=true;r._checkError=`Not checked: the provider failed repeatedly (${e.message}). Previous findings are unchanged.`;}
-          failed+=group.length;renderVlibResults();noteProgress();
+          failed+=group.length;scheduleVlibRender();noteProgress();
           return;
         }
         if(group.length>1){await splitAndRetry();return;}
-        const r=group[0];r._retry=true;r._checkError=`Check failed: ${e.message}`;failed++;r._checking=false;renderVlibResults();noteProgress();
+        const r=group[0];r._retry=true;r._checkError=`Check failed: ${e.message}`;failed++;r._checking=false;scheduleVlibRender();noteProgress();
         return;
       }
       for(const r of group){
@@ -5465,7 +5495,7 @@ async function runLibVerify(btn, mode='selected') {
         r._checkError=`Not checked: ${stopReason || 'the run stopped before this claim'}. Nothing was saved for it; run again to pick it up.`;
         failed++;
       }
-      renderVlibResults();
+      scheduleVlibRender();
     }
     const nextSelected=(S.vlib || []).filter(r=>!r._aiPending && !S._vlibSkip.has(r.id || r._key)).length;
     // The report says what happened and what is left, and nothing else: the
@@ -5481,7 +5511,7 @@ async function runLibVerify(btn, mode='selected') {
     await logRun();
 
     if(S.vlib.some(r=>!r.id))renderExtractReview();
-  }finally{for(const r of rows)r._checking=false;_libVerifying=false;if(btn)btn.disabled=false;releaseRunLease(lease);renderVlibResults();}
+  }finally{for(const r of rows)r._checking=false;_libVerifying=false;if(btn)btn.disabled=false;releaseRunLease(lease);flushVlibRender();flushProgressAnnouncement();renderVlibResults();}
 }
 
 // One short "key: value" line per row, so the model knows what it's checking.
@@ -7097,7 +7127,13 @@ async function generateDialogue(i) {
   const sec = S.sections[i];
   if (!sec || sec.locked || sec._saving) { toast('Unlock this section before generating, or wait for its save.'); return; }
   const route = S.routing?.dialogue;
-  if (!confirm(`Generate a new draft through ${route ? `${route.provider} / ${route.model}` : 'the configured dialogue API'}? This uses API credits. Exact cost is not available before the request. Your saved version stays unchanged until you save.`)) return;
+  // Four facts and no policy: what it costs, how big the request is, which model
+  // answers, and what happens to the saved version. The count is the part the
+  // operator cannot see.
+  const targetWords = Math.round((sec.duration || 2) * 130);
+  if (!await confirmIdeaChange('Generate a dialogue draft?',
+    `“${sec.title}” — about ${targetWords} words, through ${route ? `${route.provider} / ${route.model}` : 'the configured dialogue model'}.\nThe saved dialogue is not replaced until you save: the draft stays on this device, and the previous revision is kept on the section page.`,
+    'Generate draft · API')) return;
   sec._saving = true;
   document.getElementById(`sec-card-${i}`)?.querySelectorAll('button, textarea').forEach(el => { el.disabled = true; });
   const briefEl = document.getElementById(`sec-brief-${i}`);

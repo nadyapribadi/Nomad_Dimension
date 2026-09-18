@@ -1033,6 +1033,72 @@ test('play and export wait for the render that is filling the cache', async () =
   );
 });
 
+// A paid run lands findings every second or so. Repainting the whole table and
+// rewriting a live region per finding was the cost and the screen-reader flood.
+test('the claim table repaints once per burst, not once per claim', async () => {
+  const t = setup();
+  const timers = [];
+  t.c.setTimeout = (fn) => {
+    timers.push(fn);
+    return timers.length;
+  };
+  let paints = 0;
+  t.c.renderVlibResults = () => {
+    paints++;
+  };
+  t.run('scheduleVlibRender();scheduleVlibRender();scheduleVlibRender();');
+  assert.equal(timers.length, 1, 'three findings schedule one paint');
+  assert.equal(paints, 0, 'and nothing is painted synchronously');
+  timers[0]();
+  assert.equal(paints, 1);
+  t.run('scheduleVlibRender()');
+  assert.equal(timers.length, 2, 'a later finding schedules the next paint');
+});
+
+test('the progress line speaks on a cadence and always at the end', async () => {
+  const t = setup();
+  const timers = [];
+  t.c.setTimeout = (fn) => {
+    timers.push(fn);
+    return timers.length;
+  };
+  const status = t.element('verify-save-status');
+  t.run("announceProgress('1 saved');announceProgress('2 saved');announceProgress('3 saved');");
+  assert.equal(status.textContent, '1 saved', 'the first update is immediate');
+  assert.equal(timers.length, 1, 'and the rest wait instead of each being spoken');
+  timers[0]();
+  assert.equal(status.textContent, '3 saved', 'the newest count is what gets spoken');
+  t.run("announceProgress('4 saved');flushProgressAnnouncement();");
+  assert.equal(timers.length, 2, 'the end of a run clears the pending announcement');
+});
+
+test('generating dialogue names what it will spend before it starts', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.activeEpisode = 'EP';
+  S.sections = [
+    { id: 'sec', title: 'Intro', type: 'Intro', duration: 2, tone: 'Quiet', locked: false },
+  ];
+  S.routing = { dialogue: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' } };
+  const asked = [];
+  t.c.confirmIdeaChange = async (title, message, action) => {
+    asked.push({ title, message, action });
+    return false;
+  };
+  let calls = 0;
+  t.c.aiRun = async () => {
+    calls++;
+    return { text: 'KAI: Hello' };
+  };
+  await t.run('generateDialogue(0)');
+  assert.equal(calls, 0, 'declining spends nothing');
+  assert.equal(asked.length, 1);
+  assert.match(asked[0].message, /about 260 words/, 'the size the operator cannot see');
+  assert.match(asked[0].message, /anthropic \/ claude-haiku/);
+  assert.match(asked[0].message, /not replaced until you save/);
+  assert.match(asked[0].action, /API/);
+});
+
 test('a render records the characters it bought, once', async () => {
   const t = setup();
   audioFixture(t);

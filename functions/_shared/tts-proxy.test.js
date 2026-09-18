@@ -82,3 +82,52 @@ test('oversized text is refused before any upstream call', async () => {
     restore();
   }
 });
+
+test('an unlisted voice is refused before any upstream call', async () => {
+  let calls = 0;
+  useFetch(async () => {
+    calls++;
+    return { status: 200, json: async () => ({ audioContent: 'b64' }) };
+  });
+  try {
+    // A Studio voice is a much pricier tier than the four the UI offers.
+    const res = await handler(
+      event({ text: 'hello', voice: { languageCode: 'en-US', name: 'en-US-Studio-O' } })
+    );
+    assert.equal(res.statusCode, 400);
+    assert.match(JSON.parse(res.body).error, /Unsupported voice/);
+    assert.equal(calls, 0, 'nothing is sent upstream for an unlisted voice');
+    const ok = await handler(event({ text: 'hello', voice: { name: 'en-US-Neural2-F' } }));
+    assert.equal(ok.statusCode, 200);
+    assert.equal(calls, 1);
+  } finally {
+    restore();
+  }
+});
+
+test('an out-of-range speaking rate is refused, and a valid one is passed through', async () => {
+  let sent;
+  useFetch(async (_url, options) => {
+    sent = JSON.parse(options.body);
+    return { status: 200, json: async () => ({ audioContent: 'b64' }) };
+  });
+  try {
+    const bad = await handler(
+      event({ text: 'hello', voice: { name: 'en-US-Neural2-D' }, audioConfig: { speakingRate: 4 } })
+    );
+    assert.equal(bad.statusCode, 400);
+    assert.match(JSON.parse(bad.body).error, /Speaking rate/);
+    await handler(
+      event({
+        text: 'hello',
+        voice: { name: 'en-US-Neural2-D' },
+        audioConfig: { speakingRate: 1.25 },
+      })
+    );
+    assert.equal(sent.audioConfig.speakingRate, 1.25);
+    assert.equal(sent.audioConfig.audioEncoding, 'MP3');
+    assert.equal(sent.voice.languageCode, 'en-US');
+  } finally {
+    restore();
+  }
+});
