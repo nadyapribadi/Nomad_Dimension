@@ -1035,6 +1035,81 @@ test('play and export wait for the render that is filling the cache', async () =
 
 // A paid run lands findings every second or so. Repainting the whole table and
 // rewriting a live region per finding was the cost and the screen-reader flood.
+// Focus belongs to the dialog, and to the control that opened it — including
+// when one dialog opens another.
+test('closing a nested dialog returns focus to the control that opened it', async () => {
+  const t = setup();
+  const focused = [];
+  const opener = (name) => {
+    const el = { isConnected: true, getClientRects: () => [{}], focus: () => focused.push(name) };
+    return el;
+  };
+  const outer = opener('outer');
+  const inner = opener('inner');
+  t.c.document.activeElement = outer;
+  t.run('openModal("fact-review-modal")');
+  t.c.document.activeElement = inner;
+  t.run('openModal("material-edit-modal")');
+  focused.length = 0;
+  t.run('closeModal("material-edit-modal")');
+  assert.deepEqual(focused, ['inner'], 'the inner dialog hands focus back to its opener');
+  focused.length = 0;
+  t.run('closeModal("fact-review-modal")');
+  assert.deepEqual(focused, ['outer'], 'and the outer one still knows where it came from');
+});
+
+test('focus that escapes an open dialog is brought back', async () => {
+  const t = setup();
+  const inside = { focus: () => {} };
+  const control = { focus: () => (inside.focused = true) };
+  const modal = { contains: (el) => el === inside, querySelector: () => control };
+  t.c.document.querySelector = () => modal;
+  t.c.__inside = inside;
+  t.run('modalFocusGuard({ target: { id: "somewhere-else" } })');
+  assert.equal(inside.focused, true, 'the dialog takes focus back');
+  inside.focused = false;
+  t.run('modalFocusGuard({ target: __inside })');
+  assert.equal(inside.focused, false, 'and leaves it alone when it is already inside');
+});
+
+test('getPageBlocks reads past the first page of a settings table', async () => {
+  const t = setup();
+  const rows = (names) => ({ results: names.map((n) => ({ type: 'table_row', name: n })) });
+  let calls = 0;
+  t.c.notionAPI = async (endpoint) => {
+    calls++;
+    if (calls === 1) return { results: [{ type: 'table', id: 'table-1' }], has_more: false };
+    if (calls === 2) return { ...rows(['row one']), has_more: true, next_cursor: 'cursor-2' };
+    assert.match(endpoint, /start_cursor=cursor-2/, 'the cursor is followed');
+    return { ...rows(['row two']), has_more: false };
+  };
+  const blocks = await t.run('getPageBlocks("page-1")');
+  assert.equal(calls, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(blocks.map((b) => b.name || b.type))), [
+    'table',
+    'row one',
+    'row two',
+  ]);
+});
+
+test('the script check does not invent a duration for a section that has none', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.dna = {};
+  S.sections = [
+    {
+      id: 's1',
+      title: 'Intro',
+      type: 'Intro',
+      dialogue: 'KAI: One\nMIA: Two',
+    },
+  ];
+  t.run('runScriptCheck()');
+  const html = t.element('script-check-results').innerHTML;
+  assert.match(html, /no duration set, so there is no target to judge/);
+  assert.doesNotMatch(html, /vs ~260 words/, 'no target is invented from a default');
+});
+
 test('the claim table keeps one live region instead of one per row', async () => {
   const t = setup(),
     S = t.run('S');

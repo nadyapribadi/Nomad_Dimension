@@ -1187,6 +1187,31 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
 #extract-chat-result { width:100%; min-height:220px; }
 #extract-chat-modal .idea-actions { padding:12px 0; }
 #extract-chat-modal .btn, .source-queue-nav .btn { min-height:44px; }
+/* The same card layout the source review already uses, for the tables that were
+   left as horizontal scroll: a phone cannot usefully pan a 6-column table. */
+@media(max-width:600px){
+  #fact-review-table, #fact-review-table tbody,
+  #places-review-table, #places-review-table tbody,
+  table[id^="duplicate-"], table[id^="duplicate-"] tbody { display:block; width:100%; }
+  #fact-review-table thead, #places-review-table thead, table[id^="duplicate-"] thead { display:none; }
+  #fact-review-table tbody tr, #places-review-table tbody tr, table[id^="duplicate-"] tbody tr {
+    display:block; position:relative; border:1px solid var(--border); border-radius:10px;
+    padding:14px; margin:10px 0; background:var(--surface);
+  }
+  #fact-review-table td, #places-review-table td, table[id^="duplicate-"] td {
+    display:block; padding:4px 0; border:0; white-space:normal;
+  }
+  #fact-review-table td:first-child, #places-review-table td:first-child,
+  table[id^="duplicate-"] td:first-child { position:absolute; right:14px; top:14px; width:auto; }
+  #fact-review-table td:not(:first-child)::before, #places-review-table td:not(:first-child)::before,
+  table[id^="duplicate-"] td:not(:first-child)::before {
+    content: attr(data-label); display:block; font-size:10px; color:var(--text3); margin-bottom:4px;
+  }
+  #fact-review-table td:nth-child(2)::before, #places-review-table td:nth-child(2)::before,
+  table[id^="duplicate-"] td:nth-child(2)::before { display:none; }
+  #fact-review-table td:nth-child(2), #places-review-table td:nth-child(2),
+  table[id^="duplicate-"] td:nth-child(2) { padding-right:40px; }
+}
 @media(max-width:640px) { .source-queue-nav { display:block; } .source-queue-nav .idea-actions { margin-top:12px; } }
 </style>
 </head>
@@ -2338,8 +2363,15 @@ async function getPageBlocks(pageId) {
   for (const block of blocks) {
     expanded.push(block);
     if (block.type === 'table') {
-      const tableData = await notionAPI(`blocks/${block.id}/children?page_size=100`);
-      expanded.push(...(tableData.results || []));
+      // Follow every page: a settings table longer than one page used to lose its
+      // tail silently, the same way a fixed page_size did for the video picker.
+      let cursor = null;
+      do {
+        const qs = `page_size=100${cursor ? `&start_cursor=${cursor}` : ''}`;
+        const tableData = await notionAPI(`blocks/${block.id}/children?${qs}`);
+        expanded.push(...(tableData.results || []));
+        cursor = tableData.has_more ? tableData.next_cursor : null;
+      } while (cursor);
     }
   }
   return expanded;
@@ -2490,22 +2522,48 @@ function toast(msg, type = '') {
 }
 
 // ─── MODAL ──────────────────────────────────────────────────────────────────
-let modalReturnFocus;
+// A stack, not one variable: a dialog opened from inside another dialog must
+// hand focus back to the control that opened it, and the outer dialog must still
+// know where it came from.
+const _modalStack = [];
 const modalVersions = {};
 function openModal(id) {
   modalVersions[id]=(modalVersions[id] || 0)+1;
-  modalReturnFocus = document.activeElement;
   const modal = document.getElementById(id);
+  if (!modal) return;
+  const active = document.activeElement;
+  if (!_modalStack.some(entry => entry.id === id))
+    _modalStack.push({ id, returnFocus: active && active !== document.body ? active : null });
   modal.classList.add('open');
-  modal.querySelector?.('button, input, textarea, select')?.focus();
+  focusFirstIn(modal);
 }
+// A dialog with nothing focusable still has to hold focus, or Tab walks into the
+// page behind it and the trap never re-engages.
+function focusFirstIn(container) {
+  const first = container?.querySelector?.(FOCUSABLE);
+  if (first && typeof first.focus === 'function') { first.focus(); return; }
+  container?.setAttribute?.('tabindex', '-1');
+  container?.focus?.();
+}
+const FOCUSABLE = 'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), summary';
 function closeModal(id) {
   modalVersions[id]=(modalVersions[id] || 0)+1;
   if (id === 'place-review-modal') renderPlacesReview();
   if (id === 'library-detail-modal') document.getElementById('library-detail').hidden = true;
-  document.getElementById(id).classList.remove('open');
-  if(modalReturnFocus?.isConnected && modalReturnFocus.getClientRects?.().length)modalReturnFocus.focus();else if(document.getElementById('stage-1').classList.contains?.('active'))document.getElementById('library-search')?.focus();
+  document.getElementById(id)?.classList.remove('open');
+  const at = _modalStack.map(entry => entry.id).lastIndexOf(id);
+  const closed = at >= 0 ? _modalStack.splice(at, 1)[0] : null;
+  const back = closed?.returnFocus || _modalStack[_modalStack.length - 1]?.returnFocus || null;
+  if(back?.isConnected && back.getClientRects?.().length)back.focus();else if(document.getElementById('stage-1').classList.contains?.('active'))document.getElementById('library-search')?.focus();
   if (id === 'idea-confirm-modal' && LIB.confirmResolve) { const resolve=LIB.confirmResolve; LIB.confirmResolve=null; resolve(false); }
+}
+// If focus somehow lands outside the open dialog, bring it back. This replaces
+// marking the page behind as inert, which would brick the whole app if it were
+// ever left set.
+function modalFocusGuard(event) {
+  const modal = document.querySelector('.modal-overlay.open');
+  if (!modal || modal.contains?.(event.target)) return;
+  focusFirstIn(modal);
 }
 
 // ─── STAGE 0 — SETTINGS ─────────────────────────────────────────────────────
@@ -6978,15 +7036,21 @@ function runScriptCheck() {
     : { warn: false, label: 'All sections have dialogue' });
 
   // 2 — Word count vs target (~130 words per target minute)
-  const wc = [];
+  const wc = [], noDuration = [];
   withDialogue.forEach(s => {
-    const target = Math.round((s.duration || 2) * 130);
+    // A section with no duration has no target. Assuming two minutes used to
+    // accuse a perfectly fine section of being the wrong length.
+    if (!(Number(s.duration) > 0)) { noDuration.push(s.title); return; }
+    const target = Math.round(s.duration * 130);
     const actual = parseDialogue(s.dialogue).reduce((n, l) => n + wordCount(l.text), 0);
     const pct = target ? actual / target : 1;
     if (pct < 0.7 || pct > 1.3) wc.push(`${s.title}: ${actual} vs ~${target} words (${Math.round(pct * 100)}%)`);
   });
-  findings.push(wc.length
-    ? { warn: true, label: 'Word count >30% off target', detail: wc.join(' · ') }
+  findings.push(wc.length || noDuration.length
+    ? { warn: true, label: 'Word count >30% off target', detail: [
+        ...wc,
+        noDuration.length ? `${noDuration.join(', ')}: no duration set, so there is no target to judge` : null,
+      ].filter(Boolean).join(' · ') }
     : { warn: false, label: 'Word counts within 30% of target' });
 
   // 3 — Kai / Mia line ratio
@@ -8457,6 +8521,9 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
     if (e.target === this && this.id !== 'signin-overlay') closeModal(this.id);
   });
 });
+
+// Focus can only leave an open dialog through a bug, so put it back.
+document.addEventListener?.('focusin', modalFocusGuard);
 
 document.addEventListener?.('keydown', event => {
   if (event.key === 'Escape') document.querySelectorAll('.icon-button').forEach(el => el.classList.add('tooltip-dismissed'));
