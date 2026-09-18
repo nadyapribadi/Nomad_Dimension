@@ -161,12 +161,14 @@ const bootstrap = [
   extract('nextTableSort'),
   extract('compareCellValues'),
   extract('cellNumber'),
+  extract('codeBlockRichText'),
+  extract('mapPool'),
 ].join('\n');
 
 const H = {};
 new Function(
   'exports',
-  `${bootstrap}\n Object.assign(exports, { _normTokens, _sim, _thinName, _clusterRows, _cheapHash, _esc, _propText, _readProp, parseJsonLoose, _afetch, nextTableSort, compareCellValues, cellNumber });`
+  `${bootstrap}\n Object.assign(exports, { _normTokens, _sim, _thinName, _clusterRows, _cheapHash, _esc, _propText, _readProp, parseJsonLoose, _afetch, nextTableSort, compareCellValues, cellNumber, codeBlockRichText, mapPool });`
 )(H);
 
 // ── _cheapHash ────────────────────────────────────────────────────────────────
@@ -181,6 +183,61 @@ test('_cheapHash returns an unsigned decimal string', () => {
 });
 
 // ── _esc (XSS guard on review/tidy tables) ───────────────────────────────────
+// ── codeBlockRichText (every rich_text write goes through this) ─────────────
+// Notion accepts 2000 characters per rich-text object, so a long value is
+// chunked. A chunker that drops a character at a seam truncates text silently —
+// and nothing else in the app would notice.
+test('codeBlockRichText keeps every character of a long value', () => {
+  const long = 'x'.repeat(4501);
+  const chunks = H.codeBlockRichText(long);
+  assert.equal(chunks.length, 3);
+  assert.equal(chunks.map((c) => c.text.content).join(''), long, 'nothing is lost at the seams');
+  assert.ok(
+    chunks.every((c) => c.text.content.length <= 2000),
+    'and no chunk exceeds what Notion accepts'
+  );
+});
+
+test('codeBlockRichText handles the empty and exact-boundary cases', () => {
+  assert.deepEqual(H.codeBlockRichText(''), [{ type: 'text', text: { content: '' } }]);
+  assert.equal(H.codeBlockRichText('y'.repeat(2000)).length, 1, 'exactly 2000 is still one chunk');
+  assert.equal(H.codeBlockRichText('y'.repeat(2001)).length, 2);
+});
+
+test('codeBlockRichText keeps multi-byte text intact across a boundary', () => {
+  const japanese = '東京'.repeat(700);
+  const chunks = H.codeBlockRichText(japanese);
+  assert.equal(chunks.map((c) => c.text.content).join(''), japanese);
+});
+
+// ── mapPool (the concurrency every paid run depends on) ─────────────────────
+test('mapPool runs at most `limit` at a time and keeps the input order', async () => {
+  let inFlight = 0;
+  let peak = 0;
+  const out = await H.mapPool([1, 2, 3, 4, 5], 2, async (n) => {
+    inFlight++;
+    peak = Math.max(peak, inFlight);
+    await new Promise((r) => setImmediate(r));
+    inFlight--;
+    return n * 2;
+  });
+  assert.equal(peak, 2, 'never more than the ceiling the provider is given');
+  assert.deepEqual(out, [2, 4, 6, 8, 10], 'results line up with their inputs');
+});
+
+test('mapPool captures a failure instead of rejecting the whole batch', async () => {
+  const out = await H.mapPool([1, 2], 2, async (n) => {
+    if (n === 2) throw new Error('boom');
+    return n;
+  });
+  assert.equal(out[0], 1, 'the other item still comes back');
+  assert.match(String(out[1]._err), /boom/);
+});
+
+test('mapPool with nothing to do resolves to nothing', async () => {
+  assert.deepEqual(await H.mapPool([], 3, async () => 1), []);
+});
+
 // ── Sorting the big tables ───────────────────────────────────────────────────
 test('a column sorts ascending first, then flips, and a new column starts over', () => {
   assert.deepEqual(H.nextTableSort(null, 'Claim'), { label: 'Claim', desc: false });
