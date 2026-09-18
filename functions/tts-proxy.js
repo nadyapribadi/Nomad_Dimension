@@ -3,6 +3,8 @@
 // Key: process.env.GOOGLE_TTS_API_KEY (required). Browser sends no keys.
 // Browser sends: { text, voice, audioConfig }
 
+const { safeJSON } = require('./_shared/text');
+
 // The four voices the app offers, and nothing else: an unlisted name is a way to
 // ask for a pricier voice tier, and the language is fixed because the script is
 // English. Adding a voice to Stage 5 means adding it here.
@@ -62,7 +64,7 @@ exports.handler = async (event) => {
       method: 'POST',
       signal: AbortSignal.timeout(25000),
       headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key },
-      body: JSON.stringify(reqBody),
+      body: safeJSON(reqBody),
     });
     const data = await res.json().catch(() => ({}));
     // Relay the reason, never the raw body: an upstream error that echoes the

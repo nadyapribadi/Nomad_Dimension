@@ -1380,7 +1380,7 @@ async function runLibVerify(btn, mode = 'selected') {
   // different claim still cannot match by accident.
   const stripDecoration = (raw, r) => {
     let t = raw.replace(/^\d+\s*[.)]\s*/, '').replace(/^claim:\s*/, '');
-    const detail = normName((r.fields || '').slice(0, 300));
+    const detail = normName(clipText(r.fields, 300));
     if (detail) {
       for (const sep of ['\u2014', '\u2013', '-'])
         if (t.endsWith(` ${sep} ${detail}`)) {
@@ -1599,7 +1599,7 @@ async function runLibVerify(btn, mode = 'selected') {
         _lastVerifyAt = Date.now();
         result = await _verifyBatch(
           store,
-          group.map((r) => ({ name: r.name, detail: (r.fields || '').slice(0, 300) }))
+          group.map((r) => ({ name: r.name, detail: clipText(r.fields, 300) }))
         );
         if (!Array.isArray(result?.verified))
           throw new Error(
@@ -1968,7 +1968,7 @@ async function suggestTitles(btn) {
             content: `Suggest 5 episode theme phrases (3-7 words each) for the Nomad Dimension channel.
 Just the phrase — NO series name, NO "EP##", NO channel name.
 ${concept ? `Angle: ${concept}\n` : ''}Material:
-${episodeMaterialContext().slice(0, 18000)}
+${clipText(episodeMaterialContext(), 18000)}
 
 Respond ONLY in JSON: {"titles":["...","...","...","...","..."]}`,
           },
@@ -2029,7 +2029,7 @@ async function draftAngle(btn) {
 (2-3 sentences) plus a one-line hook. Ground it in what the material shows — don't invent.
 
 Material:
-${context.slice(0, 18000)}
+${clipText(context, 18000)}
 
 Respond ONLY in JSON: {"concept":"...","hook":"..."}`,
           },

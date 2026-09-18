@@ -4,6 +4,8 @@
 // The browser sends: { endpoint, method, body }
 // The function forwards to https://api.notion.com/v1/{endpoint}
 
+const { safeJSON } = require('./_shared/text');
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -54,7 +56,7 @@ exports.handler = async (event) => {
   };
 
   if (body && method !== 'GET') {
-    fetchOptions.body = JSON.stringify(body);
+    fetchOptions.body = safeJSON(body);
   }
 
   try {
@@ -82,7 +84,7 @@ function respond(statusCode, body) {
   return {
     statusCode,
     headers: corsHeaders(),
-    body: JSON.stringify(body),
+    body: safeJSON(body),
   };
 }
 

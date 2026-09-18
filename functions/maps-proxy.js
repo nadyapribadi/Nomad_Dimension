@@ -1,5 +1,7 @@
 'use strict';
 
+const { safeJSON } = require('./_shared/text');
+
 // Google Places API (New) — Text Search. Resolves a fuzzy place name (as spoken
 // in a vlog) to a canonical place: prefecture, area, address, lat/lng, Maps URL,
 // price tier. Browser POSTs { query }. Returns { found, ... }, or
@@ -78,7 +80,7 @@ exports.handler = async (event) => {
         'X-Goog-Api-Key': key,
         'X-Goog-FieldMask': FIELD_MASK,
       },
-      body: JSON.stringify({
+      body: safeJSON({
         textQuery: query,
         languageCode: 'en',
         regionCode: 'JP',

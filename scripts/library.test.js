@@ -2047,6 +2047,37 @@ test('a trial run checks only the first few and leaves the rest ticked', async (
   );
 });
 
+test('the fact-check request hands over context on a character boundary', async () => {
+  // A live run lost one claim to "Invalid JSON payload": the 300-character clip
+  // landed between the halves of a flag emoji, and half a character is what
+  // Google refuses. The claim itself was fine.
+  const t = setup(),
+    S = t.run('S'),
+    flag = '\u{1F1EF}\u{1F1F5}';
+  S.vlib = [
+    {
+      id: 'row-emoji',
+      name: 'A claim',
+      store: 'research',
+      fields: 'x'.repeat(299) + flag + 'tail',
+    },
+  ];
+  S._vlibSkip = new Set();
+  t.c.confirmIdeaChange = async () => true;
+  t.c._writeVerdict = async () => {};
+  let sent = null;
+  t.c._verifyBatch = async (_store, items) => {
+    sent = items;
+    return {
+      verified: items.map((it) => ({ name: it.name, verdict: 'unsupported', note: 'None.' })),
+    };
+  };
+  await t.run('runLibVerify()');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].detail, 'x'.repeat(299), 'the half character is dropped, not sent');
+  assert.doesNotMatch(sent[0].detail, /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+});
+
 test('a finished run tells the cost entry what it did', async () => {
   const t = setup(),
     S = t.run('S');

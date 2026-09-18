@@ -186,7 +186,7 @@ function _propText(v) {
   return '';
 }
 
-const _txt = (s) => ({ rich_text: [{ text: { content: String(s || '').slice(0, 1900) } }] });
+const _txt = (s) => ({ rich_text: [{ text: { content: clipText(s, 1900) } }] });
 
 const _rel = (id) => (id ? { relation: [{ id }] } : undefined);
 
@@ -260,7 +260,7 @@ async function localArtifact(key, value) {
 
 let artifactDB;
 
-const _rt = (s) => [{ type: 'text', text: { content: String(s || '').slice(0, 1900) } }];
+const _rt = (s) => [{ type: 'text', text: { content: clipText(s, 1900) } }];
 
 const _p = (s) => ({ object: 'block', type: 'paragraph', paragraph: { rich_text: _rt(s) } });
 

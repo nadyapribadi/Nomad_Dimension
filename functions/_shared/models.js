@@ -1,5 +1,7 @@
 'use strict';
 
+const { safeJSON } = require('./text');
+
 // Provider-agnostic LLM router. Every model call in Nomad should go through
 // callModel(). Phase 1 of the evolution plan — see Docs/AS_BUILT.md.
 // The `_shared` dir (underscore prefix) is not deployed by Netlify as a function.
@@ -186,7 +188,7 @@ async function anthropicAdapter(req, { fetch, env }) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers,
-    body: JSON.stringify(body),
+    body: safeJSON(body),
   }).catch((e) => {
     throw taxonomyError('network', e.message);
   });
@@ -227,7 +229,7 @@ async function geminiAdapter(req, { fetch, env }) {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: safeJSON(body),
   }).catch((e) => {
     throw taxonomyError('network', e.message);
   });
@@ -296,7 +298,7 @@ async function openaiCompatibleAdapter(provider, req, { fetch, env }) {
   const res = await fetch(`${cfg.base}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: safeJSON(body),
   }).catch((e) => {
     throw taxonomyError('network', e.message);
   });

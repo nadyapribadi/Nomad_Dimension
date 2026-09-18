@@ -14,6 +14,18 @@ const _esc = (s) =>
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]
   );
 
+// Text can arrive with half a surrogate pair in it — an emoji split by an
+// earlier cut, or a bad paste. Sending or storing that half makes Google and
+// Notion reject the whole request, so clip on character boundaries and never
+// hand half a character to the network. Mirrors functions/_shared/text.js.
+function clipText(value, max) {
+  const text = String(value ?? '');
+  if (!(max > 0) || text.length <= max) return text;
+  const cut = text.slice(0, max),
+    last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
 const _JUNK_WORDS = new Set([
   'the',
   'a',

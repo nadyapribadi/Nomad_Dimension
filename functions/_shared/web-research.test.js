@@ -53,6 +53,36 @@ test('buildVerifyPrompt: validates the bounded request and provides valid JSON',
 
 const { runGemini, VERIFY_SCHEMA } = require('../web-research')._internal;
 
+test('a detail clipped mid-emoji cannot reach the provider as half a character', () => {
+  // The character that broke a live run: the 300-character cut landed between
+  // the two halves of a flag, and Google rejected the whole request with
+  // "Invalid JSON payload" — one claim, whole batch refused.
+  const detail = 'x'.repeat(299) + '\u{1F1EF}\u{1F1F5}' + 'tail';
+  const prompt = buildVerifyPrompt({ store: 'food', items: [{ name: 'A claim', detail }] }).text;
+  assert.doesNotMatch(prompt, /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  const clipped = prompt.split('\n   detail: ')[1].split('\n')[0];
+  assert.ok(clipped.length <= 300);
+  assert.equal(clipped, 'x'.repeat(299));
+});
+
+test('the request body sent to Gemini carries no lone surrogate', async (t) => {
+  let raw;
+  t.mock.method(global, 'fetch', async (_u, options) => {
+    raw = options.body;
+    return {
+      ok: true,
+      json: async () => ({
+        status: 'completed',
+        steps: [{ type: 'model_output', content: [{ type: 'text', text: '{"verified":[]}' }] }],
+      }),
+    };
+  });
+  // A lone half can arrive from a caller that clipped somewhere else.
+  await runGemini('fake-key', `TOKYO ${'\u{1F1EF}\u{1F1F5}'.slice(0, 1)}`, true);
+  assert.equal(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(raw), false);
+  assert.equal(JSON.parse(raw).input, 'TOKYO \uFFFD');
+});
+
 test('a rate-limited provider is reported as throttled, not as a claim failure', async (t) => {
   t.mock.method(global, 'fetch', async () => ({
     ok: false,

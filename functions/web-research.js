@@ -2,6 +2,7 @@
 
 const { usageFromInteractions } = require('./_shared/cost');
 const { cost } = require('./_shared/models');
+const { clipText, safeJSON } = require('./_shared/text');
 
 // Web research for Step 1 (Research → Web tab). Gemini 3.6 Flash + Google
 // Search grounding through the Interactions API — on generateContent,
@@ -180,7 +181,9 @@ function buildVerifyPrompt(body) {
       // Keep the claim text and its context on separate labelled lines. Gluing
       // them together made the model echo the whole rendered entry back as
       // `name`, which no longer matched the submitted claim.
-      const detail = it.detail ? `\n   detail: ${String(it.detail).slice(0, 300)}` : '';
+      // Clipped on character boundaries: a raw slice can split an emoji and the
+      // half that survives is what makes Google reject the request outright.
+      const detail = it.detail ? `\n   detail: ${clipText(it.detail, 300)}` : '';
       return `${i + 1}. claim: ${String(it.name || '').trim()}${detail}`;
     })
     .join('\n');
@@ -225,7 +228,7 @@ async function runGemini(key, prompt, verify = false) {
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+        body: safeJSON({
           model: MODEL,
           input: prompt,
           tools: [{ type: 'google_search' }],
