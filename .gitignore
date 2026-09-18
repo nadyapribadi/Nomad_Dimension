@@ -23,3 +23,9 @@ Template/
 .claude/
 graphify-out/
 _deploy/
+
+# Binary documents. The shelved redesign under Docs/archive/ is kept as markdown;
+# a .docx is a 45 KB blob that cannot be diffed or reviewed, so it lives on disk
+# and out of the history from here on.
+*.docx
+*.doc
