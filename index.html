@@ -2151,6 +2151,7 @@ mark { background:#f5df9e;color:#342b16;border-radius:2px;padding:0 2px; }
 <div class="toast-container" id="toasts" role="status" aria-live="polite"></div>
 
 <!-- ═══════════ JAVASCRIPT ═══════════ -->
+<script src="src/core.js"></script>
 <script>
 // ─── CONSTANTS ─────────────────────────────────────────────────────────────
 const APP_SETTINGS_PAGE_ID = '33c9ba2b-3900-8132-b172-f136389ac2e2';
@@ -2261,16 +2262,7 @@ async function notionAPI(endpoint, method = 'GET', body = null) {
 
 // Run `fn` over `items` with at most `limit` in flight — keeps transcript / Maps
 // fan-outs from spawning dozens of parallel function calls (→ upstream 429s).
-async function mapPool(items, limit, fn) {
-  const out = new Array(items.length);
-  let i = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (i < items.length) { const n = i++; try { out[n] = await fn(items[n], n); } catch (e) { out[n] = { _err: e }; } }
-    })
-  );
-  return out;
-}
+
 
 // Fully paginate a databases/{id}/query — dedup pre-checks must see every row,
 // not just the first page of 100.
@@ -2955,13 +2947,7 @@ function collectRouting() {
 }
 
 // Notion caps each rich_text item's content at 2000 chars — chunk long JSON.
-function codeBlockRichText(str) {
-  const out = [];
-  for (let i = 0; i < str.length; i += 2000) {
-    out.push({ type: 'text', text: { content: str.slice(i, i + 2000) } });
-  }
-  return out.length ? out : [{ type: 'text', text: { content: '' } }];
-}
+
 
 async function saveRouting() {
   if(routingSaving)return;
@@ -3337,19 +3323,6 @@ function resetYTFilters() {
   renderYTVideos();
 }
 
-function formatISO8601Duration(d) {
-  if (!d) return '';
-  const m = d.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!m) return d;
-  const h = m[1]||0, min = m[2]||0, s = m[3]||0;
-  return h ? `${h}:${String(min).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${min}:${String(s).padStart(2,'0')}`;
-}
-
-function iso8601Minutes(d) {
-  const m = (d || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!m) return 0;
-  return (+(m[1]||0)) * 60 + (+(m[2]||0)) + (+(m[3]||0)) / 60;
-}
 
 function toggleYTVideo(i) {
   if(S.existingVideoIds?.has(S.ytVideos[i]?.id)){toast('This video is already in your Source Videos library.');return;}
@@ -3554,29 +3527,13 @@ function tableView(id) { if(!TABLE_VIEWS.has(id))TABLE_VIEWS.set(id,{filters:{},
 // Sorting a table of a thousand claims is a decision rule, not a DOM trick:
 // which way does a column go next, and which value wins. Both are pure so they
 // can be tested without a browser.
-function nextTableSort(current, label) {
-  if (current && current.label === label) return { label, desc: !current.desc };
-  return { label, desc: false };
-}
-function compareCellValues(a, b) {
-  const sa = Array.isArray(a) ? a.join(', ') : String(a ?? '');
-  const sb = Array.isArray(b) ? b.join(', ') : String(b ?? '');
-  const na = cellNumber(sa), nb = cellNumber(sb);
-  if (na !== null && nb !== null) return na - nb;
-  return sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' });
-}
+
+
 // A number stays a number when it wears a currency symbol or thousands
 // separators. Numeric collation alone reads "¥1,200" as the digit run "1", and a
 // leading-number parse reads it as 1 as well — both put ¥300 after it. An ISO
 // date is left alone: it already reads chronologically as text.
-function cellNumber(value) {
-  const s = String(value ?? '').trim();
-  if (!s || /^\d{4}-\d{2}-\d{2}/.test(s)) return null;
-  const match = s.match(/-?\d[\d,._ ]*(?:\.\d+)?/);
-  if (!match) return null;
-  const n = Number(match[0].replace(/[,_ ]/g, ''));
-  return Number.isFinite(n) ? n : null;
-}
+
 function tableValueMatches(value, filter, kind='text') {
   if(!filter)return true;
   if(kind==='number' || kind==='date') {
@@ -4219,7 +4176,7 @@ const _txt = (s) => ({ rich_text: [{ text: { content: String(s || '').slice(0, 1
 // Notion relation payload, or undefined so JSON.stringify drops the key.
 const _rel = (id) => (id ? { relation: [{ id }] } : undefined);
 const safeURL = value => { try { const u = new URL(value); return ['https:', 'http:'].includes(u.protocol) ? u.href : '#'; } catch { return '#'; } };
-const _esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
 // Flatten one Notion property payload to a display string (for the review table).
 function _propText(v) {
   if (v == null || typeof v !== 'object') return '';
@@ -4353,21 +4310,16 @@ S.verify = S.verify || {};   // "<store>:<name>" -> { confidence, source_url, as
 // is retained so hashing is never treated as proof of equality.
 // Stable JSON: sorted keys, private/derived fields dropped. Shared so the stored
 // evidence and the incoming candidate are compared the same way.
-function sortedJson(value) {
-  const clean=v=>Array.isArray(v)?v.map(clean):v && typeof v==='object'?Object.fromEntries(Object.keys(v).sort().filter(k=>!k.startsWith('_') && !['needs_verification','verify_note','confidence'].includes(k)).map(k=>[k,clean(v[k])])):v;
-  return JSON.stringify(clean(value));
-}
+
 // Identity of the record as extracted, source included: the receipt that proves a
 // create already happened.
-function materialIdentity(it) { return sortedJson(it); }
+
 // Identity of the *claim*, with the provenance stripped. The same fact found in a
 // second video is the same claim, so it must not become a second row: its source
 // belongs on the existing row. `from`/`to` stay — they are the route, not the
 // provenance.
-const MATERIAL_PROVENANCE = new Set(['source_page_id','source_url','source_title','source_excerpt','timestamp','fromIds']);
-function materialClaimIdentity(it) {
-  return sortedJson(Object.fromEntries(Object.entries(it || {}).filter(([k]) => !MATERIAL_PROVENANCE.has(k))));
-}
+
+
 function materialEvidenceBlock(it) {
   const json=JSON.stringify({nomadMaterial:1,identity:materialIdentity(it),observation:Object.fromEntries(Object.entries(it).filter(([k])=>!k.startsWith('_'))),original:it._original || Object.fromEntries(Object.entries(it).filter(([k])=>!k.startsWith('_')))});
   if(new TextEncoder().encode(json).length>65536)throw new Error('This material exceeds the evidence limit. Shorten the candidate without removing its source reference.');
@@ -4777,49 +4729,17 @@ async function searchLibrary(btn) {
 }
 
 // ─── deterministic near-duplicate + thin-row detection (no AI) ──────────────
-const _JUNK_WORDS = new Set(['the', 'a', 'an', 'at', 'in', 'on', 'to', 'of', 'and', 'or', 'with', 'from', 'for', 'is', 'was', 'it', 'they', 'their', 'vlogger', 'trip', 'journey', 'during', 'some', 'this', 'that', 'by', 'as', 'be', 'been']);
-const _ntCache = new Map();   // _clusterRows tokenises the same ~dozen names O(n²) times
-function _normTokens(s) {
-  let c = _ntCache.get(s);
-  if (c) return c;
-  c = String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/).filter(w => w.length > 1 && !_JUNK_WORDS.has(w));
-  if (_ntCache.size < 4000) _ntCache.set(s, c);
-  return c;
-}
-function _sim(a, b) {                                   // Jaccard on content tokens
-  const A = new Set(_normTokens(a)), B = new Set(_normTokens(b));
-  if (!A.size || !B.size) return 0;
-  let inter = 0; for (const t of A) if (B.has(t)) inter++;
-  return inter / (A.size + B.size - inter);
-}
-function _thinName(name) {
-  if (_normTokens(name).length <= 2) return true;
-  return /\bsuccessfully\b|\bit is (claimed|said|mentioned)\b|\bmay have been\b|\bduring (the|their) (trip|journey)\b/i.test(name);
-}
+
+   // _clusterRows tokenises the same ~dozen names O(n²) times
+
+
 // greedy single-link clustering within one store's rows; returns array of {rows[], keepId}
-function _clusterRows(rows, thr = 0.5) {
-  const clusters = [];
-  for (const r of rows) {
-    let hit = null;
-    for (const c of clusters) if (c.rows.some(x => _sim(x.name, r.name) >= thr)) { hit = c; break; }
-    if (hit) hit.rows.push(r); else clusters.push({ rows: [r] });
-  }
-  for (const c of clusters) {                            // keep the most-detailed row
-    c.keepId = c.rows.slice().sort((a, b) => (b.fields || '').length - (a.fields || '').length)[0].id;
-  }
-  return clusters;
-}
+
 // Single-link clustering is right for *showing* a group, but not for merging:
 // A~B and B~C is enough to chain A and C together even when they share nothing.
 // A merge unions relation properties, so a chained group would quietly join
 // unrelated rows. Offer a merge only when every pair in the group is similar.
-function _clusterMergeSafe(rows, thr = 0.5) {
-  for (let i = 0; i < rows.length; i++)
-    for (let j = i + 1; j < rows.length; j++)
-      if (_sim(rows[i].name, rows[j].name) < thr) return false;
-  return true;
-}
+
 
 // ─── Notion writes: paced, retried, and stopped before they cascade ─────────
 // The verify path learned this the hard way: an unpaced loop of a thousand rows
@@ -4879,8 +4799,8 @@ function checkRecord(r) {
   if(!note.includes(CHECK_MARKER))return {legacy:note || ['confirmed','corrected','unsupported'].includes(r._newStatus || r.status) ? {verdict:r._newStatus || r.status,note} : null};
   try {const data=JSON.parse(note.split(CHECK_MARKER)[1]);if(data.version!==1 || [data.ai,data.review].filter(Boolean).some(v=>!['confirmed','corrected','unsupported'].includes(v.verdict)))throw new Error();return data;}catch{return {legacy:{verdict:r.status,note},invalid:true};}
 }
-function checkSummary(v) {return [v.corrected_value && `Correction: ${v.corrected_value}`,v.note,v.source_url,v.as_of_date && `As of ${v.as_of_date}`,v.checkedAt && `Checked ${v.checkedAt}`,v.model && `Model: ${v.model}`].filter(Boolean).join(' · ');}
-function checkLabel(v) {return {confirmed:'Supported',corrected:'Contradicted',unsupported:'No evidence found'}[v] || 'Not checked';}
+
+
 function checkBadge(v) {return `<span class="badge ${v==='confirmed'?'badge-green':v==='corrected'?'badge-amber':''}">${checkLabel(v)}</span>`;}
 function checkEvidence(v) {if(!v)return '—';const url=safeURL(v.source_url);return `<p>${_esc(v.note || 'No explanation supplied.')}</p>${v.corrected_value?`<p>Correction: ${_esc(v.corrected_value)}</p>`:''}${url!=='#'?`<a href="${_esc(url)}" target="_blank" rel="noopener noreferrer">Open evidence ↗</a>`:''}<small style="display:block">${_esc([v.as_of_date && `As of ${v.as_of_date}`,v.checkedAt && `Checked ${v.checkedAt.slice(0,10)}`,v.model].filter(Boolean).join(' · '))}</small>`;}
 function hasCheck(r) {const data=checkRecord(r);return !!(r._aiPending || data.ai || data.review || ['confirmed','corrected','unsupported'].includes(r._newStatus || r.status));}

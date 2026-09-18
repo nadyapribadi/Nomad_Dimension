@@ -1,14 +1,27 @@
-// Parse every <script> block in index.html to catch syntax errors before deploy.
-// index.html has no test suite and Prettier skips it, so this is the only
-// automated guard. Compiles (does not run) each block — undefined browser
-// globals are irrelevant, only syntax matters.
-import { readFileSync } from 'node:fs';
+// Parse every <script> block in index.html, and every classic script the page
+// loads from src/, to catch syntax errors before deploy. index.html has no test
+// suite and Prettier skips it, so this is the only syntax guard. Compiles (does
+// not run) each block — undefined browser globals are irrelevant, only syntax
+// matters. Linting lives in lint-inline.mjs, which owns the rule set for client
+// code; this script deliberately does not re-lint.
+import { readFileSync, readdirSync } from 'node:fs';
 import vm from 'node:vm';
-import { ESLint } from 'eslint';
-import globals from 'globals';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const blocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+
+// A classic script the page loads is part of the page: if it does not parse, the
+// app is broken even though index.html itself is fine.
+const srcDir = new URL('../src/', import.meta.url);
+let srcFiles = [];
+try {
+  srcFiles = readdirSync(srcDir)
+    .filter((name) => name.endsWith('.js'))
+    .sort();
+} catch {
+  /* no src/ yet */
+}
+for (const name of srcFiles) blocks.push(readFileSync(new URL(name, srcDir), 'utf8'));
 
 if (!blocks.length) {
   console.error('check-html-syntax: no <script> blocks found in index.html');
@@ -26,22 +39,6 @@ blocks.forEach((src, i) => {
 });
 
 if (bad) process.exit(1);
-const eslint = new ESLint({
-  overrideConfigFile: true,
-  overrideConfig: [
-    {
-      languageOptions: { sourceType: 'script', globals: globals.browser },
-      rules: { 'no-redeclare': 'error', 'no-undef': 'error' },
-    },
-  ],
-});
-for (const src of blocks) {
-  const results = await eslint.lintText(src);
-  for (const result of results) {
-    for (const message of result.messages)
-      console.error(`inline script:${message.line}: ${message.message}`);
-    if (result.errorCount) bad++;
-  }
-}
-if (bad) process.exit(1);
-console.log(`check-html-syntax: ${blocks.length} <script> block(s) OK`);
+console.log(
+  `check-html-syntax: ${blocks.length - srcFiles.length} <script> block(s) + ${srcFiles.length} src/ file(s) OK`
+);

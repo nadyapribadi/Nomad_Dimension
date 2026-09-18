@@ -5,6 +5,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const html = fs.readFileSync('index.html', 'utf8');
 const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\ninit\(\);\s*$/, '\n');
+// Same load order as the page: the classic script first, then the inline one.
+const coreSource = fs.readFileSync('src/core.js', 'utf8');
 function setup() {
   const elements = new Map();
   const element = (id) => {
@@ -55,6 +57,7 @@ function setup() {
     atob,
     btoa,
   });
+  vm.runInContext(coreSource, context);
   vm.runInContext(source, context);
   const run = (code) => vm.runInContext(code, context);
   // Confirmation dialogs are accepted in tests, exactly like `confirm`.

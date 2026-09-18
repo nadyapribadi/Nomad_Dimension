@@ -7,7 +7,9 @@
 // artifact changes.
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { readdirSync } from 'node:fs';
 import { ESLint } from 'eslint';
+import projectConfig from '../eslint.config.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const html = await readFile(path.join(ROOT, 'index.html'), 'utf8');
@@ -17,6 +19,45 @@ if (!match) {
   process.exit(1);
 }
 const script = match[1];
+
+// ── No declaration may live in two places ────────────────────────────────────
+// `src/*.js` is loaded as a classic script before this inline script, so both
+// share one global scope. A `function` declared in both would silently let the
+// later copy win (a move that quietly did nothing), and a `const`/`let` declared
+// in both is a SyntaxError that kills the whole inline script. Neither should
+// ever reach a commit, so the check names the offender.
+const SRC_DIR = path.join(ROOT, 'src');
+const srcFiles = (() => {
+  try {
+    return readdirSync(SRC_DIR)
+      .filter((name) => name.endsWith('.js'))
+      .sort();
+  } catch {
+    return [];
+  }
+})();
+const declaredIn = (text) => {
+  const names = new Set();
+  for (const m of text.matchAll(/^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gm)) names.add(m[1]);
+  for (const m of text.matchAll(/^(?:const|let|var)\s+([A-Za-z_$][\w$]*)/gm)) names.add(m[1]);
+  return names;
+};
+const inlineNames = declaredIn(script);
+const duplicates = [];
+// Names the earlier classic scripts provide to this one. Declaring them to ESLint
+// is what lets `no-undef` stay an error: a name the inline script uses must come
+// from a file that really declares it, and removing it from src/ fails the lint
+// instead of failing at runtime.
+const srcGlobals = {};
+for (const name of srcFiles) {
+  const text = await readFile(path.join(SRC_DIR, name), 'utf8');
+  for (const declared of declaredIn(text)) {
+    srcGlobals[declared] = 'readonly';
+    if (inlineNames.has(declared)) duplicates.push(`${name}: ${declared}`);
+  }
+}
+for (const dup of duplicates)
+  console.log(`${dup}  error  declared in both src/ and the inline script  (move, don't copy)`);
 // Report positions against index.html, not against the extracted script, so a
 // finding can actually be opened.
 const lineOffset = html.slice(0, html.indexOf(script)).split('\n').length - 1;
@@ -39,8 +80,18 @@ const withHandlers = fromHandlers.length
 // The virtual filePath is what makes ESLint apply the index.html block from
 // eslint.config.js. It is deliberately not a real path, so `eslint .` never
 // tries to parse the HTML; the text handed in is the extracted JavaScript.
-const eslint = new ESLint();
-const [result] = await eslint.lintText(withHandlers, { filePath: 'index.html.inline.js' });
+// Built from the project's own config so the rule set stays in one place, plus
+// the names the earlier classic scripts declare.
+const eslint = new ESLint({
+  overrideConfigFile: true,
+  overrideConfig: [
+    ...projectConfig,
+    { files: ['**/index.html.inline.js'], languageOptions: { globals: srcGlobals } },
+  ],
+});
+const [result] = await eslint.lintText(withHandlers, {
+  filePath: 'index.html.inline.js',
+});
 
 for (const m of result.messages) {
   const kind = m.severity === 2 ? 'error' : 'warning';
@@ -153,6 +204,6 @@ for (const f of escapeFindings)
 const errors = result.messages.filter((m) => m.severity === 2).length;
 const warnings = result.messages.length - errors;
 console.log(
-  `index.html inline script — ${errors} error(s), ${warnings} warning(s), ${escapeFindings.length} unescaped innerHTML finding(s)`
+  `index.html inline script — ${errors} error(s), ${warnings} warning(s), ${escapeFindings.length} unescaped innerHTML finding(s), ${duplicates.length} duplicate declaration(s)`
 );
-process.exit(errors || escapeFindings.length ? 1 : 0);
+process.exit(errors || escapeFindings.length || duplicates.length ? 1 : 0);

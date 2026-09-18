@@ -6,6 +6,9 @@ const vm = require('node:vm');
 const { webcrypto } = require('node:crypto');
 const html = fs.readFileSync('index.html', 'utf8');
 const source = html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\ninit\(\);\s*$/, '\n');
+// The page loads src/core.js as a classic script before the inline one, so the
+// sandbox has to do the same or every moved helper reads as undefined.
+const coreSource = fs.readFileSync('src/core.js', 'utf8');
 
 // A deterministic yield. Tests that measure overlap need the scheduler to let
 // other work start, but they must not depend on how long a timer happens to take
@@ -63,6 +66,7 @@ function setup() {
     atob,
     btoa,
   });
+  vm.runInContext(coreSource, c);
   vm.runInContext(source, c);
   // Timers are inert in tests: pacing and back-off are exercised through their
   // seams instead, so no test waits on the clock.

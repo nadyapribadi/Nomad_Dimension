@@ -11,15 +11,17 @@
 //
 // Exits non-zero if a forbidden path reaches the staged output, so a future
 // allowlist change fails loudly instead of leaking silently.
-import { copyFile, mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT = path.join(ROOT, '_deploy');
 
 // The complete set of files the browser loads at runtime. There is no build
-// step: index.html carries its own inline CSS and JavaScript.
-const PUBLISH = ['index.html'];
+// step: index.html carries its own inline CSS and JavaScript, and src/*.js are
+// classic scripts it loads before that. Adding a script tag without adding the
+// file here is caught below, before anything is staged.
+const PUBLISH = ['index.html', 'src/core.js'];
 
 // Never allowed in a deploy artifact. Checked after staging.
 const FORBIDDEN_DIRS = [
@@ -71,6 +73,17 @@ async function walk(dir, base = '') {
 }
 
 const kb = (bytes) => `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+// Every classic script the page asks for has to be in the allowlist. Without this
+// the failure mode is a live page with no JavaScript, discovered in a browser.
+const indexHtml = await readFile(path.join(ROOT, 'index.html'), 'utf8');
+const referenced = [...indexHtml.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
+const missing = referenced.filter((rel) => !PUBLISH.includes(rel));
+if (missing.length) {
+  console.error('deploy:stage — index.html loads scripts that are not in PUBLISH:');
+  for (const rel of missing) console.error(`  ${rel}`);
+  process.exit(1);
+}
 
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });

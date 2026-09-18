@@ -146,29 +146,19 @@ function extract(name) {
 
 // Build a sandbox with the helpers we want to exercise.
 const bootstrap = [
-  extract('_JUNK_WORDS'),
-  extract('_ntCache'),
-  extract('_normTokens'),
-  extract('_sim'),
-  extract('_thinName'),
-  extract('_clusterRows'),
   extract('_cheapHash'),
-  extract('_esc'),
   extract('_propText'),
   extract('_readProp'),
   extract('parseJsonLoose'),
   extract('_afetch'),
-  extract('nextTableSort'),
-  extract('compareCellValues'),
-  extract('cellNumber'),
-  extract('codeBlockRichText'),
-  extract('mapPool'),
 ].join('\n');
 
-const H = {};
+// The pure helpers live in src/core.js now, so they are required instead of
+// extracted out of the HTML — which also means Node's own coverage can see them.
+const H = require('../src/core.js');
 new Function(
   'exports',
-  `${bootstrap}\n Object.assign(exports, { _normTokens, _sim, _thinName, _clusterRows, _cheapHash, _esc, _propText, _readProp, parseJsonLoose, _afetch, nextTableSort, compareCellValues, cellNumber, codeBlockRichText, mapPool });`
+  `${bootstrap}\n Object.assign(exports, { _cheapHash, _propText, _readProp, parseJsonLoose, _afetch });`
 )(H);
 
 // ── _cheapHash ────────────────────────────────────────────────────────────────

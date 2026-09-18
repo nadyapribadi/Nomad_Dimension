@@ -54,7 +54,11 @@ module.exports = [
     // here directly would make `eslint .` try to parse the HTML itself. Defect
     // rules take priority over style: the file has no module boundaries, so
     // style churn would bury the findings that matter.
-    files: ['**/index.html.inline.js'],
+    //
+    // `src/*.js` are the same client code in real files, loaded as classic
+    // scripts, so they get the same rules — including `no-undef` against browser
+    // globals, which is what makes a moved name safe to trust.
+    files: ['**/index.html.inline.js', 'src/**/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'script',
@@ -82,6 +86,14 @@ module.exports = [
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-empty': 'warn',
     },
+  },
+  {
+    // src/*.js end with a guarded `if (typeof module !== 'undefined')` footer so
+    // the tests can `require` the same file the browser loads. `module` is a
+    // CommonJS wrapper binding, not a global, so it is declared only here — the
+    // inline script does not get it.
+    files: ['src/**/*.js'],
+    languageOptions: { globals: { ...globals.browser, module: 'readonly' } },
   },
   {
     // Repo test scripts — Node CommonJS
