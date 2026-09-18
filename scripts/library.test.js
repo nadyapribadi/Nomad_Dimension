@@ -1920,6 +1920,96 @@ test('a failing local save says what the operator should do instead', async () =
   );
 });
 
+test('a breakdown is kept locally before it is written to Notion', async () => {
+  const t = setup();
+  const order = [];
+  const real = t.c.localArtifact;
+  t.c.localArtifact = async (key, value) => {
+    if (value !== undefined) order.push(`local:${key}`);
+    return real(key, value);
+  };
+  const realNotion = t.c.notionAPI;
+  t.c.notionAPI = async (endpoint, method, body) => {
+    order.push(`notion:${endpoint}`);
+    return realNotion(endpoint, method, body);
+  };
+  t.pages.set('vid-1', { id: 'vid-1', last_edited_time: 't1', properties: {} });
+  t.c.__v = { id: 'vid-1', breakdown: { places: ['A'] } };
+  await t.run('saveBreakdownResult(__v)');
+  assert.deepEqual(order, ['local:breakdown-draft:vid-1', 'notion:pages/vid-1']);
+  assert.equal(t.c.__v._breakdownUnsaved, false, 'a completed save clears the unsaved marker');
+});
+
+test('an oversized breakdown is refused before either write', async () => {
+  const t = setup();
+  t.c.__v = { id: 'vid-1', breakdown: { text: 'x'.repeat(200000) } };
+  await assert.rejects(t.run('saveBreakdownResult(__v)'), /exceeds the source field limit/);
+  assert.equal(t.calls.length, 0, 'nothing local, nothing remote');
+  assert.ok(
+    !(await t.c.localArtifact('breakdown-draft:vid-1')),
+    'and no local draft is left behind'
+  );
+});
+
+test('the "save analysis" button needs a reviewed, unchanged, confirmed result', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.extractionChat = { review: { text: '{"a":1}' } };
+  t.element('extract-chat-result').value = '{"a":1}';
+  t.element('extract-chat-confirm').checked = false;
+  t.run('updateExtractionUse()');
+  assert.equal(t.element('extract-chat-use').disabled, true, 'unconfirmed: stays disabled');
+  t.element('extract-chat-confirm').checked = true;
+  t.run('updateExtractionUse()');
+  assert.equal(t.element('extract-chat-use').disabled, false, 'reviewed and confirmed: enabled');
+  t.element('extract-chat-result').value = '{"a":2}';
+  t.run('updateExtractionUse()');
+  assert.equal(
+    t.element('extract-chat-use').disabled,
+    true,
+    'edited after review: disabled again, so an unreviewed paste cannot be saved'
+  );
+});
+
+test('adding a channel or a lookup entry ignores empty input', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.channels = ['Existing'];
+  t.element('new-channel-input').value = '   ';
+  t.run('addChannel()');
+  assert.deepEqual(JSON.parse(JSON.stringify(S.channels)), ['Existing'], 'blank channel refused');
+  t.element('new-channel-input').value = 'Second';
+  t.run('addChannel()');
+  assert.deepEqual(JSON.parse(JSON.stringify(S.channels)), ['Existing', 'Second']);
+  assert.equal(t.element('new-channel-input').value, '', 'the field is cleared after adding');
+
+  S.lookups = { sections: ['Intro'] };
+  t.run("addLookupItem('sections')");
+  assert.deepEqual(JSON.parse(JSON.stringify(S.lookups.sections)), ['Intro', 'New item']);
+});
+
+test('switching the verification source clears the loaded rows and hides dedupe for session rows', async () => {
+  const t = setup(),
+    S = t.run('S');
+  S.vlib = [{ id: 'row-1' }];
+  S._vlibSkip = new Set(['row-1']);
+  t.element('vlib-q').closest = () => ({ style: {} });
+  t.run("setVerifySource('session')");
+  assert.equal(S._vlibSource, 'session');
+  assert.equal(S.vlib.length, 0, 'the previous list is cleared, not mixed with the new source');
+  assert.equal(S._vlibTidy, false);
+  assert.equal(
+    t.element('vlib-dedupe-btn').style.display,
+    'none',
+    'dedupe archives saved rows, so it is hidden for the session pool'
+  );
+  t.run('_libVerifying = true');
+  S._vlibSource = 'session';
+  t.run("setVerifySource('saved')");
+  assert.equal(S._vlibSource, 'session', 'and it refuses to switch mid-run');
+  t.run('_libVerifying = false');
+});
+
 test('a finished run tells the cost entry what it did', async () => {
   const t = setup(),
     S = t.run('S');
