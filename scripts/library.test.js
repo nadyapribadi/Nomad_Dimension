@@ -825,6 +825,108 @@ test('the script check no longer prints a tick it could never earn', async () =>
   assert.match(html, /checks passed|checks need a look/, 'the remaining checks still report');
 });
 
+// Rendering audio is a paid action with no undo, so it names what it is about to
+// buy, and it does not buy a line whose words, voice and speed are unchanged.
+function audioFixture(t, dialogue = 'KAI: One\nMIA: Two\nKAI: Three', version = 1) {
+  const S = t.run('S');
+  S.activeEpisode = 'EP';
+  S.activeEpisodeId = 'ep-1';
+  S.sections = [{ id: 'sec', title: 'Intro', dialogue, version, locked: true }];
+  for (const host of ['kai', 'mia']) {
+    t.element(`${host}-voice`).value = host;
+    t.element(`${host}-speed`).value = '1';
+  }
+  t.c.openArtifactDB = async () => ({});
+  return S;
+}
+
+test('rendering audio asks first and counts only the lines that are missing', async () => {
+  const t = setup();
+  audioFixture(t);
+  const asked = [];
+  t.c.confirmIdeaChange = async (title, message, action) => {
+    asked.push({ title, message, action });
+    return true;
+  };
+  let calls = 0;
+  t.c.ttsAPI = async () => {
+    calls++;
+    return btoa('audio');
+  };
+  await t.run('renderAllAudio()');
+  assert.equal(calls, 3, 'every missing line is rendered');
+  assert.equal(asked.length, 1, 'the operator is asked exactly once');
+  assert.match(asked[0].message, /3 of 3 lines need audio/);
+  assert.match(asked[0].message, /characters/);
+  assert.match(asked[0].action, /Render 3 lines/);
+});
+
+test('declining the audio confirmation spends nothing', async () => {
+  const t = setup();
+  audioFixture(t);
+  t.c.confirmIdeaChange = async () => false;
+  let calls = 0;
+  t.c.ttsAPI = async () => {
+    calls++;
+    return btoa('audio');
+  };
+  await t.run('renderAllAudio()');
+  assert.equal(calls, 0, 'no request is made after a decline');
+  assert.equal(t.run('renderingAudio'), false, 'the stage is not left busy');
+  assert.equal(t.run('_runHeartbeat'), null, 'the lease is not left held');
+});
+
+test('changing one line does not buy the rest of its section again', async () => {
+  const t = setup();
+  const S = audioFixture(t);
+  t.c.confirmIdeaChange = async () => true;
+  const texts = [];
+  t.c.ttsAPI = async (text) => {
+    texts.push(text);
+    return btoa(`audio-${text}`);
+  };
+  await t.run('renderAllAudio()');
+  assert.equal(texts.length, 3);
+  // One line is rewritten and the section's version moves, as a save would do.
+  S.sections[0].dialogue = 'KAI: One\nMIA: Two changed\nKAI: Three';
+  S.sections[0].version = 2;
+  texts.length = 0;
+  await t.run('renderAllAudio()');
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(texts)),
+    ['Two changed'],
+    'only the new words are paid for'
+  );
+  assert.match(t.element('audio-save-status').textContent, /2 reused · 0 failed/);
+});
+
+test('a file the browser cannot play is cleared so a render can replace it', async () => {
+  const t = setup();
+  const S = audioFixture(t, 'KAI: Only line', 1);
+  t.c.confirmIdeaChange = async () => true;
+  let calls = 0;
+  t.c.ttsAPI = async () => {
+    calls++;
+    return btoa('audio');
+  };
+  const players = [];
+  t.c.Audio = class {
+    constructor() {
+      players.push(this);
+      this.play = () => Promise.resolve();
+    }
+  };
+  await t.run('renderAllAudio()');
+  const key = t.run('audioSpec(S.sections[0], parseDialogue(S.sections[0].dialogue)[0], 0).key');
+  assert.ok(await t.c.localArtifact(`audio:${key}`), 'the line starts out cached');
+  await t.run('playAudio()');
+  players[0].onerror();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(await t.c.localArtifact(`audio:${key}`), null, 'the unplayable file is cleared');
+  await t.run('renderAllAudio()');
+  assert.equal(calls, 2, 'and the next render records it again instead of reusing it');
+});
+
 test('a failed transcript save can be recovered for review without replacing saved text or fetching', async () => {
   const t = setup(),
     S = t.run('S');

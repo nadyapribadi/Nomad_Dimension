@@ -7297,7 +7297,10 @@ function audioSpec(sec, line, index) {
   const voice = document.getElementById(`${host}-voice`).value;
   const speed = Number(document.getElementById(`${host}-speed`).value);
   if (!(speed >= 0.5 && speed <= 2)) throw new Error('Voice speed must be between 0.5 and 2');
-  return { key: JSON.stringify([S.activeEpisodeId || S.activeEpisode, sec.id, sec.version, line.text, voice, speed]),
+  // Identity is the words, the voice and the speed — not the section's version.
+  // The version moves whenever any line in the section changes, so including it
+  // bought every other line in that section a second time for identical audio.
+  return { key: JSON.stringify([S.activeEpisodeId || S.activeEpisode, sec.id, line.text, voice, speed]),
     text: line.text, voice, speed, sectionId: sec.id, index, speaker: line.speaker };
 }
 async function currentAudio(sectionIndex = null) {
@@ -7331,13 +7334,31 @@ async function renderAllAudio() {
   try {
     const work=S.sections.map(sec=>validateDialogue(sec.dialogue).map((line,j)=>audioSpec(sec,line,j)));
     await openArtifactDB(); // do not pay for audio if this browser cannot save it
+    // Work out what is actually missing before spending anything, so the
+    // confirmation can name the real number instead of the whole script.
+    const total = work.reduce((n, specs) => n + specs.length, 0);
+    const todo = new Set();
+    for (const specs of work)
+      for (const spec of specs) {
+        const saved = audioCache[spec.key] || await localArtifact(`audio:${spec.key}`);
+        if (saved) { audioCache[spec.key] = saved; cached++; } else todo.add(spec.key);
+      }
+    const pending = [...todo];
+    if (!pending.length) {
+      document.getElementById('audio-save-status').textContent = `All ${total} lines are already rendered for this script and these voice settings.`;
+      toast('Audio is already complete for this script.', 'success');
+      return;
+    }
+    const chars = work.flat().filter(s => todo.has(s.key)).reduce((n, s) => n + s.text.length, 0);
+    if (!await confirmIdeaChange('Render audio for these lines?',
+      `${pending.length} of ${total} lines need audio — about ${chars.toLocaleString()} characters.\nLines whose words, voice and speed have not changed are reused instead of bought again. Keep this tab open while it renders.`,
+      `Render ${pending.length} line${pending.length > 1 ? 's' : ''} · API`)) return;
     for (const [i, specs] of work.entries()) {
       let sectionFailed = false;
       for (const [j, spec] of specs.entries()) {
+        if (!todo.has(spec.key)) continue;
         btn.textContent = `Section ${i + 1}/${work.length} · line ${j + 1}/${specs.length}`;
         try {
-          const saved = audioCache[spec.key] || await localArtifact(`audio:${spec.key}`);
-          if (saved) { audioCache[spec.key] = saved; cached++; continue; }
           const b64 = await ttsAPI(spec.text, spec.voice, spec.speed);
           if (typeof b64 !== 'string' || !b64) throw new Error('TTS returned no audio');
           audioCache[spec.key] = b64;
@@ -7366,18 +7387,30 @@ async function playAudio(sectionIndex) {
     document.getElementById('audio-player-card').style.display = '';
     audioPlayer = new Audio();
     let index = 0;
+    let playing = null;
     const next = () => {
       if (token !== playbackToken || index >= files.length) return;
       const file = files[index++];
+      playing = file;
       document.getElementById('audio-timeline').textContent = `Playing ${file.filename} (${index}/${files.length})`;
       document.getElementById('episode-progress-bar').style.width = `${100 * (index - 1) / files.length}%`;
       audioPlayer.src = `data:audio/mp3;base64,${file.b64}`;
       audioPlayer.play().catch(e => toast(`Playback failed: ${_esc(e.message)}`, 'error'));
     };
     audioPlayer.onended = () => { if (index === files.length) { document.getElementById('episode-progress-bar').style.width = '100%'; document.getElementById('audio-timeline').textContent = 'Playback complete'; } else next(); };
-    audioPlayer.onerror = () => toast('This audio file could not be played. Re-render the affected line.', 'error');
+    // A saved file the browser will not decode would otherwise be reused forever,
+    // because a cached line is never asked for again. Clear it so a render
+    // replaces it instead of replaying the same failure.
+    audioPlayer.onerror = () => {
+      if (playing) dropCachedAudio(playing.key);
+      toast('This audio file could not be played. It has been cleared — render again to record it fresh.', 'error');
+    };
     next();
   } catch (e) { toast(e.message, 'error'); }
+}
+function dropCachedAudio(key) {
+  delete audioCache[key];
+  return localArtifact(`audio:${key}`, null).catch(() => {});
 }
 function playSegment(i) { return playAudio(i); }
 function playFullEpisode() { return playAudio(null); }

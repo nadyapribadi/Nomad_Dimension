@@ -57,6 +57,8 @@ function setup() {
   });
   vm.runInContext(source, context);
   const run = (code) => vm.runInContext(code, context);
+  // Confirmation dialogs are accepted in tests, exactly like `confirm`.
+  run('confirmIdeaChange=async()=>true');
   run(
     `localArtifact = async (key,value) => { if (value !== undefined) localStore.set(key,value); return localStore.get(key); };`
   );

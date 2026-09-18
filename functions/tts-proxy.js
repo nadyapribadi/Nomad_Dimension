@@ -31,21 +31,42 @@ exports.handler = async (event) => {
     audioConfig: audioConfig || { audioEncoding: 'MP3' },
   };
 
-  const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${key}`;
+  // The key travels in a header, not the URL. A URL ends up in request logs and
+  // error traces, and this proxy hands the provider's reason back to the browser.
+  const url = 'https://texttospeech.googleapis.com/v1/text:synthesize';
 
   try {
     const res = await fetch(url, {
       method: 'POST',
       signal: AbortSignal.timeout(25000),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key },
       body: JSON.stringify(reqBody),
     });
-    const data = await res.json();
-    return respond(res.status, data);
+    const data = await res.json().catch(() => ({}));
+    // Relay the reason, never the raw body: an upstream error that echoes the
+    // request would otherwise carry a credential to the browser.
+    const message = redact(data?.error?.message) || `Text-to-speech failed (HTTP ${res.status})`;
+    return respond(res.status, {
+      error: {
+        code: data?.error?.code ?? res.status,
+        ...(data?.error?.status ? { status: data.error.status } : {}),
+        message,
+      },
+    });
   } catch (err) {
-    return respond(500, { error: err.message });
+    return respond(500, {
+      error: { message: redact(err.message) || 'Text-to-speech unavailable' },
+    });
   }
 };
+
+// Belt and braces: strip anything credential-shaped from a message before it
+// leaves the server.
+function redact(text) {
+  return String(text || '')
+    .replace(/\b(?:key|api[_-]?key)=[^\s&"'<>]+/gi, 'key=***')
+    .replace(/\bAIza[0-9A-Za-z_-]{10,}/g, '***');
+}
 
 function corsHeaders() {
   return {
@@ -61,3 +82,4 @@ function respond(statusCode, body) {
 
 // All provider calls require a signed, same-origin operator session.
 exports.handler = require('./_shared/auth').withAuth(exports.handler);
+exports._internal = { redact };

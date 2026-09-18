@@ -95,6 +95,12 @@ Forwards to `https://texttospeech.googleapis.com/v1/text:synthesize`.
 Kai = `en-US-Neural2-D`, Mia = `en-US-Neural2-F`. Returns
 `{ audioContent: <base64> }`.
 
+The provider key travels in the `X-Goog-Api-Key` header, not the query string, and
+an upstream failure is relayed as `{ error: { code, status, message } }` with
+anything credential-shaped stripped from the message. `voice` and `audioConfig`
+are passed through as supplied; there is no allow-list of voice names or speed
+values yet.
+
 ## `youtube-proxy.js`
 
 Forwards to `https://www.googleapis.com/youtube/v3/{path}`.
