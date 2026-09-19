@@ -36,3 +36,5 @@ _deploy/
 # public surface is the code, README.md, LICENSE, and SECURITY.md.
 /Docs/
 /CHANGELOG.md
+/CLAUDE.md
+/AGENTS.md
