@@ -1,81 +1,171 @@
 # Nomad Dimension
 
-**Odyssey of Discovery** — an AI-powered documentary production pipeline for YouTube.
+An editorial workspace for one operator producing documentary-style YouTube
+episodes: collect research material, plan an episode, write a two-host script,
+render narration, and hand the episode off to editing. Notion is the
+cross-device state store; every AI, speech, and data provider call goes through
+an authenticated server endpoint, so the browser never holds a provider key.
 
-Nomad Dimension is a web app that walks one operator through producing a documentary-style YouTube episode — from inspiration browsing to a production handoff — with Claude assisting at each step and Notion as the cross-device state store. The channel covers history, culture, travel, and geography.
+The channel format is a dual-presenter documentary — **Kai** (host) and **Mia**
+(co-host) — covering history, culture, travel, and geography.
+
+[![CI](https://github.com/nadyapribadi/Nomad_Dimension/actions/workflows/ci.yml/badge.svg)](https://github.com/nadyapribadi/Nomad_Dimension/actions/workflows/ci.yml)
+
+## What it is
+
+One operator runs the whole production loop from a single buildless web app. The
+app is the cockpit; Notion is the database. Material is collected once, as typed
+rows (places, activities, food, transport, quotes, angles, research, prices,
+data, glossary), and every later stage reads from those stores instead of
+re-extracting the same transcript.
+
+**Scope, honestly:** this is a personal production tool, not a product. It is
+wired to one Notion workspace — database ids are declared in the client
+(`src/notion.js`) and `functions/_shared/cost.js` — there are no user accounts,
+and sign-in is a single shared operator password. Treat it as a working
+reference for the architecture, not a turnkey install. The Notion schemas and
+the identifiers the code expects are documented in
+[`Docs/AS_BUILT.md`](Docs/AS_BUILT.md).
+
+## The pipeline
+
+Top-level destinations: **Library** (research), **Ideas**, **Episodes**, and
+**Settings**.
+
+| Destination     | What it does                                                                                                                                                                                                                                                      |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Library         | Add a source (a YouTube URL auto-fetches its transcript; anything else is pasted), extract it into typed material, review and deduplicate, and ask a research question. Includes optional fact-checking against web grounding, with results saved back to Notion. |
+| Ideas           | Material-first idea notes: a working idea, the question it answers, and its stage.                                                                                                                                                                                |
+| Episodes        | The episode calendar and the entry point into an episode workspace.                                                                                                                                                                                               |
+| Episode Builder | Assemble reviewed material into typed sections and commit an episode plan.                                                                                                                                                                                        |
+| Script Builder  | Section-by-section dialogue for Kai and Mia.                                                                                                                                                                                                                      |
+| Audio TTS       | Neural voice synthesis per host, then full-episode playback.                                                                                                                                                                                                      |
+| Handoff         | Cut guide, design brief, thumbnail brief, and YouTube metadata.                                                                                                                                                                                                   |
+| Settings        | Connection status, provider routing, voice, location matching, and the channel's editorial DNA.                                                                                                                                                                   |
+
+An open episode carries four views, **Plan**, **Write**, **Produce**, and
+**Export**, over the same data.
 
 ## Architecture
 
-The system follows a **6-stage pipeline**:
+- **The frontend is buildless.** `index.html` holds the markup, an inline
+  `<style>`, the shared data, the listeners, and the `init()` call. Everything
+  else is `src/*.js`, loaded as classic scripts before the inline script. No
+  framework, no bundler, no build step, no runtime dependency.
+- **All provider access is server-side.** Netlify Functions in `functions/` proxy
+  Anthropic, OpenAI-compatible providers, Gemini, Google TTS, YouTube, Google
+  Places, and Notion. Every one of them requires an HMAC-signed eight-hour
+  session cookie and rejects cross-site requests; keys live only in server
+  environment variables. Contract: [`functions/README.md`](functions/README.md).
+- **State lives in Notion.** The app reads the App Settings page on load and
+  writes results back. Browser-local drafts and rendered audio are convenience
+  caches, not the record.
+- **Deploys are curated.** `scripts/build-deploy.mjs` stages a whitelist of
+  publishable files into `_deploy/`, so docs, tests, agent config, and generated
+  indexes cannot ship.
 
-| Stage | Name               | Description                                                        |
-| ----- | ------------------ | ------------------------------------------------------------------ |
-| 0     | Settings           | Notion connection, API keys, model config, Channel DNA             |
-| 1     | YouTube Browser    | Browse source channels, discover inspiration videos                |
-| 2     | Episode Builder    | Theme generation, episode creation, content calendar, gap analysis |
-| 3     | Transcript         | SRT upload, language detection, outline extraction, places review  |
-| 4     | Script Builder     | Kai & Mia dialogue generation, section-by-section scripting        |
-| 5     | Audio TTS          | Neural voice synthesis (Kai & Mia), full episode playback          |
-| 6     | Production Handoff | CapCut guide, Canva brief, thumbnail brief, YouTube metadata       |
-
-**Characters:** Kai (host, 55%) and Mia (co-host, 45%) — dual-presenter documentary format.
-
-## Repository Structure
+### Repository layout
 
 ```
 Nomad_Dimension/
-├── index.html                # Single-page pipeline app (Netlify-deployed)
-├── netlify.toml              # Netlify configuration
-├── package.json              # tooling: eslint, prettier
-├── eslint.config.js
-├── functions/                # Netlify serverless functions (provider proxies)
-│   ├── README.md             # the proxy request/response contract
-│   ├── anthropic-proxy.js
-│   ├── notion-proxy.js
-│   ├── tts-proxy.js
-│   └── youtube-proxy.js
-└── Docs/
-    ├── AS_BUILT.md           # code-side view: IDs, proxy contract, code-vs-spec gaps
-    ├── README.md
-    └── archive/              # shelved Python/agent redesign (not built)
+├── index.html              # shell + shared data + listeners (buildless)
+├── src/
+│   ├── core.js             # pure helpers: text, similarity, sorting, identity
+│   ├── notion.js           # the Notion API seam and browser-local artifact store
+│   ├── library.js          # sources, material, fact review, duplicates, places, ideas
+│   ├── stages.js           # transcript, script, audio, handoff, export
+│   └── app.js              # navigation, dialogs, settings, table engine, run state
+├── functions/              # protected Netlify endpoints + _shared adapters/auth
+├── scripts/                # deploy staging, inline lint, HTML syntax check, tests
+├── netlify.toml            # publish, redirect, and header policy
+├── SECURITY.md             # reporting and testing rules
+└── LICENSE
 ```
 
-## Documentation
+`Docs/` and `CHANGELOG.md` are the operator's working notes. They stay out of
+this repository on purpose — they name raw Notion identifiers, draft URLs, and
+provider costs — so the published surface is the code and the files listed
+above.
 
-- **Source of truth:** the Notion page "📖 Nomad Dimension — System
-  Documentation" — channel model, 8-stage pipeline, 8-database schema, model
-  routing, status flow, design decisions.
-- **[`Docs/AS_BUILT.md`](Docs/AS_BUILT.md)** — the code-side companion:
-  identifiers used in `index.html`, function map, and where the code diverges
-  from the Notion spec.
-- **[`functions/README.md`](functions/README.md)** — the proxy/API contract.
-- **[`Docs/archive/`](Docs/archive/)** — a shelved redesign (Python, autonomous
-  agents, a Critic). Not built; kept for the engineering thinking.
+## Local development
 
-## Tech Stack
+Node 22 (`.nvmrc`).
 
-- **Frontend:** Vanilla HTML/CSS/JS (single-page app)
-- **Backend:** Netlify Functions (serverless)
-- **Database:** Notion (cross-device state storage)
-- **AI:** Anthropic Claude (Sonnet for extraction, Haiku for speed tasks)
-- **TTS:** Google Cloud Neural Voices (en-US-Neural2-D for Kai, en-US-Neural2-F for Mia)
-- **Video:** YouTube Data API v3
+| Command                 | What it does                                                             |
+| ----------------------- | ------------------------------------------------------------------------ |
+| `npm install`           | Installs tooling and wires the pre-commit hook.                          |
+| `npm run dev`           | `netlify dev` — local server plus functions (needs a gitignored `.env`). |
+| `npm run check`         | eslint, prettier check, `index.html` script syntax, and `node --test`.   |
+| `npm run format`        | Applies prettier.                                                        |
+| `npm run graph:refresh` | Refreshes the local GitNexus and Graphify code indexes.                  |
 
-## Development
+There is no build step, so editing `src/*.js` and reloading is the whole loop.
 
-```bash
-npm install        # also wires the pre-commit hook (lint + format)
-npm run dev         # netlify dev — local server + functions
-npm run check       # eslint + prettier --check (what CI runs)
-npm run format      # apply prettier
-```
+## Environment variables
 
-Node 22 (`.nvmrc`). CI runs `npm run check` on every push and PR.
+Copy [`.env.example`](.env.example) to `.env` for local `netlify dev`; in
+production the same names are set in the Netlify dashboard. `.env` is
+gitignored, and no key belongs in the repository, a commit, or a log.
+
+| Variable                                                                                                        | Purpose                                                                                            |
+| --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `APP_PASSWORD`                                                                                                  | **Required.** Operator sign-in, at least 16 characters. Rotating it invalidates existing sessions. |
+| `NOTION_TOKEN`                                                                                                  | **Required.** Notion integration token.                                                            |
+| `NOTION_COLLECTIONS_DATABASE_ID`, `NOTION_PLACEMENTS_DATABASE_ID`                                               | **Required.** Material stores.                                                                     |
+| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`                                                         | Model routes.                                                                                      |
+| `GOOGLE_TTS_API_KEY`                                                                                            | Speech synthesis.                                                                                  |
+| `YOUTUBE_API_KEY`                                                                                               | Source-channel browsing.                                                                           |
+| `GOOGLE_MAPS_API_KEY`                                                                                           | Optional. Places enrichment: prefecture, coordinates, address.                                     |
+| `TRANSCRIPT_API_KEY`                                                                                            | Optional fallback when the free caption scrape is blocked.                                         |
+| `DEEPSEEK_API_KEY`, `DASHSCOPE_API_KEY`, `MISTRAL_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY` | Optional extra providers. Set only the ones you route to.                                          |
+
+Missing or unreadable provider routing fails closed rather than silently falling
+back to server defaults.
+
+## Testing and CI
+
+`npm run check` is the gate, and CI runs it on every push and pull request
+(`.github/workflows/ci.yml`). Tests are `node --test` over `functions/**` and
+`scripts/**`; the write paths that could lose operator work are pinned first.
+The pre-commit hook also refreshes both code graphs, best-effort — an offline
+graph refresh warns instead of blocking the commit.
 
 ## Deployment
 
-Deployed on Netlify; push to `main` to deploy.
+Hosted on Netlify with **auto-builds stopped**: pushing to `main` does not
+deploy. Staging and promotion are deliberate, separate steps
+(`npm run deploy:preview`, then `netlify deploy --prod`), because the credit
+plan charges per production deploy.
+
+## Documentation
+
+- [`functions/README.md`](functions/README.md) — the endpoint contract: what each
+  function accepts, which environment variables it needs, and what it will not
+  do.
+- [`CLAUDE.md`](CLAUDE.md) — the working rules for coding agents in this repo;
+  [`AGENTS.md`](AGENTS.md) points every agent at it.
+- [`SECURITY.md`](SECURITY.md) — how to report a vulnerability, and the rules for
+  testing without spending the operator's provider budget.
+
+The implementation notes the code comments refer to (`Docs/AS_BUILT.md`,
+`Docs/PIPELINE.md`, `Docs/REVAMP_PLAN.md`, `Docs/FIRST_EPISODE_TEST.md`, and the
+shelved redesign under `Docs/archive/`) are deliberately not published.
+
+## Security posture
+
+No provider key, Notion token, or password is stored in this repository or
+shipped to the browser. All provider endpoints are POST-only, same-origin,
+size-limited, and require the signed session cookie; the Notion proxy restricts
+API operations and path shapes, and the integration's own permissions remain the
+data scope. Treat transcript, web, and Notion text passed to a model as data,
+not instructions.
+
+Known limits: sign-in throttling is best-effort per warm instance rather than a
+shared rate limiter, and cost coverage is not a complete billing ledger. See
+`functions/README.md`, and [`SECURITY.md`](SECURITY.md) for how to report a
+problem.
 
 ## License
 
-Private — All rights reserved.
+[MIT](LICENSE). Use it, copy it, change it, ship it; keep the copyright notice
+and the warranty disclaimer.

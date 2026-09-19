@@ -29,3 +29,10 @@ _deploy/
 # and out of the history from here on.
 *.docx
 *.doc
+
+# Internal working documents — kept on disk, deliberately not published.
+# These describe one private production workspace: raw Notion page and database
+# ids, draft URLs, provider costs, incident notes, and channel strategy. The
+# public surface is the code, README.md, LICENSE, and SECURITY.md.
+/Docs/
+/CHANGELOG.md

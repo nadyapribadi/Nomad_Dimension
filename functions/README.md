@@ -37,7 +37,8 @@ resource ancestry checks. The integration's permissions remain the data scope.
 
 Set these in Netlify environment variables and, for local development, a
 gitignored `.env` (see `.env.example`). Model adapters, key names, and routing
-are documented in [AS_BUILT.md](../Docs/AS_BUILT.md).
+live in `functions/_shared/models.js`; each task route is read from Notion at
+run time, with the saved routing documented in the operator's private notes.
 
 ## `service-status.js`
 
